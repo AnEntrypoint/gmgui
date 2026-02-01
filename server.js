@@ -170,6 +170,26 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (routePath === '/api/folders' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const folderPath = body.path || '/config';
+      try {
+        const expandedPath = folderPath.startsWith('~') ?
+          folderPath.replace('~', process.env.HOME || '/config') : folderPath;
+        const entries = fs.readdirSync(expandedPath, { withFileTypes: true });
+        const folders = entries
+          .filter(e => e.isDirectory())
+          .map(e => ({ name: e.name }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ folders }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     let filePath = routePath === '/' ? '/index.html' : routePath;
     filePath = path.join(staticDir, filePath);
     const normalizedPath = path.normalize(filePath);
