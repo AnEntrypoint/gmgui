@@ -1,0 +1,385 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary: #3b82f6;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --dark: #1f2937;
+  --light: #f3f4f6;
+  --border: #e5e7eb;
+  --text: #374151;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text);
+  background: var(--light);
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+}
+
+.container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  background: linear-gradient(135deg, var(--primary) 0%, #2563eb 100%);
+  color: white;
+  padding: 1.5rem 2rem;
+  box-shadow: var(--shadow);
+}
+
+.header h1 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  opacity: 0.9;
+}
+
+.main-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 280px;
+  background: white;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.agents-panel {
+  padding: 1.5rem;
+}
+
+.agents-panel h2 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: var(--dark);
+}
+
+.add-agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.input {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  transition: border-color 0.2s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.btn {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+}
+
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+
+.btn-success:hover {
+  background: #059669;
+}
+
+.btn-secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-secondary:hover {
+  background: #d1d5db;
+}
+
+.agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.agent-item {
+  padding: 1rem;
+  background: var(--light);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.agent-item:hover {
+  background: white;
+  border-color: var(--primary);
+  box-shadow: var(--shadow);
+}
+
+.agent-item.active {
+  background: #eff6ff;
+  border-color: var(--primary);
+}
+
+.agent-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.agent-id {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--dark);
+}
+
+.agent-status {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 500;
+}
+
+.agent-status.connected {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.agent-status.disconnected {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.agent-endpoint {
+  font-size: 0.75rem;
+  color: #6b7280;
+  word-break: break-all;
+  margin-bottom: 0.5rem;
+}
+
+.agent-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.agent-actions button {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.agent-actions button:hover {
+  background: #2563eb;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  overflow: hidden;
+}
+
+.tabs-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tab-buttons {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  background: white;
+  padding: 0 1.5rem;
+}
+
+.tab-btn {
+  padding: 1rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  color: var(--primary);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.tab-content {
+  display: none;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+.console-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: white;
+}
+
+.console-header h2 {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.controls .input {
+  flex: 1;
+}
+
+.controls .btn {
+  flex-shrink: 0;
+}
+
+.console-output {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.console-message {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.25rem;
+  background: #1e293b;
+  border-left: 3px solid var(--border);
+}
+
+.console-message.info {
+  border-left-color: var(--primary);
+}
+
+.console-message.success {
+  border-left-color: var(--success);
+}
+
+.console-message.error {
+  border-left-color: var(--danger);
+}
+
+.console-message.warning {
+  border-left-color: var(--warning);
+}
+
+.console-timestamp {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-bottom: 0.25rem;
+}
+
+.console-agent-id {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.console-text {
+  color: #e2e8f0;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.settings-panel {
+  padding: 2rem;
+  max-width: 600px;
+}
+
+.setting-group {
+  margin-bottom: 1.5rem;
+}
+
+.setting-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--dark);
+}
+
+.setting-group input[type="checkbox"] {
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .main-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 200px;
+  }
+}

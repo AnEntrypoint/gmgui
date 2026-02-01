@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GMGUI - Multi-Agent ACP Client</title>
+  <link rel="stylesheet" href="/rippleui.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <header class="header">
+        <h1>GMGUI</h1>
+        <p class="subtitle">Multi-Agent ACP Client</p>
+      </header>
+
+      <div class="main-layout">
+        <aside class="sidebar">
+          <div class="agents-panel">
+            <h2>Agents</h2>
+            <div class="add-agent-form">
+              <input type="text" id="agentId" placeholder="Agent ID" class="input">
+              <input type="text" id="agentEndpoint" placeholder="ws://localhost:8000" class="input">
+              <button onclick="addAgent()" class="btn btn-primary">Connect</button>
+            </div>
+            <div id="agentsList" class="agents-list"></div>
+          </div>
+        </aside>
+
+        <main class="content">
+          <div class="tabs-container">
+            <div class="tab-buttons">
+              <button class="tab-btn active" data-tab="console" onclick="switchTab('console')">
+                Console
+              </button>
+              <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
+                Settings
+              </button>
+            </div>
+
+            <div id="console" class="tab-content active">
+              <div class="console-header">
+                <h2>Agent Communication</h2>
+                <div class="controls">
+                  <input type="text" id="messageInput" placeholder="Send message..." class="input">
+                  <button onclick="sendMessage()" class="btn btn-success">Send</button>
+                  <button onclick="clearConsole()" class="btn btn-secondary">Clear</button>
+                </div>
+              </div>
+              <div id="consoleOutput" class="console-output"></div>
+            </div>
+
+            <div id="settings" class="tab-content">
+              <div class="settings-panel">
+                <h2>Settings</h2>
+                <div class="setting-group">
+                  <label>Message Format</label>
+                  <select id="messageFormat" class="input">
+                    <option value="msgpackr">MessagePack (Default)</option>
+                    <option value="json">JSON</option>
+                  </select>
+                </div>
+                <div class="setting-group">
+                  <label>Auto-scroll Console</label>
+                  <input type="checkbox" id="autoScroll" checked>
+                </div>
+                <div class="setting-group">
+                  <label>Connection Timeout (seconds)</label>
+                  <input type="number" id="connectTimeout" value="30" class="input">
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

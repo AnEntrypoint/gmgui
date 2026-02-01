@@ -1,0 +1,15 @@
+{
+  "name": "gmgui",
+  "version": "1.0.0",
+  "description": "Multi-agent ACP client with real-time communication",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --watch"
+  },
+  "dependencies": {
+    "msgpackr": "^1.10.1",
+    "ws": "^8.14.2"
+  }
+}
