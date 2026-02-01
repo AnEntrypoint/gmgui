@@ -188,7 +188,17 @@ export default class ACPConnection {
     const prompt = [
       {
         type: 'text',
-        text: `You have the following skills available:\n\n${skillsToInject.map(s => `• ${s.name}: ${s.description}\n  Format: ${s.capability}`).join('\n\n')}\n\nUse these skills to render formatted content directly in your responses. When you want to display HTML or images, send the exact sessionUpdate format shown above.`
+        text: `IMPORTANT: When displaying HTML or images, use the special rendering format, not markdown code blocks.
+
+For HTML rendering: Send a sessionUpdate message as JSON:
+{"sessionUpdate": "html_content", "content": {"html": "<div style='background:#3498db;color:white;padding:20px;border-radius:8px'>Example</div>"}}
+
+For image display: Send a sessionUpdate message as JSON:
+{"sessionUpdate": "image_content", "content": {"path": "/path/to/image.png"}}
+
+These sessionUpdate messages will render as styled blocks in the chat, not as text.
+
+Available skills: ${skillsToInject.map(s => s.name).join(', ')}`
       }
     ];
 
