@@ -153,7 +153,7 @@ class GMGUIApp {
 
       case 'conversation_created':
         this.conversations.set(event.conversation.id, event.conversation);
-        this.renderConversationsList();
+        this.renderChatHistory();
         if (!fromBroadcast && this.broadcastChannel) {
           this.broadcastChannel.postMessage(event);
         }
@@ -161,7 +161,7 @@ class GMGUIApp {
 
       case 'conversation_updated':
         this.conversations.set(event.conversation.id, event.conversation);
-        this.renderConversationsList();
+        this.renderChatHistory();
         if (this.currentConversation?.id === event.conversation.id) {
           this.currentConversation = event.conversation;
           this.renderCurrentConversation();
@@ -173,7 +173,7 @@ class GMGUIApp {
 
       case 'conversation_deleted':
         this.conversations.delete(event.conversationId);
-        this.renderConversationsList();
+        this.renderChatHistory();
         if (this.currentConversation?.id === event.conversationId) {
           this.currentConversation = null;
           this.renderCurrentConversation();
