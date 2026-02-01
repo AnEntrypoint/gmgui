@@ -497,6 +497,45 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // List folders endpoint
+  if (req.url.startsWith('/api/folders') && req.method === 'GET') {
+    const urlObj = new URL(`http://${req.headers.host}${req.url}`);
+    const folderPath = urlObj.searchParams.get('path') || '/';
+
+    try {
+      const normalizedPath = path.normalize(folderPath);
+      const stat = fs.statSync(normalizedPath);
+
+      if (!stat.isDirectory()) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not a directory' }));
+        return;
+      }
+
+      const files = fs.readdirSync(normalizedPath);
+      const folders = files.filter(f => {
+        try {
+          return fs.statSync(path.join(normalizedPath, f)).isDirectory();
+        } catch {
+          return false;
+        }
+      }).sort();
+
+      const parentPath = normalizedPath === '/' ? null : path.dirname(normalizedPath);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        currentPath: normalizedPath,
+        parent: parentPath,
+        folders: folders
+      }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Serve uploaded files
   if (req.url.startsWith('/uploads/')) {
     const filename = req.url.slice(9);

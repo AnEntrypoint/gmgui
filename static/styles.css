@@ -789,6 +789,16 @@ html, body {
   white-space: nowrap;
 }
 
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-light);
+  transform: translateY(-1px);
+}
+
 .btn-success {
   background: var(--color-success);
   color: white;
@@ -807,6 +817,16 @@ html, body {
 
 .btn-secondary:hover {
   background: var(--border-color);
+}
+
+.btn-danger {
+  background: var(--color-danger);
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
 }
 
 .btn-close {

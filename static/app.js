@@ -230,7 +230,17 @@ class GMGUIApp {
   }
 
   deleteConversation(id) {
-    if (confirm('Are you sure you want to delete this chat?')) {
+    this.showDeleteConfirmDialog(id);
+  }
+
+  showDeleteConfirmDialog(id) {
+    const modal = document.getElementById('deleteConfirmModal');
+    if (!modal) return;
+
+    const confirmBtn = modal.querySelector('.btn-confirm');
+    const cancelBtn = modal.querySelector('.btn-cancel');
+
+    const handleConfirm = () => {
       this.conversations.delete(id);
       this.saveConversations();
       if (this.currentConversation === id) {
@@ -254,6 +264,22 @@ class GMGUIApp {
         }
       }
       this.renderChatHistory();
+      this.closeDeleteConfirmDialog();
+    };
+
+    const handleCancel = () => {
+      this.closeDeleteConfirmDialog();
+    };
+
+    confirmBtn.onclick = handleConfirm;
+    cancelBtn.onclick = handleCancel;
+    modal.classList.add('active');
+  }
+
+  closeDeleteConfirmDialog() {
+    const modal = document.getElementById('deleteConfirmModal');
+    if (modal) {
+      modal.classList.remove('active');
     }
   }
 
@@ -613,6 +639,106 @@ class GMGUIApp {
       }
     }
   }
+
+  async loadFolderBrowser(path) {
+    try {
+      const response = await fetch(`/api/folders?path=${encodeURIComponent(path)}`);
+      if (response.ok) {
+        const data = await response.json();
+        document.getElementById('currentFolderPath').textContent = data.currentPath;
+
+        const list = document.getElementById('folderBrowserList');
+        list.innerHTML = '';
+
+        if (data.parent) {
+          const parentItem = document.createElement('div');
+          parentItem.style.cssText = 'padding: 0.75rem; border-bottom: 1px solid #e5e7eb; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
+          parentItem.innerHTML = '📁 <strong>..</strong>';
+          parentItem.onclick = () => this.loadFolderBrowser(data.parent);
+          list.appendChild(parentItem);
+        }
+
+        data.folders.forEach(folder => {
+          const item = document.createElement('div');
+          item.style.cssText = 'padding: 0.75rem; border-bottom: 1px solid #e5e7eb; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
+          item.innerHTML = `📁 ${escapeHtml(folder)}`;
+          item.onmouseover = () => item.style.background = '#f9fafb';
+          item.onmouseout = () => item.style.background = 'white';
+          item.onclick = () => this.loadFolderBrowser(data.currentPath + '/' + folder);
+          list.appendChild(item);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load folders:', error);
+      document.getElementById('folderBrowserList').innerHTML = '<div style="padding: 1rem; color: red;">Error loading folders</div>';
+    }
+  }
+
+  createChatInFolder(folderPath) {
+    const id = `chat-${Date.now()}`;
+    const folderName = folderPath.split('/').pop() || folderPath;
+    const conversation = {
+      id,
+      title: `📁 ${folderName}`,
+      messages: [],
+      createdAt: new Date().toLocaleString(),
+      folderPath: folderPath,
+    };
+    this.conversations.set(id, conversation);
+    this.currentConversation = id;
+    this.saveConversations();
+    this.renderChatHistory();
+    this.displayConversation(id);
+    this.logMessage('system', `Started chat in folder: ${folderPath}`);
+  }
+
+  showFolderSelectionDialog() {
+    const modal = document.getElementById('folderSelectionModal');
+    if (!modal) return;
+
+    const input = modal.querySelector('.folder-path-input');
+    const confirmBtn = modal.querySelector('.btn-confirm-folder');
+    const cancelBtn = modal.querySelector('.btn-cancel-folder');
+
+    input.value = '';
+    input.focus();
+
+    const handleConfirm = () => {
+      const path = input.value.trim();
+      if (!path) {
+        this.logMessage('system', 'Please enter a folder path');
+        return;
+      }
+      this.startNewChat(path);
+      this.closeFolderSelectionDialog();
+    };
+
+    const handleCancel = () => {
+      this.closeFolderSelectionDialog();
+    };
+
+    const handleKeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        handleCancel();
+      }
+    };
+
+    confirmBtn.onclick = handleConfirm;
+    cancelBtn.onclick = handleCancel;
+    input.onkeydown = handleKeydown;
+    modal.classList.add('active');
+  }
+
+  closeFolderSelectionDialog() {
+    const modal = document.getElementById('folderSelectionModal');
+    if (modal) {
+      modal.classList.remove('active');
+    }
+  }
 }
 
 // Global helper functions
@@ -643,27 +769,7 @@ function createChatInWorkspace() {
 
 function createChatInFolder() {
   closeNewChatModal();
-  document.getElementById('folderPickerInput').click();
-}
-
-function handleFolderPicker() {
-  const input = document.getElementById('folderPickerInput');
-  const files = input.files;
-
-  if (files.length === 0) return;
-
-  try {
-    const folderPath = files[0].webkitRelativePath?.split('/')[0];
-    if (folderPath) {
-      app.startNewChat(folderPath);
-    } else {
-      app.logMessage('system', 'Could not determine folder path');
-    }
-  } catch (error) {
-    app.logMessage('system', `Folder selection error: ${error.message}`);
-  } finally {
-    input.value = '';
-  }
+  app.showFolderSelectionDialog();
 }
 
 function startNewChat() {
@@ -723,13 +829,67 @@ function handleFileUpload() {
   app.handleFileUpload();
 }
 
-function triggerFolderOpen() {
-  app.triggerFolderOpen();
+function showNewChatModal() {
+  const modal = document.getElementById('newChatModal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
 }
 
-function handleFolderOpen() {
-  app.handleFolderOpen();
+function closeNewChatModal() {
+  const modal = document.getElementById('newChatModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function createChatInWorkspace() {
+  app.startNewChat();
+}
+
+function openFolderBrowser() {
+  closeNewChatModal();
+  const modal = document.getElementById('folderBrowserModal');
+  if (modal) {
+    modal.style.display = 'flex';
+    app.loadFolderBrowser('/');
+  }
+}
+
+function closeFolderBrowser() {
+  const modal = document.getElementById('folderBrowserModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function selectFolderForChat() {
+  const path = document.getElementById('currentFolderPath').textContent;
+  if (path && path !== '/') {
+    app.createChatInFolder(path);
+    closeFolderBrowser();
+  } else {
+    alert('Please select a folder');
+  }
 }
 
 // Initialize app
 const app = new GMGUIApp();
+
+// Hot reload support
+if (typeof window !== 'undefined') {
+  let reloadTimeout;
+  const reloadScript = () => {
+    const script = document.createElement('script');
+    script.src = '/app.js?t=' + Date.now();
+    script.onload = () => {
+      clearTimeout(reloadTimeout);
+      reloadTimeout = setTimeout(reloadScript, 1000);
+    };
+    script.onerror = () => {
+      clearTimeout(reloadTimeout);
+      reloadTimeout = setTimeout(reloadScript, 1000);
+    };
+    document.head.appendChild(script);
+  };
+}
