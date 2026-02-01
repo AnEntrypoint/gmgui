@@ -1,5 +1,82 @@
 const BASE_URL = window.__BASE_URL || '';
 
+// Auto-reconnecting WebSocket wrapper
+class ReconnectingWebSocket {
+  constructor(url, options = {}) {
+    this.url = url;
+    this.reconnectDelay = options.reconnectDelay || 1000;
+    this.maxReconnectDelay = options.maxReconnectDelay || 30000;
+    this.reconnectDecay = options.reconnectDecay || 1.5;
+    this.currentDelay = this.reconnectDelay;
+    this.ws = null;
+    this.listeners = new Map();
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = options.maxReconnectAttempts || Infinity;
+    this.shouldReconnect = true;
+    this.connect();
+  }
+
+  connect() {
+    this.ws = new WebSocket(this.url);
+
+    this.ws.onopen = (e) => {
+      this.currentDelay = this.reconnectDelay;
+      this.reconnectAttempts = 0;
+      this.emit('open', e);
+    };
+
+    this.ws.onmessage = (e) => {
+      this.emit('message', e);
+    };
+
+    this.ws.onerror = (e) => {
+      this.emit('error', e);
+    };
+
+    this.ws.onclose = (e) => {
+      this.emit('close', e);
+      if (this.shouldReconnect && this.reconnectAttempts < this.maxReconnectAttempts) {
+        setTimeout(() => {
+          this.reconnectAttempts++;
+          this.currentDelay = Math.min(
+            this.currentDelay * this.reconnectDecay,
+            this.maxReconnectDelay
+          );
+          console.log(`Attempting to reconnect (${this.reconnectAttempts})...`);
+          this.connect();
+        }, this.currentDelay);
+      }
+    };
+  }
+
+  on(event, callback) {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, []);
+    }
+    this.listeners.get(event).push(callback);
+  }
+
+  emit(event, data) {
+    const callbacks = this.listeners.get(event);
+    if (callbacks) {
+      callbacks.forEach(cb => cb(data));
+    }
+  }
+
+  send(data) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    }
+  }
+
+  close() {
+    this.shouldReconnect = false;
+    if (this.ws) {
+      this.ws.close();
+    }
+  }
+}
+
 class GMGUIApp {
   constructor() {
     this.agents = new Map();
@@ -7,6 +84,8 @@ class GMGUIApp {
     this.conversations = new Map();
     this.currentConversation = null;
     this.activeStream = null;
+    this.syncWs = null;
+    this.broadcastChannel = null;
     this.settings = { autoScroll: true, connectTimeout: 30000 };
     this.init();
   }
@@ -17,7 +96,113 @@ class GMGUIApp {
     await this.fetchHome();
     await this.fetchAgents();
     await this.fetchConversations();
+    this.connectSyncWebSocket();
+    this.setupCrossTabSync();
     this.renderAll();
+  }
+
+  connectSyncWebSocket() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    this.syncWs = new ReconnectingWebSocket(
+      `${proto}//${location.host}${BASE_URL}/sync`
+    );
+
+    this.syncWs.on('open', () => {
+      console.log('Sync WebSocket connected');
+      this.updateConnectionStatus('connected');
+    });
+
+    this.syncWs.on('message', (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        this.handleSyncEvent(event, false);
+      } catch (err) {
+        console.error('Sync message parse error:', err);
+      }
+    });
+
+    this.syncWs.on('close', () => {
+      console.log('Sync WebSocket disconnected, will auto-reconnect...');
+      this.updateConnectionStatus('reconnecting');
+    });
+
+    this.syncWs.on('error', (err) => {
+      console.error('Sync WebSocket error:', err);
+      this.updateConnectionStatus('disconnected');
+    });
+  }
+
+  setupCrossTabSync() {
+    if ('BroadcastChannel' in window) {
+      try {
+        this.broadcastChannel = new BroadcastChannel('gmgui-sync');
+        this.broadcastChannel.onmessage = (e) => {
+          this.handleSyncEvent(e.data, true);
+        };
+      } catch (err) {
+        console.error('BroadcastChannel error:', err);
+      }
+    }
+  }
+
+  handleSyncEvent(event, fromBroadcast = false) {
+    switch (event.type) {
+      case 'sync_connected':
+        // Just connection confirmation
+        break;
+
+      case 'conversation_created':
+        this.conversations.set(event.conversation.id, event.conversation);
+        this.renderConversationsList();
+        if (!fromBroadcast && this.broadcastChannel) {
+          this.broadcastChannel.postMessage(event);
+        }
+        break;
+
+      case 'conversation_updated':
+        this.conversations.set(event.conversation.id, event.conversation);
+        this.renderConversationsList();
+        if (this.currentConversation?.id === event.conversation.id) {
+          this.currentConversation = event.conversation;
+          this.renderCurrentConversation();
+        }
+        if (!fromBroadcast && this.broadcastChannel) {
+          this.broadcastChannel.postMessage(event);
+        }
+        break;
+
+      case 'conversation_deleted':
+        this.conversations.delete(event.conversationId);
+        this.renderConversationsList();
+        if (this.currentConversation?.id === event.conversationId) {
+          this.currentConversation = null;
+          this.renderCurrentConversation();
+        }
+        if (!fromBroadcast && this.broadcastChannel) {
+          this.broadcastChannel.postMessage(event);
+        }
+        break;
+
+      case 'message_created':
+        // Could fetch messages if watching this conversation
+        if (!fromBroadcast && this.broadcastChannel) {
+          this.broadcastChannel.postMessage(event);
+        }
+        break;
+    }
+  }
+
+  updateConnectionStatus(status) {
+    const el = document.getElementById('connectionStatus');
+    if (!el) return;
+
+    el.className = `connection-status ${status}`;
+    const text = el.querySelector('.status-text');
+    if (text) {
+      text.textContent = status === 'connected' ? 'Connected' :
+                         status === 'reconnecting' ? 'Reconnecting...' :
+                         'Disconnected';
+    }
   }
 
   async fetchHome() {

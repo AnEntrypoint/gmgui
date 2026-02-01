@@ -89,6 +89,7 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const conversation = queries.createConversation(body.agentId, body.title);
       queries.createEvent('conversation.created', { agentId: body.agentId }, conversation.id);
+      broadcastSync({ type: 'conversation_created', conversation });
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ conversation }));
       return;
@@ -107,6 +108,7 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const conv = queries.updateConversation(convMatch[1], body);
       queries.createEvent('conversation.updated', body, convMatch[1]);
+      broadcastSync({ type: 'conversation_updated', conversation: conv });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ conversation: conv }));
       return;
@@ -132,6 +134,7 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const message = queries.createMessage(conversationId, 'user', body.content);
       queries.createEvent('message.created', { role: 'user' }, conversationId);
+      broadcastSync({ type: 'message_created', conversationId, message });
       const session = queries.createSession(conversationId);
       queries.createEvent('session.created', { messageId: message.id }, conversationId, session.id);
       res.writeHead(201, { 'Content-Type': 'application/json' });
@@ -311,6 +314,7 @@ async function processMessage(conversationId, messageId, sessionId, content, age
 const wss = new WebSocketServer({ server });
 const hotReloadClients = [];
 const streamClients = new Map();
+const syncClients = new Set();
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost');
@@ -327,6 +331,12 @@ wss.on('connection', (ws, req) => {
       const set = streamClients.get(convId);
       if (set) { set.delete(ws); if (set.size === 0) streamClients.delete(convId); }
     });
+  } else if (wsPath === '/sync') {
+    syncClients.add(ws);
+    ws.isAlive = true;
+    ws.send(JSON.stringify({ type: 'sync_connected' }));
+    ws.on('pong', () => { ws.isAlive = true; });
+    ws.on('close', () => { syncClients.delete(ws); });
   }
 });
 
@@ -338,6 +348,25 @@ function broadcastStream(conversationId, event) {
     if (ws.readyState === 1) ws.send(data);
   }
 }
+
+function broadcastSync(event) {
+  const data = JSON.stringify(event);
+  for (const ws of syncClients) {
+    if (ws.readyState === 1) ws.send(data);
+  }
+}
+
+// Heartbeat interval to detect stale connections
+const heartbeatInterval = setInterval(() => {
+  syncClients.forEach(ws => {
+    if (!ws.isAlive) {
+      syncClients.delete(ws);
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
 
 if (watch) {
   const watchedFiles = new Map();

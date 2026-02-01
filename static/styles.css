@@ -870,6 +870,58 @@ html, body {
   height: auto;
 }
 
+/* Connection Status Indicator */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  transition: var(--transition-smooth);
+}
+
+.connection-status.connected .status-dot {
+  background: var(--color-success);
+}
+
+.connection-status.reconnecting {
+  color: var(--color-warning);
+}
+
+.connection-status.reconnecting .status-dot {
+  background: var(--color-warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status.disconnected {
+  color: var(--color-danger);
+}
+
+.connection-status.disconnected .status-dot {
+  background: var(--color-danger);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  transition: var(--transition-smooth);
+}
+
+.status-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 @media (max-width: 768px) {
   .stream-container { max-width: 90%; }
 }
