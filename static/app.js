@@ -343,10 +343,18 @@ class GMGUIApp {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
 
-    if (!message || !this.selectedAgent || !this.currentConversation) {
-      if (!this.selectedAgent) {
-        this.logMessage('system', 'Please select an agent first');
-      }
+    // State validation
+    if (!message) {
+      return; // Silently ignore empty messages
+    }
+
+    if (!this.selectedAgent) {
+      this.logMessage('system', 'Please select an agent first');
+      return;
+    }
+
+    if (!this.currentConversation) {
+      this.logMessage('system', 'No conversation selected');
       return;
     }
 

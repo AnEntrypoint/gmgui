@@ -284,6 +284,8 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  /* Ensure input is never hidden */
+  position: relative;
 }
 
 .chat-messages {
@@ -407,6 +409,7 @@ html, body {
   background: var(--bg-primary);
   border-top: 1px solid var(--border-color);
   flex-shrink: 0;
+  min-height: 60px; /* Ensure input area never becomes too small */
 }
 
 .input-wrapper {
