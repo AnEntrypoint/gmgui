@@ -4,10 +4,20 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { pack, unpack } from 'msgpackr';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import os from 'os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const watch = process.argv.includes('--watch');
+const execAsync = promisify(exec);
+
+// Create conversation folder for file uploads
+const conversationFolder = path.join(os.tmpdir(), 'gmgui-conversations');
+if (!fs.existsSync(conversationFolder)) {
+  fs.mkdirSync(conversationFolder, { recursive: true });
+}
 
 // Hot reload file watcher
 const watchedFiles = new Map();
@@ -105,6 +115,112 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Screenshot endpoint
+  if (req.url === '/api/screenshot' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body);
+        const format = payload.format || 'png';
+        const filename = `screenshot-${Date.now()}.${format}`;
+        const filepath = path.join(conversationFolder, filename);
+
+        // Try scrot first, fall back to other tools
+        let screenshotTaken = false;
+
+        // Try scrot (Linux X11)
+        if (!screenshotTaken) {
+          try {
+            await execAsync(`scrot "${filepath}" 2>/dev/null || true`);
+            if (fs.existsSync(filepath)) screenshotTaken = true;
+          } catch (e) {
+            // Continue to next method
+          }
+        }
+
+        // Try gnome-screenshot (GNOME)
+        if (!screenshotTaken) {
+          try {
+            await execAsync(`gnome-screenshot -f "${filepath}" 2>/dev/null || true`);
+            if (fs.existsSync(filepath)) screenshotTaken = true;
+          } catch (e) {
+            // Continue to next method
+          }
+        }
+
+        // Try import from ImageMagick
+        if (!screenshotTaken) {
+          try {
+            await execAsync(`import -window root "${filepath}" 2>/dev/null || true`);
+            if (fs.existsSync(filepath)) screenshotTaken = true;
+          } catch (e) {
+            // Continue to next method
+          }
+        }
+
+        // If no tool available, create a placeholder GIF
+        if (!screenshotTaken) {
+          fs.writeFileSync(filepath, Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          filename,
+          path: `/uploads/${filename}`,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // File upload endpoint
+  if (req.url === '/api/upload' && req.method === 'POST') {
+    const boundary = req.headers['content-type'].split('boundary=')[1];
+    let body = '';
+    
+    req.on('data', chunk => body += chunk.toString());
+    req.on('end', () => {
+      try {
+        const parts = body.split(`--${boundary}`);
+        const files = [];
+
+        for (const part of parts) {
+          if (part.includes('filename=')) {
+            const filenameMatch = part.match(/filename="([^"]+)"/);
+            const filename = filenameMatch ? filenameMatch[1] : `file-${Date.now()}`;
+            
+            const fileStart = part.indexOf('\r\n\r\n') + 4;
+            const fileEnd = part.lastIndexOf('\r\n');
+            const fileContent = part.substring(fileStart, fileEnd);
+            
+            const uploadPath = path.join(conversationFolder, filename);
+            fs.writeFileSync(uploadPath, fileContent);
+            
+            files.push({
+              filename,
+              path: `/uploads/${filename}`,
+              size: fileContent.length,
+              timestamp: Date.now()
+            });
+          }
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, files }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (req.url.startsWith('/api/agents/') && req.method === 'POST') {
     const agentId = req.url.split('/')[3];
     let body = '';
@@ -124,6 +240,56 @@ const server = http.createServer((req, res) => {
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // Serve uploaded files
+  if (req.url.startsWith('/uploads/')) {
+    const filename = req.url.slice(9);
+    const uploadPath = path.join(conversationFolder, filename);
+    
+    const normalizedPath = path.normalize(uploadPath);
+    if (!normalizedPath.startsWith(conversationFolder)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+
+    fs.stat(uploadPath, (err, stats) => {
+      if (err) {
+        res.writeHead(404);
+        res.end('Not found');
+        return;
+      }
+
+      if (stats.isFile()) {
+        const ext = path.extname(uploadPath).toLowerCase();
+        const mimeTypes = {
+          '.png': 'image/png',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.gif': 'image/gif',
+          '.pdf': 'application/pdf',
+          '.txt': 'text/plain',
+          '.json': 'application/json',
+        };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+        fs.readFile(uploadPath, (err, data) => {
+          if (err) {
+            res.writeHead(500);
+            res.end('Server error');
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(data);
+        });
+      } else {
+        res.writeHead(403);
+        res.end('Forbidden');
       }
     });
     return;

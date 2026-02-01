@@ -4,70 +4,116 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GMGUI - Multi-Agent ACP Client</title>
-  <link rel="stylesheet" href="/rippleui.css">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div id="app">
+  <div id="app" class="app">
     <div class="container">
       <header class="header">
-        <h1>GMGUI</h1>
-        <p class="subtitle">Multi-Agent ACP Client</p>
+        <div class="header-content">
+          <h1>GMGUI</h1>
+          <p class="subtitle">Multi-Agent ACP Client</p>
+        </div>
       </header>
 
       <div class="main-layout">
+        <!-- Sidebar with agents list -->
         <aside class="sidebar">
           <div class="agents-panel">
-            <h2>Agents</h2>
-            <div class="add-agent-form">
-              <input type="text" id="agentId" placeholder="Agent ID" class="input">
-              <input type="text" id="agentEndpoint" placeholder="ws://localhost:8000" class="input">
-              <button onclick="addAgent()" class="btn btn-primary">Connect</button>
+            <div class="panel-header">
+              <h2>Agents</h2>
             </div>
+            
+            <div class="add-agent-form">
+              <input type="text" id="agentId" placeholder="Agent ID" class="input" />
+              <input type="text" id="agentEndpoint" placeholder="ws://localhost:8000" class="input" />
+              <button onclick="addAgent()" class="btn btn-primary btn-block">Connect Agent</button>
+            </div>
+            
             <div id="agentsList" class="agents-list"></div>
           </div>
         </aside>
 
+        <!-- Main content area -->
         <main class="content">
           <div class="tabs-container">
+            <!-- Tab navigation -->
             <div class="tab-buttons">
-              <button class="tab-btn active" data-tab="console" onclick="switchTab('console')">
-                Console
+              <button class="tab-btn active" data-tab="chat" onclick="switchTab('chat')">
+                <span class="icon">💬</span> Chat
+              </button>
+              <button class="tab-btn" data-tab="files" onclick="switchTab('files')">
+                <span class="icon">📁</span> Files
               </button>
               <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">
-                Settings
+                <span class="icon">⚙️</span> Settings
               </button>
             </div>
 
-            <div id="console" class="tab-content active">
-              <div class="console-header">
-                <h2>Agent Communication</h2>
-                <div class="controls">
-                  <input type="text" id="messageInput" placeholder="Send message..." class="input">
-                  <button onclick="sendMessage()" class="btn btn-success">Send</button>
-                  <button onclick="clearConsole()" class="btn btn-secondary">Clear</button>
+            <!-- Chat tab -->
+            <div id="chat" class="tab-content active chat-tab">
+              <div class="chat-header">
+                <h2 id="chatTitle">Agent Communication</h2>
+                <button onclick="clearConsole()" class="btn btn-secondary btn-sm" title="Clear chat">Clear</button>
+              </div>
+              
+              <div id="consoleOutput" class="console-output"></div>
+              
+              <div class="chat-input-area">
+                <div class="input-controls">
+                  <div class="input-group">
+                    <textarea id="messageInput" placeholder="Type a message... (Shift+Enter for new line)" class="input input-textarea"></textarea>
+                  </div>
+                  <div class="action-buttons">
+                    <button onclick="captureScreenshot()" class="btn btn-secondary btn-sm" title="Capture screenshot">📸 Screenshot</button>
+                    <button onclick="triggerFileUpload()" class="btn btn-secondary btn-sm" title="Upload file">📤 Upload</button>
+                    <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload()" multiple />
+                    <button onclick="sendMessage()" class="btn btn-success" title="Send message">Send</button>
+                  </div>
                 </div>
               </div>
-              <div id="consoleOutput" class="console-output"></div>
             </div>
 
-            <div id="settings" class="tab-content">
+            <!-- Files tab -->
+            <div id="files" class="tab-content files-tab">
+              <div class="panel-header">
+                <h2>Uploaded Files</h2>
+                <button onclick="refreshFileList()" class="btn btn-secondary btn-sm">Refresh</button>
+              </div>
+              <div id="filesList" class="files-list"></div>
+            </div>
+
+            <!-- Settings tab -->
+            <div id="settings" class="tab-content settings-tab">
               <div class="settings-panel">
                 <h2>Settings</h2>
+                
                 <div class="setting-group">
-                  <label>Message Format</label>
+                  <label for="messageFormat">Message Format</label>
                   <select id="messageFormat" class="input">
                     <option value="msgpackr">MessagePack (Default)</option>
                     <option value="json">JSON</option>
                   </select>
                 </div>
+                
                 <div class="setting-group">
-                  <label>Auto-scroll Console</label>
-                  <input type="checkbox" id="autoScroll" checked>
+                  <label for="autoScroll">
+                    <input type="checkbox" id="autoScroll" checked />
+                    Auto-scroll Console
+                  </label>
                 </div>
+                
                 <div class="setting-group">
-                  <label>Connection Timeout (seconds)</label>
-                  <input type="number" id="connectTimeout" value="30" class="input">
+                  <label for="connectTimeout">Connection Timeout (seconds)</label>
+                  <input type="number" id="connectTimeout" value="30" class="input" />
+                </div>
+
+                <div class="setting-group">
+                  <label for="screenshotFormat">Screenshot Format</label>
+                  <select id="screenshotFormat" class="input">
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPEG</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -75,6 +121,29 @@
         </main>
       </div>
     </div>
+  </div>
+
+  <!-- Modal for screenshot preview -->
+  <div id="screenshotModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Screenshot Captured</h3>
+        <button onclick="closeScreenshotModal()" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <img id="screenshotImage" src="" alt="Screenshot" style="max-width: 100%; max-height: 60vh; border-radius: 0.5rem;" />
+      </div>
+      <div class="modal-footer">
+        <button onclick="sendScreenshot()" class="btn btn-success">Send to Agent</button>
+        <button onclick="downloadScreenshot()" class="btn btn-secondary">Download</button>
+        <button onclick="closeScreenshotModal()" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="spinner"></div>
   </div>
 
   <script src="/skills.js"></script>

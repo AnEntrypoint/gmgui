@@ -9,7 +9,10 @@ class GMGUIApp {
       messageFormat: 'msgpackr',
       autoScroll: true,
       connectTimeout: 30000,
+      screenshotFormat: 'png',
     };
+    this.uploadedFiles = [];
+    this.lastScreenshot = null;
 
     this.init();
   }
@@ -34,19 +37,28 @@ class GMGUIApp {
   }
 
   applySettings() {
-    document.getElementById('messageFormat').value = this.settings.messageFormat;
-    document.getElementById('autoScroll').checked = this.settings.autoScroll;
-    document.getElementById('connectTimeout').value = this.settings.connectTimeout / 1000;
+    const format = document.getElementById('messageFormat');
+    const autoScroll = document.getElementById('autoScroll');
+    const timeout = document.getElementById('connectTimeout');
+    const screenshotFormat = document.getElementById('screenshotFormat');
+
+    if (format) format.value = this.settings.messageFormat;
+    if (autoScroll) autoScroll.checked = this.settings.autoScroll;
+    if (timeout) timeout.value = this.settings.connectTimeout / 1000;
+    if (screenshotFormat) screenshotFormat.value = this.settings.screenshotFormat;
   }
 
   setupEventListeners() {
     // Message input
-    document.getElementById('messageInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.sendMessage();
-      }
-    });
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+      messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          this.sendMessage();
+        }
+      });
+    }
 
     // Settings changes
     document.getElementById('messageFormat').addEventListener('change', (e) => {
@@ -63,13 +75,18 @@ class GMGUIApp {
       this.settings.connectTimeout = parseInt(e.target.value) * 1000;
       this.saveSettings();
     });
+
+    document.getElementById('screenshotFormat').addEventListener('change', (e) => {
+      this.settings.screenshotFormat = e.target.value;
+      this.saveSettings();
+    });
   }
 
   async fetchAgents() {
     try {
       const response = await fetch('/api/agents');
       const data = await response.json();
-      
+
       if (data.agents) {
         data.agents.forEach(agent => {
           this.agents.set(agent.id, agent);
@@ -83,31 +100,33 @@ class GMGUIApp {
 
   renderAgentsList() {
     const list = document.getElementById('agentsList');
+    if (!list) return;
+
     list.innerHTML = '';
 
     if (this.agents.size === 0) {
-      list.innerHTML = '<p style="color: #9ca3af; font-size: 0.875rem;">No agents connected</p>';
+      list.innerHTML = '<p style="color: #9ca3af; font-size: 0.875rem; padding: 1rem; text-align: center;">No agents connected</p>';
       return;
     }
 
     this.agents.forEach((agent, id) => {
       const item = document.createElement('div');
       item.className = `agent-item ${this.selectedAgent === id ? 'active' : ''}`;
-      
+
       const statusClass = agent.status === 'connected' ? 'connected' : 'disconnected';
-      
+
       item.innerHTML = `
         <div class="agent-item-header">
-          <span class="agent-id">${agent.id}</span>
+          <span class="agent-id">${escapeHtml(agent.id)}</span>
           <span class="agent-status ${statusClass}">${agent.status}</span>
         </div>
-        <div class="agent-endpoint">${agent.endpoint}</div>
+        <div class="agent-endpoint">${escapeHtml(agent.endpoint || 'N/A')}</div>
         <div class="agent-actions">
-          <button onclick="app.selectAgent('${agent.id}')">Select</button>
-          <button onclick="app.disconnectAgent('${agent.id}')">Disconnect</button>
+          <button onclick="app.selectAgent('${escapeHtml(agent.id)}')">Select</button>
+          <button onclick="app.disconnectAgent('${escapeHtml(agent.id)}')">Remove</button>
         </div>
       `;
-      
+
       list.appendChild(item);
     });
   }
@@ -115,16 +134,21 @@ class GMGUIApp {
   selectAgent(id) {
     this.selectedAgent = id;
     this.renderAgentsList();
+    const agent = this.agents.get(id);
+    const chatTitle = document.getElementById('chatTitle');
+    if (chatTitle) {
+      chatTitle.textContent = `Chat with ${escapeHtml(id)}`;
+    }
     this.logMessage('info', `Selected agent: ${id}`);
   }
 
   async connectAgent(id, endpoint) {
     try {
       this.logMessage('info', `Connecting to ${id}...`);
-      
+
       const wsUrl = `ws://${window.location.host}/agent/${id}`;
       const ws = new WebSocket(wsUrl);
-      
+
       ws.binaryType = 'arraybuffer';
 
       const timeout = setTimeout(() => {
@@ -169,9 +193,8 @@ class GMGUIApp {
   handleAgentMessage(agentId, data) {
     try {
       let message;
-      
+
       if (this.settings.messageFormat === 'msgpackr') {
-        // For now, log raw data if msgpackr is used
         message = `[Binary Data from ${agentId}]`;
       } else {
         message = typeof data === 'string' ? JSON.parse(data) : data;
@@ -189,7 +212,7 @@ class GMGUIApp {
         timestamp: Date.now(),
       });
 
-      this.logMessage('info', `Message from ${agentId}`, 
+      this.logMessage('info', `Message from ${agentId}`,
         typeof message === 'string' ? message : JSON.stringify(message, null, 2)
       );
     } catch (error) {
@@ -204,7 +227,7 @@ class GMGUIApp {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === 'agent:connected') {
           const agent = data.agent;
           this.agents.set(agent.id, agent);
@@ -255,8 +278,211 @@ class GMGUIApp {
       });
 
       if (response.ok) {
-        this.logMessage('info', `Sent to ${this.selectedAgent}`, message);
+        this.logMessage('info', `You (to ${this.selectedAgent})`, message);
         input.value = '';
+      } else {
+        const error = await response.json();
+        this.logMessage('error', 'Send failed', error.error);
+      }
+    } catch (error) {
+      this.logMessage('error', 'Send error', error.message);
+    }
+  }
+
+  async captureScreenshot() {
+    const format = this.settings.screenshotFormat || 'png';
+    this.showLoading(true);
+
+    try {
+      const response = await fetch('/api/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.lastScreenshot = data;
+        this.showScreenshotModal(data.path);
+        this.logMessage('success', 'Screenshot captured');
+      } else {
+        const error = await response.json();
+        this.logMessage('error', 'Screenshot failed', error.error);
+      }
+    } catch (error) {
+      this.logMessage('error', 'Screenshot error', error.message);
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  showScreenshotModal(path) {
+    const modal = document.getElementById('screenshotModal');
+    const img = document.getElementById('screenshotImage');
+
+    if (modal && img) {
+      img.src = path;
+      modal.classList.add('active');
+    }
+  }
+
+  closeScreenshotModal() {
+    const modal = document.getElementById('screenshotModal');
+    if (modal) {
+      modal.classList.remove('active');
+    }
+  }
+
+  async sendScreenshot() {
+    if (!this.lastScreenshot || !this.selectedAgent) {
+      this.logMessage('error', 'No screenshot or agent selected');
+      return;
+    }
+
+    try {
+      const message = `Captured screenshot: ${this.lastScreenshot.filename}`;
+      const payload = {
+        type: 'message',
+        content: message,
+        attachment: {
+          type: 'screenshot',
+          path: this.lastScreenshot.path,
+          filename: this.lastScreenshot.filename,
+        },
+        timestamp: Date.now(),
+      };
+
+      const response = await fetch(`/api/agents/${this.selectedAgent}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        this.logMessage('info', `You (to ${this.selectedAgent})`, message);
+        this.closeScreenshotModal();
+      } else {
+        const error = await response.json();
+        this.logMessage('error', 'Send failed', error.error);
+      }
+    } catch (error) {
+      this.logMessage('error', 'Send error', error.message);
+    }
+  }
+
+  downloadScreenshot() {
+    if (!this.lastScreenshot) return;
+
+    const img = document.getElementById('screenshotImage');
+    const link = document.createElement('a');
+    link.href = this.lastScreenshot.path;
+    link.download = this.lastScreenshot.filename;
+    link.click();
+  }
+
+  triggerFileUpload() {
+    document.getElementById('fileInput').click();
+  }
+
+  async handleFileUpload() {
+    const input = document.getElementById('fileInput');
+    const files = input.files;
+
+    if (files.length === 0) return;
+
+    this.showLoading(true);
+
+    try {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.uploadedFiles.push(...data.files);
+        this.refreshFileList();
+        this.logMessage('success', `Uploaded ${data.files.length} file(s)`);
+        input.value = '';
+      } else {
+        const error = await response.json();
+        this.logMessage('error', 'Upload failed', error.error);
+      }
+    } catch (error) {
+      this.logMessage('error', 'Upload error', error.message);
+    } finally {
+      this.showLoading(false);
+    }
+  }
+
+  refreshFileList() {
+    const list = document.getElementById('filesList');
+    if (!list) return;
+
+    if (this.uploadedFiles.length === 0) {
+      list.innerHTML = '<p style="color: #9ca3af; padding: 1rem;">No files uploaded</p>';
+      return;
+    }
+
+    list.innerHTML = '';
+
+    this.uploadedFiles.forEach((file, index) => {
+      const item = document.createElement('div');
+      item.className = 'file-item';
+
+      const sizeKB = Math.round(file.size / 1024);
+      const date = new Date(file.timestamp).toLocaleString();
+
+      item.innerHTML = `
+        <div class="file-item-name">${escapeHtml(file.filename)}</div>
+        <div class="file-item-info">
+          <div>Size: ${sizeKB} KB</div>
+          <div>Uploaded: ${date}</div>
+        </div>
+        <div class="file-item-actions">
+          <a href="${file.path}" download="${file.filename}">Download</a>
+          <button onclick="app.sendFile(${index})">Send</button>
+        </div>
+      `;
+
+      list.appendChild(item);
+    });
+  }
+
+  async sendFile(index) {
+    if (!this.selectedAgent) {
+      this.logMessage('error', 'Please select an agent first');
+      return;
+    }
+
+    const file = this.uploadedFiles[index];
+
+    try {
+      const message = `Sending file: ${file.filename}`;
+      const payload = {
+        type: 'message',
+        content: message,
+        attachment: {
+          type: 'file',
+          path: file.path,
+          filename: file.filename,
+        },
+        timestamp: Date.now(),
+      };
+
+      const response = await fetch(`/api/agents/${this.selectedAgent}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        this.logMessage('info', `You (to ${this.selectedAgent})`, message);
       } else {
         const error = await response.json();
         this.logMessage('error', 'Send failed', error.error);
@@ -268,6 +494,8 @@ class GMGUIApp {
 
   logMessage(type, title, content = '') {
     const output = document.getElementById('consoleOutput');
+    if (!output) return;
+
     const msg = document.createElement('div');
     msg.className = `console-message ${type}`;
 
@@ -288,7 +516,10 @@ class GMGUIApp {
   }
 
   clearConsole() {
-    document.getElementById('consoleOutput').innerHTML = '';
+    const output = document.getElementById('consoleOutput');
+    if (output) {
+      output.innerHTML = '';
+    }
     this.messageHistory = [];
   }
 
@@ -300,7 +531,18 @@ class GMGUIApp {
     }
     this.agents.delete(id);
     this.renderAgentsList();
-    this.logMessage('warning', `Disconnected from ${id}`);
+    this.logMessage('warning', `Removed agent: ${id}`);
+  }
+
+  showLoading(show) {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+      if (show) {
+        overlay.classList.add('active');
+      } else {
+        overlay.classList.remove('active');
+      }
+    }
   }
 }
 
@@ -322,7 +564,7 @@ function addAgent() {
 
   app.agents.set(id, { id, endpoint, status: 'disconnected' });
   app.connectAgent(id, endpoint);
-  
+
   document.getElementById('agentId').value = '';
   document.getElementById('agentEndpoint').value = '';
 }
@@ -332,15 +574,48 @@ function sendMessage() {
 }
 
 function clearConsole() {
-  app.clearConsole();
+  if (confirm('Clear all messages?')) {
+    app.clearConsole();
+  }
 }
 
 function switchTab(tabName) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  
-  document.getElementById(tabName).classList.add('active');
-  document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+  const tab = document.getElementById(tabName);
+  const btn = document.querySelector(`[data-tab="${tabName}"]`);
+
+  if (tab) tab.classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+function captureScreenshot() {
+  app.captureScreenshot();
+}
+
+function closeScreenshotModal() {
+  app.closeScreenshotModal();
+}
+
+function sendScreenshot() {
+  app.sendScreenshot();
+}
+
+function downloadScreenshot() {
+  app.downloadScreenshot();
+}
+
+function triggerFileUpload() {
+  app.triggerFileUpload();
+}
+
+function handleFileUpload() {
+  app.handleFileUpload();
+}
+
+function refreshFileList() {
+  app.refreshFileList();
 }
 
 // Initialize app
