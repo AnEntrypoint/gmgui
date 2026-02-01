@@ -10,6 +10,7 @@ import ACPConnection from './acp-launcher.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
+const BASE_URL = (process.env.BASE_URL || '/gm').replace(/\/+$/, '');
 const watch = process.argv.includes('--watch');
 
 const staticDir = path.join(__dirname, 'static');
@@ -68,14 +69,22 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
+  if (req.url === '/') { res.writeHead(302, { Location: BASE_URL + '/' }); res.end(); return; }
+
+  if (!req.url.startsWith(BASE_URL + '/') && req.url !== BASE_URL) {
+    res.writeHead(404); res.end('Not found'); return;
+  }
+
+  const routePath = req.url.slice(BASE_URL.length) || '/';
+
   try {
-    if (req.url === '/api/conversations' && req.method === 'GET') {
+    if (routePath === '/api/conversations' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ conversations: queries.getAllConversations() }));
       return;
     }
 
-    if (req.url === '/api/conversations' && req.method === 'POST') {
+    if (routePath === '/api/conversations' && req.method === 'POST') {
       const body = await parseBody(req);
       const conversation = queries.createConversation(body.agentId, body.title);
       queries.createEvent('conversation.created', { agentId: body.agentId }, conversation.id);
@@ -84,7 +93,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const convMatch = req.url.match(/^\/api\/conversations\/([^/]+)$/);
+    const convMatch = routePath.match(/^\/api\/conversations\/([^/]+)$/);
     if (convMatch && req.method === 'GET') {
       const conv = queries.getConversation(convMatch[1]);
       if (!conv) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Not found' })); return; }
@@ -110,7 +119,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const messagesMatch = req.url.match(/^\/api\/conversations\/([^/]+)\/messages$/);
+    const messagesMatch = routePath.match(/^\/api\/conversations\/([^/]+)\/messages$/);
     if (messagesMatch && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ messages: queries.getConversationMessages(messagesMatch[1]) }));
@@ -130,7 +139,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const messageMatch = req.url.match(/^\/api\/conversations\/([^/]+)\/messages\/([^/]+)$/);
+    const messageMatch = routePath.match(/^\/api\/conversations\/([^/]+)\/messages\/([^/]+)$/);
     if (messageMatch && req.method === 'GET') {
       const msg = queries.getMessage(messageMatch[2]);
       if (!msg || msg.conversationId !== messageMatch[1]) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Not found' })); return; }
@@ -139,7 +148,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const sessionMatch = req.url.match(/^\/api\/sessions\/([^/]+)$/);
+    const sessionMatch = routePath.match(/^\/api\/sessions\/([^/]+)$/);
     if (sessionMatch && req.method === 'GET') {
       const sess = queries.getSession(sessionMatch[1]);
       if (!sess) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Not found' })); return; }
@@ -149,19 +158,19 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.url === '/api/agents' && req.method === 'GET') {
+    if (routePath === '/api/agents' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ agents: discoveredAgents }));
       return;
     }
 
-    if (req.url === '/api/home' && req.method === 'GET') {
+    if (routePath === '/api/home' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ home: process.env.HOME || '/config' }));
       return;
     }
 
-    let filePath = req.url === '/' ? '/index.html' : req.url;
+    let filePath = routePath === '/' ? '/index.html' : routePath;
     filePath = path.join(staticDir, filePath);
     const normalizedPath = path.normalize(filePath);
     if (!normalizedPath.startsWith(staticDir)) { res.writeHead(403); res.end('Forbidden'); return; }
@@ -191,8 +200,12 @@ function serveFile(filePath, res) {
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(500); res.end('Server error'); return; }
     let content = data.toString();
-    if (ext === '.html' && watch) {
-      content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
+    if (ext === '.html') {
+      const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>`;
+      content = content.replace('<head>', '<head>\n  ' + baseTag);
+      if (watch) {
+        content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
+      }
     }
     res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
     res.end(content);
@@ -251,10 +264,11 @@ const streamClients = new Map();
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/hot-reload') {
+  const wsPath = url.pathname.startsWith(BASE_URL) ? url.pathname.slice(BASE_URL.length) : url.pathname;
+  if (wsPath === '/hot-reload') {
     hotReloadClients.push(ws);
     ws.on('close', () => { const i = hotReloadClients.indexOf(ws); if (i > -1) hotReloadClients.splice(i, 1); });
-  } else if (url.pathname === '/stream') {
+  } else if (wsPath === '/stream') {
     const convId = url.searchParams.get('conversationId');
     if (!convId) { ws.close(); return; }
     if (!streamClients.has(convId)) streamClients.set(convId, new Set());
@@ -296,7 +310,7 @@ process.on('SIGTERM', async () => {
 });
 
 server.listen(PORT, () => {
-  console.log(`GMGUI running on http://localhost:${PORT}`);
+  console.log(`GMGUI running on http://localhost:${PORT}${BASE_URL}/`);
   console.log(`Agents: ${discoveredAgents.map(a => a.name).join(', ') || 'none'}`);
   console.log(`Hot reload: ${watch ? 'on' : 'off'}`);
 });

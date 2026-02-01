@@ -1,3 +1,5 @@
+const BASE_URL = window.__BASE_URL || '';
+
 class GMGUIApp {
   constructor() {
     this.agents = new Map();
@@ -20,7 +22,7 @@ class GMGUIApp {
 
   async fetchHome() {
     try {
-      const res = await fetch('/api/home');
+      const res = await fetch(BASE_URL + '/api/home');
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem('gmgui-home', data.home);
@@ -78,7 +80,7 @@ class GMGUIApp {
 
   async fetchAgents() {
     try {
-      const res = await fetch('/api/agents');
+      const res = await fetch(BASE_URL + '/api/agents');
       const data = await res.json();
       if (data.agents) {
         data.agents.forEach(a => this.agents.set(a.id, a));
@@ -90,7 +92,7 @@ class GMGUIApp {
 
   async fetchConversations() {
     try {
-      const res = await fetch('/api/conversations');
+      const res = await fetch(BASE_URL + '/api/conversations');
       const data = await res.json();
       if (data.conversations) {
         this.conversations.clear();
@@ -103,7 +105,7 @@ class GMGUIApp {
 
   async fetchMessages(conversationId) {
     try {
-      const res = await fetch(`/api/conversations/${conversationId}/messages`);
+      const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
       const data = await res.json();
       return data.messages || [];
     } catch (e) {
@@ -192,7 +194,7 @@ class GMGUIApp {
 
   async deleteConversation(id) {
     try {
-      await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+      await fetch(`${BASE_URL}/api/conversations/${id}`, { method: 'DELETE' });
     } catch (e) {
       console.error('deleteConversation:', e);
     }
@@ -277,7 +279,7 @@ class GMGUIApp {
       ? folderPath.split('/').pop() || folderPath
       : `Chat ${this.conversations.size + 1}`;
     try {
-      const res = await fetch('/api/conversations', {
+      const res = await fetch(BASE_URL + '/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: this.selectedAgent || 'claude-code', title }),
@@ -314,7 +316,7 @@ class GMGUIApp {
     this.updateSendButtonState();
     try {
       const folderPath = conv?.folderPath || localStorage.getItem('gmgui-home') || '/config';
-      const res = await fetch(`/api/conversations/${this.currentConversation}/messages`, {
+      const res = await fetch(`${BASE_URL}/api/conversations/${this.currentConversation}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -370,7 +372,7 @@ class GMGUIApp {
     };
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}/stream?conversationId=${conversationId}`);
+    const ws = new WebSocket(`${proto}//${location.host}${BASE_URL}/stream?conversationId=${conversationId}`);
     this.activeStream = ws;
 
     ws.onmessage = (e) => {
@@ -514,7 +516,7 @@ class GMGUIApp {
     if (!list) return;
     list.innerHTML = '<div style="padding: 1rem; color: var(--text-tertiary);">Loading...</div>';
     try {
-      const res = await fetch('/api/folders', {
+      const res = await fetch(BASE_URL + '/api/folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: folderPath }),
