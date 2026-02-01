@@ -2,76 +2,75 @@
 
 Get up and running with GMGUI in 5 minutes.
 
-## 1. Installation (30 seconds)
+## Installation
 
 ```bash
-git clone https://github.com/AnEntrypoint/gmgui.git
+git clone https://github.com/lanmower/gmgui.git
 cd gmgui
 npm install
 ```
 
-## 2. Start Server (10 seconds)
+## Start the Server
 
 ```bash
 npm start
 ```
 
-Open browser to `http://localhost:3000`
+Open your browser to **http://localhost:3000**
 
-## 3. Connect an Agent (2 minutes)
+## Connect Your First Agent
 
-### Option A: Using Mock Agent (Easiest)
+### Via Web UI
 
-In another terminal:
+1. In the sidebar, enter:
+   - **Agent ID**: Any identifier (e.g., `my-agent`)
+   - **WebSocket Endpoint**: Your agent's endpoint (e.g., `ws://localhost:8000`)
+2. Click **Connect Agent**
+3. Agent appears in the sidebar
+4. Click to select it
+5. Type a message and press Enter
 
-```bash
-node examples/mock-agent.js
-```
+### Verify Connection
 
-In another terminal:
+Once connected, you should see:
+- Agent name in sidebar with status
+- Message console ready for input
+- File upload and screenshot buttons available
 
-```bash
-node examples/agent-client.js --endpoint ws://localhost:3001
-```
+## Using Features
 
-Then in the browser:
-- Look for agent in the sidebar
-- Click "Select"
-- Type a message in the input box
-- Hit Enter to send
-
-### Option B: Connect Your Own Agent
-
-```bash
-node examples/agent-client.js \
-  --id my-agent \
-  --endpoint ws://your-agent-server:3001
-```
-
-### Option C: Manual WebSocket Connection
-
-In browser console:
-
-```javascript
-// Connect directly
-const ws = new WebSocket('ws://localhost:3000/agent/my-agent');
-ws.onopen = () => console.log('Connected!');
-ws.onmessage = (e) => console.log('Message:', e.data);
-```
-
-## 4. Send a Message (5 seconds)
-
+### Send Messages
 1. Select agent from sidebar
-2. Type message in input field
-3. Press Enter or click Send
-4. Watch message appear in console
+2. Type in the input field
+3. Press **Enter** or click **Send**
+4. Messages appear in the chat console
 
-## 5. View Settings
+### Upload Files
+1. Click **📤 Upload** button
+2. Select one or more files
+3. Files appear in the **Files** tab
+4. Agent can access uploaded files
 
-Click "Settings" tab to:
-- Change message format (MessagePack or JSON)
-- Toggle auto-scroll
-- Adjust connection timeout
+### Capture Screenshots
+1. Click **📸 Screenshot** button
+2. Preview appears in a modal
+3. Click **Send to Agent** to share
+4. Or **Download** to save locally
+
+### View Settings
+1. Click **Settings** tab
+2. Configure preferences
+3. Changes save automatically
+
+## Development Mode
+
+Enable hot reload for development:
+
+```bash
+npm run dev
+```
+
+Now edit any file in `static/` and browser auto-refreshes.
 
 ## Troubleshooting
 
@@ -81,98 +80,36 @@ PORT=3001 npm start
 ```
 
 ### Agent Won't Connect
-- Check agent endpoint is valid: `curl ws://localhost:3001`
-- Check GMGUI server is running: `curl http://localhost:3000`
-- Check browser console for WebSocket errors
+- Verify agent is running and accessible
+- Check browser console (F12) for WebSocket errors
+- Ensure endpoint URL is correct
 
-### No Messages Appearing
-- Make sure agent is selected
-- Check "Auto-scroll Console" is enabled
-- Check browser DevTools Network tab for WebSocket activity
+### Screenshot Not Working
+Install scrot (or other screenshot tool):
+```bash
+# Ubuntu/Debian
+sudo apt-get install scrot
+
+# macOS
+brew install scrot
+
+# Or use your system's built-in tool
+```
+
+## What's Next?
+
+- Read [README.md](README.md) for full documentation
+- Check [FEATURES.md](FEATURES.md) for all capabilities
+- Review [TESTING.md](TESTING.md) for testing guide
+
+## Mobile Access
+
+Access GMGUI from mobile/tablet:
+
+1. Note your computer's IP: `hostname -I`
+2. On mobile, open: `http://YOUR_IP:3000`
+3. Interface adapts to mobile layout
 
 ## Next Steps
 
-- Read [FEATURES.md](FEATURES.md) for full capabilities
-- Check [README.md](README.md) for detailed documentation
-- Review [examples/](examples/) for integration patterns
-- Run integration tests: `./test-integration.sh`
-
-## Development
-
-Enable hot reload:
-
-```bash
-npm run dev
-```
-
-Edit any file in `static/` and browser auto-refreshes.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `server.js` | Main HTTP + WebSocket server |
-| `static/app.js` | Frontend application logic |
-| `static/index.html` | UI layout |
-| `static/styles.css` | Custom styles |
-| `examples/agent-client.js` | Agent client library |
-| `examples/mock-agent.js` | Test agent server |
-
-## CLI Commands
-
-```bash
-# Start server (production)
-npm start
-
-# Start with hot reload (development)
-npm run dev
-
-# Run integration tests
-./test-integration.sh
-
-# Start mock agent
-node examples/mock-agent.js
-
-# Connect agent to gmgui
-node examples/agent-client.js --id agent1 --endpoint ws://localhost:3001
-
-# Connect with verbose logging
-node examples/agent-client.js --verbose
-```
-
-## API Quick Reference
-
-```bash
-# Get all agents
-curl http://localhost:3000/api/agents
-
-# Send message to agent
-curl -X POST http://localhost:3000/api/agents/my-agent \
-  -H "Content-Type: application/json" \
-  -d '{"type":"message","content":"hello"}'
-```
-
-## WebSocket Messages
-
-From browser to agent:
-```javascript
-{
-  type: "message",
-  content: "Hello agent",
-  timestamp: 1234567890
-}
-```
-
-From agent to browser:
-```javascript
-{
-  type: "response",
-  content: "Hello back",
-  agentId: "my-agent",
-  timestamp: 1234567890
-}
-```
-
----
-
-**That's it! You're ready to manage multiple agents with GMGUI.**
+Ready to integrate your agents? The interface will auto-discover and connect agents as you add them. Files are stored in `/tmp/gmgui-conversations/` for agent access.
