@@ -627,6 +627,9 @@ const server = http.createServer((req, res) => {
               sessionState.progress = 'Sending prompt...';
               broadcastSessionUpdate(sessionId, sessionState);
 
+              // Small delay to ensure session is fully initialized on ACP side
+              await new Promise(resolve => setTimeout(resolve, 500));
+
               const messages = [
                 {
                   role: 'user',
