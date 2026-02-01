@@ -188,24 +188,57 @@ export default class ACPConnection {
     const prompt = [
       {
         type: 'text',
-        text: `CRITICAL: HTML Rendering Requirements
+        text: `CRITICAL: HTML Rendering Requirements & Visual Communication Standards
 
-When rendering HTML, ALWAYS use RippleUI CSS classes for styling and compatibility with the interface:
+YOU MUST RENDER YOUR RESPONSES AS HTML FOR ALL IMPACTFUL INFORMATION.
+
+MANDATORY RULES:
+1. ALWAYS use HTML rendering for responses - this is not optional
+2. Every response must have visual HTML representation of key information
+3. Text-only responses are forbidden unless explicitly unavoidable
+4. Use HTML blocks to display:
+   - Lists and tables of data
+   - Analysis results and metrics
+   - Code snippets and technical content
+   - Status reports and progress
+   - Hierarchical information and structures
+   - Any data that benefits from visual formatting
+
+VISUAL REPRESENTATION EXAMPLES:
+
+For lists/data:
+{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><h4 style='margin:0 0 0.5rem 0'>Items:</h4><ul style='margin:0;padding-left:1.5rem'><li>Item 1</li><li>Item 2</li></ul></div>", "title": "List of Results"}}
+
+For metrics/status:
+{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><div style='display:grid;grid-template-columns:1fr 1fr;gap:1rem'><div style='padding:0.5rem;background:#f0fdf4;border-radius:0.25rem'><div style='font-weight:bold'>Metric 1</div><div style='font-size:1.5em;color:#16a34a'>Value</div></div><div style='padding:0.5rem;background:#fef2f2;border-radius:0.25rem'><div style='font-weight:bold'>Metric 2</div><div style='font-size:1.5em;color:#dc2626'>Value</div></div></div></div>", "title": "Status Report"}}
+
+For code:
+{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><pre style='margin:0;overflow:auto;background:#f3f4f6;padding:0.5rem;border-radius:0.25rem'><code>code content here</code></pre></div>", "title": "Code Example"}}
+
+STYLING GUIDELINES:
+When rendering HTML, ALWAYS use RippleUI CSS classes for styling and compatibility:
 - Use RippleUI color classes: bg-primary, bg-secondary, text-primary, text-secondary, border-color
 - Use RippleUI utility classes: p-*, m-*, gap-*, rounded-*
 - Use RippleUI component classes: btn, card, badge, etc.
 - Use inline styles ONLY for dynamic colors or values
 
-Example RippleUI compatible HTML:
+PREFERRED: RippleUI compatible HTML
 {"sessionUpdate": "html_content", "content": {"html": "<div class='bg-secondary border-color rounded-lg p-6'><h3 class='text-primary'>Title</h3><p class='text-secondary'>Content</p></div>"}}
 
-Fallback (if using inline styles only):
+FALLBACK: Inline styles only (when RippleUI unavailable)
 {"sessionUpdate": "html_content", "content": {"html": "<div style='background:#f9fafb;border:1px solid #e5e7eb;padding:24px;border-radius:8px'><h3>Title</h3><p>Content</p></div>"}}
 
-RippleUI CSS file: rippleui.css is already loaded in the page.
+REMEMBER: RippleUI CSS file is already loaded in the page.
 
-For image display:
-{"sessionUpdate": "image_content", "content": {"path": "/path/to/image.png"}}
+MULTI-BLOCK RESPONSES:
+You can send multiple HTML blocks in a single response:
+1. Send text explanation via agent_message_chunk
+2. Send HTML visualization via html_content (multiple times if needed)
+3. Combine text and visuals for maximum impact
+
+IMAGE DISPLAY:
+When appropriate, capture or generate visual content:
+{"sessionUpdate": "image_content", "content": {"path": "/path/to/image.png", "title": "Visual content"}}
 
 Available skills: ${skillsToInject.map(s => s.name).join(', ')}`
       }
