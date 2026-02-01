@@ -98,7 +98,7 @@ export class ACPLauncher extends EventEmitter {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('ACP initialize timeout'));
-      }, 5000);
+      }, 15000); // Increased from 5s to 15s for slower systems
 
       const handleMessage = (msg) => {
         if (msg.result?.protocolVersion) {
