@@ -1,27 +1,55 @@
 #!/usr/bin/env node
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import process from 'process';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, '..');
 
-const args = process.argv.slice(2);
-const command = args[0] || 'start';
+export default async function gmgui(args = []) {
+  const command = args[0] || 'start';
 
-if (command === 'start') {
-  const port = process.env.PORT || 3000;
-  const baseUrl = process.env.BASE_URL || '/gm';
+  if (command === 'start') {
+    // Ensure dependencies are installed
+    const nodeModulesPath = path.join(projectRoot, 'node_modules');
+    if (!fs.existsSync(nodeModulesPath)) {
+      console.log('Installing dependencies...');
+      const installResult = spawnSync('npm', ['install'], {
+        cwd: projectRoot,
+        stdio: 'inherit'
+      });
+      if (installResult.status !== 0) {
+        throw new Error(`npm install failed with code ${installResult.status}`);
+      }
+    }
 
-  const ps = spawn('node', [path.join(projectRoot, 'server.js')], {
-    cwd: projectRoot,
-    env: { ...process.env, PORT: port, BASE_URL: baseUrl },
-    stdio: 'inherit'
+    const port = process.env.PORT || 3000;
+    const baseUrl = process.env.BASE_URL || '/gm';
+
+    return new Promise((resolve, reject) => {
+      const ps = spawn('node', [path.join(projectRoot, 'server.js')], {
+        cwd: projectRoot,
+        env: { ...process.env, PORT: port, BASE_URL: baseUrl },
+        stdio: 'inherit'
+      });
+
+      ps.on('exit', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Server exited with code ${code}`));
+      });
+
+      ps.on('error', reject);
+    });
+  } else {
+    throw new Error(`Unknown command: ${command}`);
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  gmgui(process.argv.slice(2)).catch(err => {
+    console.error(err.message);
+    process.exit(1);
   });
-
-  ps.on('exit', (code) => process.exit(code));
-} else {
-  console.error(`Unknown command: ${command}`);
-  process.exit(1);
 }

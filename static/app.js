@@ -84,6 +84,7 @@ class GMGUIApp {
     this.conversations = new Map();
     this.currentConversation = null;
     this.activeStream = null;
+    this.pollingInterval = null;
     this.syncWs = null;
     this.broadcastChannel = null;
     this.settings = { autoScroll: true, connectTimeout: 30000 };
@@ -434,7 +435,6 @@ class GMGUIApp {
     }
 
     const messages = await this.fetchMessages(id);
-    const latestSession = await this.fetchLatestSession(id);
 
     const div = document.getElementById('chatMessages');
     if (!div) return;
@@ -453,11 +453,6 @@ class GMGUIApp {
     } else {
       messages.forEach(msg => this.addMessageToDisplay(msg));
 
-      if (latestSession && latestSession.status === 'processing') {
-        this.addSystemMessage('Resuming previous session...');
-        this.streamResponse(id);
-      }
-
       if (this.settings.autoScroll) {
         div.scrollTop = div.scrollHeight;
       }
@@ -466,16 +461,6 @@ class GMGUIApp {
     this.renderAgentCards();
   }
 
-  async fetchLatestSession(conversationId) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/sessions/latest`);
-      const data = await res.json();
-      return data.session || null;
-    } catch (e) {
-      console.error('fetchLatestSession:', e);
-      return null;
-    }
-  }
 
   parseAndRenderContent(content) {
     const elements = [];
@@ -634,7 +619,7 @@ class GMGUIApp {
       }
       const data = await res.json();
       this.idempotencyKeys.set(idempotencyKey, data.session.id);
-      this.streamResponse(this.currentConversation);
+      this.startPollingMessages(this.currentConversation);
     } catch (e) {
       this.addMessageToDisplay({ role: 'system', content: `Error: ${e.message}` });
     }
@@ -648,95 +633,50 @@ class GMGUIApp {
     this.addMessageToDisplay({ role: 'system', content: text });
   }
 
-  streamResponse(conversationId) {
-    const div = document.getElementById('chatMessages');
-    if (!div) return;
+  startPollingMessages(conversationId) {
+    if (this.pollingInterval) clearInterval(this.pollingInterval);
 
-    const container = document.createElement('div');
-    container.className = 'message assistant';
-    const streamWrap = document.createElement('div');
-    streamWrap.className = 'stream-container';
-    container.appendChild(streamWrap);
-    div.appendChild(container);
+    let pollCount = 0;
+    const maxNoResponsePolls = 60; // Stop polling after 60 polls with no change
+    let lastMessageCount = 0;
 
-    let textBlock = null;
-    let thoughtBlock = null;
-    const toolBlocks = new Map();
+    this.pollingInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
+        const data = await res.json();
+        const messages = data.messages || [];
 
-    const ensureTextBlock = () => {
-      if (textBlock) return textBlock;
-      textBlock = document.createElement('div');
-      textBlock.className = 'stream-text-block';
-      streamWrap.appendChild(textBlock);
-      return textBlock;
-    };
+        // If we got new messages, render them
+        if (messages.length > lastMessageCount) {
+          const newMessages = messages.slice(lastMessageCount);
+          newMessages.forEach(msg => {
+            const existingEl = document.querySelector(`[data-message-id="${msg.id}"]`);
+            if (!existingEl) {
+              this.addMessageToDisplay(msg);
+            }
+          });
+          lastMessageCount = messages.length;
+          pollCount = 0; // Reset counter when we get activity
 
-    const autoScroll = () => {
-      if (this.settings.autoScroll) div.scrollTop = div.scrollHeight;
-    };
-
-    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${location.host}${BASE_URL}/stream?conversationId=${conversationId}`);
-    this.activeStream = ws;
-
-    ws.onmessage = (e) => {
-      let event;
-      try { event = JSON.parse(e.data); } catch { return; }
-
-      if (event.type === 'text_delta') {
-        const block = ensureTextBlock();
-        block.textContent += event.text;
-        autoScroll();
-      } else if (event.type === 'thought_delta') {
-        if (!thoughtBlock) {
-          thoughtBlock = this.createThoughtBlock();
-          streamWrap.insertBefore(thoughtBlock, streamWrap.firstChild);
+          if (this.settings.autoScroll) {
+            const div = document.getElementById('chatMessages');
+            if (div) div.scrollTop = div.scrollHeight;
+          }
+        } else {
+          pollCount++;
         }
-        thoughtBlock.querySelector('.thought-content').textContent += event.text;
-        autoScroll();
-      } else if (event.type === 'tool_call') {
-        textBlock = null;
-        const block = this.createToolBlock(event);
-        toolBlocks.set(event.toolCallId, block);
-        streamWrap.appendChild(block);
-        autoScroll();
-      } else if (event.type === 'tool_update') {
-        const block = toolBlocks.get(event.toolCallId);
-        if (block) this.updateToolBlock(block, event);
-        textBlock = null;
-        autoScroll();
-      } else if (event.type === 'html_section') {
-        textBlock = null;
-        const htmlEl = this.createHtmlBlock(event);
-        streamWrap.appendChild(htmlEl);
-        autoScroll();
-      } else if (event.type === 'image_section') {
-        textBlock = null;
-        const imgEl = this.createImageBlock(event);
-        streamWrap.appendChild(imgEl);
-        autoScroll();
-      } else if (event.type === 'plan') {
-        const planEl = this.createPlanBlock(event.entries);
-        streamWrap.appendChild(planEl);
-        autoScroll();
-      } else if (event.type === 'done') {
-        streamWrap.classList.add('done');
-        ws.close();
-        this.activeStream = null;
-        autoScroll();
-      } else if (event.type === 'error') {
-        const errEl = document.createElement('div');
-        errEl.className = 'stream-error';
-        errEl.textContent = event.message;
-        streamWrap.appendChild(errEl);
-        ws.close();
-        this.activeStream = null;
-        autoScroll();
-      }
-    };
 
-    ws.onerror = () => { this.activeStream = null; };
-    ws.onclose = () => { this.activeStream = null; };
+        // Stop polling if no changes for a while
+        if (pollCount > maxNoResponsePolls) {
+          clearInterval(this.pollingInterval);
+          this.pollingInterval = null;
+        }
+      } catch (e) {
+        console.error('Polling error:', e);
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+    }, 500); // Poll every 500ms
   }
 
   createThoughtBlock() {
