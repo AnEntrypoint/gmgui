@@ -6,8 +6,8 @@ class GMGUIApp {
     this.conversations = new Map();
     this.currentConversation = null;
     this.connections = new Map();
+    this.sessionConnections = new Map(); // WebSocket connections for sessions
     this.settings = {
-      messageFormat: 'msgpackr',
       autoScroll: true,
       connectTimeout: 30000,
       screenshotFormat: 'png',
@@ -38,12 +38,10 @@ class GMGUIApp {
   }
 
   applySettings() {
-    const format = document.getElementById('messageFormat');
     const autoScroll = document.getElementById('autoScroll');
     const timeout = document.getElementById('connectTimeout');
     const screenshotFormat = document.getElementById('screenshotFormat');
 
-    if (format) format.value = this.settings.messageFormat;
     if (autoScroll) autoScroll.checked = this.settings.autoScroll;
     if (timeout) timeout.value = this.settings.connectTimeout / 1000;
     if (screenshotFormat) screenshotFormat.value = this.settings.screenshotFormat;
@@ -63,11 +61,6 @@ class GMGUIApp {
         this.updateSendButtonState();
       });
     }
-
-    document.getElementById('messageFormat')?.addEventListener('change', (e) => {
-      this.settings.messageFormat = e.target.value;
-      this.saveSettings();
-    });
 
     document.getElementById('autoScroll')?.addEventListener('change', (e) => {
       this.settings.autoScroll = e.target.checked;
@@ -153,8 +146,6 @@ class GMGUIApp {
     if (messageInput) {
       messageInput.focus();
     }
-
-    this.logMessage('system', `Selected agent: ${id}. Ready to chat!`);
   }
 
   loadConversations() {
@@ -305,15 +296,21 @@ class GMGUIApp {
     }
 
     if (conversation.messages.length === 0) {
-      messagesDiv.innerHTML = headerHtml + `
-        <div class="welcome-section">
-          <h2>Hi, what's your plan for today?</h2>
-          <div class="agent-selection">
-            <div id="agentCards" class="agent-cards"></div>
+      if (this.selectedAgent) {
+        // Agent already selected, just show empty chat
+        messagesDiv.innerHTML = headerHtml;
+      } else {
+        // No agent selected, show welcome section with agent cards
+        messagesDiv.innerHTML = headerHtml + `
+          <div class="welcome-section">
+            <h2>Hi, what's your plan for today?</h2>
+            <div class="agent-selection">
+              <div id="agentCards" class="agent-cards"></div>
+            </div>
           </div>
-        </div>
-      `;
-      this.renderAgentCards();
+        `;
+        this.renderAgentCards();
+      }
     } else {
       messagesDiv.innerHTML = headerHtml;
       conversation.messages.forEach(msg => {
@@ -390,8 +387,22 @@ class GMGUIApp {
 
       if (response.ok) {
         const data = await response.json();
-        
-        if (this.selectedAgent === 'code' && data.response) {
+
+        if (data.sessionId) {
+          // Agent is processing asynchronously, connect WebSocket for real-time updates
+          const processingMsg = {
+            role: 'system',
+            content: `Processing with ${this.selectedAgent}...`,
+            timestamp: Date.now(),
+            sessionId: data.sessionId,
+          };
+          conversation.messages.push(processingMsg);
+          this.addMessageToDisplay(processingMsg);
+          this.saveConversations();
+
+          // Connect WebSocket for real-time updates
+          this.connectSessionWebSocket(data.sessionId, conversation, processingMsg);
+        } else if (this.selectedAgent === 'code' && data.response) {
           const responseText = this.extractACPResponse(data.response);
           const agentMsg = {
             role: 'assistant',
@@ -438,6 +449,139 @@ class GMGUIApp {
         this.addMessageToDisplay(errorMsg);
       }
     }
+  }
+
+  connectSessionWebSocket(sessionId, conversation, processingMsg) {
+    // Check if we already have a connection for this session
+    if (this.sessionConnections.has(sessionId)) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = `${protocol}://${window.location.host}/session/${sessionId}`;
+
+    try {
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        console.log(`Connected to session ${sessionId}`);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          // Decode msgpackr binary data
+          const sessionState = this.unpackMessage(event.data);
+          this.handleSessionUpdate(sessionState, conversation, processingMsg);
+        } catch (err) {
+          console.error('Error unpacking session message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error(`WebSocket error for session ${sessionId}:`, error);
+        // Fall back to polling on error
+        this.pollSessionStatus(sessionId, conversation, processingMsg);
+      };
+
+      ws.onclose = () => {
+        console.log(`Disconnected from session ${sessionId}`);
+        this.sessionConnections.delete(sessionId);
+      };
+
+      this.sessionConnections.set(sessionId, ws);
+    } catch (err) {
+      console.error('Failed to connect WebSocket:', err);
+      // Fall back to polling
+      this.pollSessionStatus(sessionId, conversation, processingMsg);
+    }
+  }
+
+  unpackMessage(data) {
+    // Simple msgpackr unpacking
+    // For now, we'll use a fallback if msgpackr is not available
+    try {
+      if (window.msgpackr) {
+        return window.msgpackr.unpack(new Uint8Array(data));
+      } else {
+        // Fallback: try JSON
+        return JSON.parse(new TextDecoder().decode(data));
+      }
+    } catch (e) {
+      console.error('Unpack error:', e);
+      return null;
+    }
+  }
+
+  handleSessionUpdate(sessionState, conversation, processingMsg) {
+    if (!sessionState) return;
+
+    const msgIndex = conversation.messages.indexOf(processingMsg);
+    if (msgIndex === -1) return;
+
+    if (sessionState.status === 'completed') {
+      const responseText = this.extractACPResponse(sessionState.response);
+      const agentMsg = {
+        role: 'assistant',
+        content: responseText || `Completed in ${sessionState.folderPath || 'current directory'}`,
+        timestamp: Date.now(),
+      };
+      conversation.messages[msgIndex] = agentMsg;
+      this.saveConversations();
+      this.displayConversation(this.currentConversation);
+
+      // Close WebSocket connection
+      if (this.sessionConnections.has(sessionState.sessionId)) {
+        this.sessionConnections.get(sessionState.sessionId).close();
+      }
+    } else if (sessionState.status === 'error') {
+      const errorMsg = {
+        role: 'system',
+        content: `Error: ${sessionState.error}`,
+        timestamp: Date.now(),
+      };
+      conversation.messages[msgIndex] = errorMsg;
+      this.saveConversations();
+      this.displayConversation(this.currentConversation);
+
+      // Close WebSocket connection
+      if (this.sessionConnections.has(sessionState.sessionId)) {
+        this.sessionConnections.get(sessionState.sessionId).close();
+      }
+    } else if (sessionState.status === 'processing' && sessionState.progress) {
+      // Update with progress
+      processingMsg.content = `${sessionState.agentId}: ${sessionState.progress}`;
+      this.displayConversation(this.currentConversation);
+    }
+  }
+
+  async pollSessionStatus(sessionId, conversation, processingMsg) {
+    // Fallback polling for when WebSocket is not available
+    const maxAttempts = 1200; // 10 minutes with 500ms intervals
+    let attempt = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}`);
+        if (!response.ok) {
+          console.error('Failed to poll session:', response.status);
+          return;
+        }
+
+        const sessionState = await response.json();
+        this.handleSessionUpdate(sessionState, conversation, processingMsg);
+
+        if (sessionState.status === 'processing' && attempt < maxAttempts) {
+          // Still processing, poll again
+          attempt++;
+          setTimeout(poll, 500);
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    };
+
+    poll();
   }
 
   updateSendButtonState() {

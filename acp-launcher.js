@@ -15,25 +15,36 @@ export class ACPLauncher extends EventEmitter {
       try {
         const command = agent === 'opencode' ? 'opencode acp' : agentPath;
         console.log(`Launching ACP agent: ${command}`);
-        
+
         const args = agent === 'opencode' ? [] : [];
         const stdio = agent === 'opencode' ? ['pipe', 'pipe', 'inherit'] : ['pipe', 'pipe', 'inherit'];
-        
-        this.process = agent === 'opencode' 
-          ? spawn('opencode', ['acp'], {
-              stdio,
-              env: {
-                ...process.env,
-                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-              },
-            })
-          : spawn(agentPath, args, {
-              stdio,
-              env: {
-                ...process.env,
-                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-              },
-            });
+
+        try {
+          this.process = agent === 'opencode'
+            ? spawn('opencode', ['acp'], {
+                stdio,
+                env: {
+                  ...process.env,
+                  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+                },
+              })
+            : spawn(agentPath, args, {
+                stdio,
+                env: {
+                  ...process.env,
+                  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+                },
+              });
+        } catch (spawnErr) {
+          console.error(`Failed to spawn ACP process: ${spawnErr.message}`);
+          reject(new Error(`Failed to spawn ACP agent: ${spawnErr.message}`));
+          return;
+        }
+
+        if (!this.process) {
+          reject(new Error('Process creation returned null'));
+          return;
+        }
 
         this.process.on('error', (err) => {
           console.error('ACP process error:', err);
@@ -47,17 +58,22 @@ export class ACPLauncher extends EventEmitter {
           this.emit('exit', { code, signal });
         });
 
-        this.process.stdout.setEncoding('utf8');
-        this.process.stdout.on('data', (data) => {
-          this.handleOutput(data);
-        });
+        if (this.process.stdout) {
+          this.process.stdout.setEncoding('utf8');
+          this.process.stdout.on('data', (data) => {
+            this.handleOutput(data);
+          });
+        }
 
-        this.process.stderr.on('data', (data) => {
-          console.error('ACP stderr:', data.toString());
-        });
+        if (this.process.stderr) {
+          this.process.stderr.on('data', (data) => {
+            console.error('ACP stderr:', data.toString());
+          });
+        }
 
         setTimeout(() => resolve(), 500);
       } catch (err) {
+        console.error('Launch error:', err);
         reject(err);
       }
     });

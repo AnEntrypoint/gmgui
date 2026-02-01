@@ -12,9 +12,6 @@
     <!-- Left Sidebar -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-header">
-        <div class="sidebar-brand">
-          <h1>AionUi</h1>
-        </div>
         <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
           <span class="toggle-icon">×</span>
         </button>
@@ -71,15 +68,6 @@
         </div>
       </div>
 
-      <!-- Footer -->
-      <footer class="chat-footer">
-        <div class="footer-content">
-          <span>Cowork 🤖 gm</span>
-          <a href="#" onclick="return false">Create Assistant</a>
-          <a href="#" onclick="return false">Got feedback or suggestions?</a>
-          <a href="#" onclick="return false">Like us? Give us a star!</a>
-        </div>
-      </footer>
     </main>
 
     <!-- Settings Panel (hidden by default) -->
@@ -88,14 +76,6 @@
         <div class="settings-header">
           <h2>Settings</h2>
           <button class="close-btn" onclick="switchTab('chat')">&times;</button>
-        </div>
-
-        <div class="setting-group">
-          <label for="messageFormat">Message Format</label>
-          <select id="messageFormat" class="input">
-            <option value="msgpackr">MessagePack (Default)</option>
-            <option value="json">JSON</option>
-          </select>
         </div>
 
         <div class="setting-group">
@@ -209,6 +189,7 @@
     <div class="spinner"></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/msgpackr@1.10.2/dist.min.js"></script>
   <script src="/theme.js"></script>
   <script src="/skills.js"></script>
   <script src="/agent-discovery.js"></script>

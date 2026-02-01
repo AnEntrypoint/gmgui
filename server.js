@@ -570,38 +570,92 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body);
         const agent = agentManager.getAgent(agentId);
 
-        if ((agentId === 'code' || agentId === 'opencode' || agent?.type === 'acp') && payload.folderContext?.path) {
-          try {
-            const sessionResult = await acpSessionManager.createSession(
-              agentId,
-              payload.folderContext.path,
-              agentId === 'opencode' ? 'opencode' : 'claude-code'
-            );
+        // Check if this is an ACP-capable agent with folder context
+        // This includes: explicit code/opencode, discovered CLI agents (claude, opencode), or explicitly marked ACP agents
+        const isACPCapable = agentId === 'claude' || agentId === 'code' || agentId === 'opencode' || agent?.type === 'acp' || (agent?.type === 'cli' && (agentId === 'claude' || agentId === 'opencode'));
+        if (isACPCapable && payload.folderContext?.path) {
+          // Create a unique session ID
+          const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-            const messages = [
-              {
-                role: 'user',
+          // Return immediately with session ID
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            sessionId: sessionId,
+            message: 'Processing started in background',
+          }));
+
+          // Process in background with real-time updates
+          (async () => {
+            try {
+              // Store initial session state and broadcast
+              const sessionState = {
+                sessionId,
+                agentId,
+                status: 'processing',
+                folderPath: payload.folderContext.path,
                 content: payload.content,
-              },
-            ];
+                startTime: Date.now(),
+                response: null,
+                error: null,
+                progress: 'Initializing...',
+              };
 
-            const promptResult = await acpSessionManager.sendPrompt(
-              sessionResult.sessionId,
-              messages
-            );
+              const sessionFile = path.join(conversationFolder, `${sessionId}.json`);
+              fs.writeFileSync(sessionFile, JSON.stringify(sessionState, null, 2));
+              broadcastSessionUpdate(sessionId, sessionState);
 
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              success: true,
-              sessionId: sessionResult.sessionId,
-              response: promptResult,
-            }));
-          } else {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              error: 'Claude Code ACP requires folderContext.path',
-            }));
-          }
+              // Update progress
+              sessionState.progress = 'Creating session...';
+              broadcastSessionUpdate(sessionId, sessionState);
+
+              const sessionResult = await acpSessionManager.createSession(
+                agentId,
+                payload.folderContext.path,
+                agentId === 'opencode' ? 'opencode' : 'claude-code'
+              );
+
+              sessionState.progress = 'Sending prompt...';
+              broadcastSessionUpdate(sessionId, sessionState);
+
+              const messages = [
+                {
+                  role: 'user',
+                  content: payload.content,
+                },
+              ];
+
+              const promptResult = await acpSessionManager.sendPrompt(
+                sessionResult.sessionId,
+                messages
+              );
+
+              // Update session with result
+              sessionState.status = 'completed';
+              sessionState.response = promptResult;
+              sessionState.endTime = Date.now();
+              sessionState.progress = 'Completed';
+              fs.writeFileSync(sessionFile, JSON.stringify(sessionState, null, 2));
+              broadcastSessionUpdate(sessionId, sessionState);
+            } catch (aErr) {
+              // Update session with error
+              const sessionState = {
+                sessionId,
+                agentId,
+                status: 'error',
+                folderPath: payload.folderContext?.path,
+                content: payload.content,
+                startTime: Date.now(),
+                endTime: Date.now(),
+                response: null,
+                error: aErr.message || 'Claude Code ACP error',
+                progress: `Error: ${aErr.message}`,
+              };
+              const sessionFile = path.join(conversationFolder, `${sessionId}.json`);
+              fs.writeFileSync(sessionFile, JSON.stringify(sessionState, null, 2));
+              broadcastSessionUpdate(sessionId, sessionState);
+            }
+          })();
         } else if (agent && agent.ws) {
           agent.ws.send(pack(payload));
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -615,6 +669,28 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: e.message }));
       }
     });
+    return;
+  }
+
+  // Session status polling endpoint
+  if (req.url.startsWith('/api/sessions/') && req.method === 'GET') {
+    const sessionId = req.url.split('/')[3];
+    try {
+      const sessionFile = path.join(conversationFolder, `${sessionId}.json`);
+
+      if (!fs.existsSync(sessionFile)) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session not found' }));
+        return;
+      }
+
+      const sessionState = JSON.parse(fs.readFileSync(sessionFile, 'utf8'));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(sessionState));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
     return;
   }
 
@@ -818,6 +894,7 @@ function serveFile(filePath, res) {
 // WebSocket server for agent connections and hot reload
 const wss = new WebSocketServer({ server });
 const clients = [];
+const sessionClients = new Map(); // Map of sessionId -> Set of WebSocket clients
 
 wss.on('connection', (ws, req) => {
   const url = req.url;
@@ -828,6 +905,31 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
       const idx = clients.indexOf(ws);
       if (idx > -1) clients.splice(idx, 1);
+    });
+    return;
+  }
+
+  // Session updates streaming
+  const sessionMatch = url.match(/^\/session\/([^/]+)/);
+  if (sessionMatch) {
+    const sessionId = sessionMatch[1];
+    if (!sessionClients.has(sessionId)) {
+      sessionClients.set(sessionId, new Set());
+    }
+    sessionClients.get(sessionId).add(ws);
+
+    ws.on('close', () => {
+      const clients = sessionClients.get(sessionId);
+      if (clients) {
+        clients.delete(ws);
+        if (clients.size === 0) {
+          sessionClients.delete(sessionId);
+        }
+      }
+    });
+
+    ws.on('error', (err) => {
+      console.error(`Session WebSocket error for ${sessionId}:`, err.message);
     });
     return;
   }
@@ -857,6 +959,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (data) => {
     try {
+      // Messagepack binary protocol only
       const message = unpack(data);
       message.agentId = agentId;
       message.timestamp = Date.now();
@@ -891,6 +994,23 @@ wss.on('connection', (ws, req) => {
     console.error(`WebSocket error for ${agentId}:`, err.message);
   });
 });
+
+// Helper to broadcast session updates to connected WebSocket clients
+function broadcastSessionUpdate(sessionId, update) {
+  const clients = sessionClients.get(sessionId);
+  if (clients) {
+    const packed = pack(update);
+    clients.forEach(ws => {
+      if (ws.readyState === 1) { // WebSocket.OPEN
+        try {
+          ws.send(packed);
+        } catch (e) {
+          console.error('Error sending to session client:', e.message);
+        }
+      }
+    });
+  }
+}
 
 // Hot reload watcher
 if (watch) {
