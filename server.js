@@ -498,40 +498,69 @@ const server = http.createServer((req, res) => {
   }
 
   // List folders endpoint
-  if (req.url.startsWith('/api/folders') && req.method === 'GET') {
-    const urlObj = new URL(`http://${req.headers.host}${req.url}`);
-    const folderPath = urlObj.searchParams.get('path') || '/';
+  if (req.url.startsWith('/api/folders') && (req.method === 'GET' || req.method === 'POST')) {
+    let folderPath = '/';
 
-    try {
-      const normalizedPath = path.normalize(folderPath);
-      const stat = fs.statSync(normalizedPath);
-
-      if (!stat.isDirectory()) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Not a directory' }));
-        return;
-      }
-
-      const files = fs.readdirSync(normalizedPath);
-      const folders = files.filter(f => {
+    if (req.method === 'GET') {
+      const urlObj = new URL(`http://${req.headers.host}${req.url}`);
+      folderPath = urlObj.searchParams.get('path') || '/';
+    } else if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => {
+        body += chunk;
+      });
+      req.on('end', () => {
         try {
-          return fs.statSync(path.join(normalizedPath, f)).isDirectory();
-        } catch {
-          return false;
+          const data = JSON.parse(body);
+          folderPath = data.path || '/';
+          sendFolderContents(folderPath);
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
         }
-      }).sort();
+      });
+      return;
+    }
 
-      const parentPath = normalizedPath === '/' ? null : path.dirname(normalizedPath);
+    sendFolderContents(folderPath);
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        currentPath: normalizedPath,
-        parent: parentPath,
-        folders: folders
-      }));
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: e.message }));
+    function sendFolderContents(folderPath) {
+      try {
+        let expandedPath = folderPath;
+        if (folderPath.startsWith('~')) {
+          expandedPath = folderPath.replace('~', os.homedir());
+        }
+
+        const normalizedPath = path.normalize(expandedPath);
+        const stat = fs.statSync(normalizedPath);
+
+        if (!stat.isDirectory()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Not a directory' }));
+          return;
+        }
+
+        const files = fs.readdirSync(normalizedPath);
+        const folders = files.filter(f => {
+          try {
+            return fs.statSync(path.join(normalizedPath, f)).isDirectory();
+          } catch {
+            return false;
+          }
+        }).map(name => ({ name })).sort((a, b) => a.name.localeCompare(b.name));
+
+        const parentPath = normalizedPath === '/' ? null : path.dirname(normalizedPath);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          currentPath: normalizedPath,
+          parent: parentPath,
+          folders: folders
+        }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
     }
     return;
   }

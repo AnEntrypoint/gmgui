@@ -588,53 +588,94 @@ class GMGUIApp {
     }
   }
 
-  showFolderSelectionDialog() {
-    const modal = document.getElementById('folderSelectionModal');
+  openFolderBrowser() {
+    const modal = document.getElementById('folderBrowserModal');
     if (!modal) return;
 
-    const input = modal.querySelector('.folder-path-input');
-    const confirmBtn = modal.querySelector('.btn-confirm-folder');
-    const cancelBtn = modal.querySelector('.btn-cancel-folder');
+    const pathInput = document.getElementById('folderPath');
+    pathInput.value = '/home';
 
-    input.value = '';
-    input.focus();
-
-    const handleConfirm = () => {
-      const path = input.value.trim();
-      if (!path) {
-        this.logMessage('system', 'Please enter a folder path');
-        return;
-      }
-      const expandedPath = path.startsWith('~') ? path.replace('~', process.env.HOME || '/root') : path;
-      this.startNewChat(expandedPath);
-      this.closeFolderSelectionDialog();
-    };
-
-    const handleCancel = () => {
-      this.closeFolderSelectionDialog();
-    };
-
-    const handleKeydown = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleConfirm();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        handleCancel();
-      }
-    };
-
-    confirmBtn.onclick = handleConfirm;
-    cancelBtn.onclick = handleCancel;
-    input.onkeydown = handleKeydown;
+    this.loadFolderContents('/home');
     modal.classList.add('active');
   }
 
-  closeFolderSelectionDialog() {
-    const modal = document.getElementById('folderSelectionModal');
+  closeFolderBrowser() {
+    const modal = document.getElementById('folderBrowserModal');
     if (modal) {
       modal.classList.remove('active');
     }
+  }
+
+  async loadFolderContents(folderPath) {
+    const list = document.getElementById('folderBrowserList');
+    if (!list) return;
+
+    list.innerHTML = '<div style="padding: 1rem; color: var(--text-tertiary);">Loading...</div>';
+
+    try {
+      const response = await fetch('/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: folderPath }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        this.renderFolderList(data.folders, folderPath);
+      } else {
+        list.innerHTML = '<div style="padding: 1rem; color: var(--color-danger);">Error loading folder</div>';
+      }
+    } catch (error) {
+      console.error('Error loading folder:', error);
+      list.innerHTML = '<div style="padding: 1rem; color: var(--color-danger);">Error: ' + error.message + '</div>';
+    }
+  }
+
+  renderFolderList(folders, currentPath) {
+    const list = document.getElementById('folderBrowserList');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (currentPath !== '/' && currentPath !== '/root') {
+      const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+      const parentItem = document.createElement('div');
+      parentItem.className = 'folder-item';
+      parentItem.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); transition: var(--transition-fast);';
+      parentItem.innerHTML = '<span style="font-size: 1rem;">📁</span><span>..</span>';
+      parentItem.onmouseover = () => parentItem.style.background = 'var(--bg-tertiary)';
+      parentItem.onmouseout = () => parentItem.style.background = 'transparent';
+      parentItem.onclick = () => {
+        document.getElementById('folderPath').value = parentPath;
+        this.loadFolderContents(parentPath);
+      };
+      list.appendChild(parentItem);
+    }
+
+    if (!folders || folders.length === 0) {
+      const emptyItem = document.createElement('div');
+      emptyItem.style.cssText = 'padding: 1rem; color: var(--text-tertiary); text-align: center;';
+      emptyItem.textContent = 'No subfolders found';
+      list.appendChild(emptyItem);
+      return;
+    }
+
+    folders.forEach(folder => {
+      const item = document.createElement('div');
+      item.className = 'folder-item';
+      item.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); transition: var(--transition-fast);';
+      item.innerHTML = `<span style="font-size: 1rem;">📁</span><span>${escapeHtml(folder.name)}</span>`;
+
+      item.onmouseover = () => item.style.background = 'var(--bg-tertiary)';
+      item.onmouseout = () => item.style.background = 'transparent';
+      item.onclick = () => {
+        const newPath = currentPath === '/' ? '/' + folder.name : currentPath + '/' + folder.name;
+        document.getElementById('folderPath').value = newPath;
+        this.loadFolderContents(newPath);
+      };
+
+      list.appendChild(item);
+    });
   }
 }
 
@@ -666,7 +707,7 @@ function createChatInWorkspace() {
 
 function createChatInFolder() {
   closeNewChatModal();
-  app.showFolderSelectionDialog();
+  app.openFolderBrowser();
 }
 
 function sendMessage() {
@@ -720,6 +761,31 @@ function triggerFileUpload() {
 
 function handleFileUpload() {
   app.handleFileUpload();
+}
+
+function closeFolderBrowser() {
+  app.closeFolderBrowser();
+}
+
+function browseFolders() {
+  const pathInput = document.getElementById('folderPath');
+  const path = pathInput.value.trim() || '/home';
+  const expandedPath = path.startsWith('~') ? path.replace('~', '/root') : path;
+  app.loadFolderContents(expandedPath);
+}
+
+function confirmFolderSelection() {
+  const pathInput = document.getElementById('folderPath');
+  const path = pathInput.value.trim();
+
+  if (!path) {
+    app.logMessage('system', 'Please select or enter a folder path');
+    return;
+  }
+
+  const expandedPath = path.startsWith('~') ? path.replace('~', '/root') : path;
+  app.startNewChat(expandedPath);
+  app.closeFolderBrowser();
 }
 
 // Initialize app
