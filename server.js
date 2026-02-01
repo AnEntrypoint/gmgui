@@ -190,6 +190,30 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (routePath.startsWith('/api/image/')) {
+      const imagePath = routePath.slice('/api/image/'.length);
+      const decodedPath = decodeURIComponent(imagePath);
+      const expandedPath = decodedPath.startsWith('~') ?
+        decodedPath.replace('~', process.env.HOME || '/config') : decodedPath;
+      const normalizedPath = path.normalize(expandedPath);
+      if (!normalizedPath.startsWith('/') || normalizedPath.includes('..')) {
+        res.writeHead(403); res.end('Forbidden'); return;
+      }
+      try {
+        if (!fs.existsSync(normalizedPath)) { res.writeHead(404); res.end('Not found'); return; }
+        const ext = path.extname(normalizedPath).toLowerCase();
+        const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+        const contentType = mimeTypes[ext] || 'application/octet-stream';
+        const fileContent = fs.readFileSync(normalizedPath);
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' });
+        res.end(fileContent);
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+      return;
+    }
+
     let filePath = routePath === '/' ? '/index.html' : routePath;
     filePath = path.join(staticDir, filePath);
     const normalizedPath = path.normalize(filePath);
@@ -253,6 +277,9 @@ async function processMessage(conversationId, messageId, sessionId, content, age
         broadcastStream(conversationId, { type: 'thought_delta', text: u.content.text });
       } else if (kind === 'html_content' && u.content?.html) {
         broadcastStream(conversationId, { type: 'html_section', html: u.content.html, title: u.content.title, id: u.content.id });
+      } else if (kind === 'image_content' && u.content?.path) {
+        const imageUrl = BASE_URL + '/api/image/' + encodeURIComponent(u.content.path);
+        broadcastStream(conversationId, { type: 'image_section', url: imageUrl, path: u.content.path, title: u.content.title, alt: u.content.alt });
       } else if (kind === 'tool_call') {
         broadcastStream(conversationId, { type: 'tool_call', toolCallId: u.toolCallId, title: u.title, kind: u.kind, status: u.status, content: u.content, locations: u.locations });
       } else if (kind === 'tool_call_update') {

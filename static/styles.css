@@ -847,6 +847,29 @@ html, body {
   margin-bottom: 0;
 }
 
+.image-block {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.image-header {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.image-content {
+  display: block;
+  padding: 0.5rem;
+  max-width: 100%;
+  height: auto;
+}
+
 @media (max-width: 768px) {
   .stream-container { max-width: 90%; }
 }
