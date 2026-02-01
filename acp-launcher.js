@@ -10,18 +10,30 @@ export class ACPLauncher extends EventEmitter {
     this.isProcessing = false;
   }
 
-  async launch(agentPath = 'claude-code-acp') {
+  async launch(agentPath = 'claude-code-acp', agent = 'claude-code') {
     return new Promise((resolve, reject) => {
       try {
-        console.log(`Launching ACP agent: ${agentPath}`);
+        const command = agent === 'opencode' ? 'opencode acp' : agentPath;
+        console.log(`Launching ACP agent: ${command}`);
         
-        this.process = spawn(agentPath, [], {
-          stdio: ['pipe', 'pipe', 'inherit'],
-          env: {
-            ...process.env,
-            ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-          },
-        });
+        const args = agent === 'opencode' ? [] : [];
+        const stdio = agent === 'opencode' ? ['pipe', 'pipe', 'inherit'] : ['pipe', 'pipe', 'inherit'];
+        
+        this.process = agent === 'opencode' 
+          ? spawn('opencode', ['acp'], {
+              stdio,
+              env: {
+                ...process.env,
+                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+              },
+            })
+          : spawn(agentPath, args, {
+              stdio,
+              env: {
+                ...process.env,
+                ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+              },
+            });
 
         this.process.on('error', (err) => {
           console.error('ACP process error:', err);

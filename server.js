@@ -104,7 +104,7 @@ class ACPSessionManager {
     this.launchers = new Map();
   }
 
-  async createSession(agentId, cwd) {
+  async createSession(agentId, cwd, agent = 'claude-code') {
     const sessionId = `acp-${agentId}-${Date.now()}`;
     
     try {
@@ -112,7 +112,8 @@ class ACPSessionManager {
       
       if (!launcher || !launcher.isRunning()) {
         launcher = new ACPLauncher();
-        await launcher.launch('claude-code-acp');
+        const agentPath = agent === 'opencode' ? 'opencode' : 'claude-code-acp';
+        await launcher.launch(agentPath, agent);
         await launcher.initialize();
         this.launchers.set(agentId, launcher);
       }
@@ -569,11 +570,12 @@ const server = http.createServer((req, res) => {
         const payload = JSON.parse(body);
         const agent = agentManager.getAgent(agentId);
 
-        if (agentId === 'code' || agent?.type === 'acp') {
-          if (payload.folderContext?.path) {
+        if ((agentId === 'code' || agentId === 'opencode' || agent?.type === 'acp') && payload.folderContext?.path) {
+          try {
             const sessionResult = await acpSessionManager.createSession(
               agentId,
-              payload.folderContext.path
+              payload.folderContext.path,
+              agentId === 'opencode' ? 'opencode' : 'claude-code'
             );
 
             const messages = [
