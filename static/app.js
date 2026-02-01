@@ -1,19 +1,11 @@
-// Multi-agent ACP client with chat history
 class GMGUIApp {
   constructor() {
     this.agents = new Map();
     this.selectedAgent = null;
     this.conversations = new Map();
     this.currentConversation = null;
-    this.connections = new Map();
-    this.sessionConnections = new Map(); // WebSocket connections for sessions
-    this.settings = {
-      autoScroll: true,
-      connectTimeout: 30000,
-      screenshotFormat: 'png',
-    };
-    this.lastScreenshot = null;
-
+    this.polling = new Map();
+    this.settings = { autoScroll: true, connectTimeout: 30000 };
     this.init();
   }
 
@@ -21,9 +13,9 @@ class GMGUIApp {
     this.loadSettings();
     this.setupEventListeners();
     await this.fetchHome();
-    this.fetchAgents();
-    this.loadConversations();
-    this.renderAgentCards();
+    await this.fetchAgents();
+    await this.fetchConversations();
+    this.renderAll();
   }
 
   async fetchHome() {
@@ -34,14 +26,14 @@ class GMGUIApp {
         localStorage.setItem('gmgui-home', data.home);
       }
     } catch (e) {
-      console.error('Failed to fetch home directory:', e);
+      console.error('fetchHome:', e);
     }
   }
 
   loadSettings() {
     const stored = localStorage.getItem('gmgui-settings');
     if (stored) {
-      this.settings = { ...this.settings, ...JSON.parse(stored) };
+      try { this.settings = { ...this.settings, ...JSON.parse(stored) }; } catch (_) {}
     }
     this.applySettings();
   }
@@ -51,192 +43,146 @@ class GMGUIApp {
   }
 
   applySettings() {
-    const autoScroll = document.getElementById('autoScroll');
-    const timeout = document.getElementById('connectTimeout');
-    const screenshotFormat = document.getElementById('screenshotFormat');
-
-    if (autoScroll) autoScroll.checked = this.settings.autoScroll;
-    if (timeout) timeout.value = this.settings.connectTimeout / 1000;
-    if (screenshotFormat) screenshotFormat.value = this.settings.screenshotFormat;
+    const el = document.getElementById('autoScroll');
+    if (el) el.checked = this.settings.autoScroll;
+    const t = document.getElementById('connectTimeout');
+    if (t) t.value = this.settings.connectTimeout / 1000;
   }
 
-  expandHome(path) {
-    if (!path) return path;
-    const home = localStorage.getItem('gmgui-home') || '/root';
-    return path.startsWith('~') ? path.replace('~', home) : path;
+  expandHome(p) {
+    if (!p) return p;
+    const home = localStorage.getItem('gmgui-home') || '/config';
+    return p.startsWith('~') ? p.replace('~', home) : p;
   }
 
   setupEventListeners() {
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-      messageInput.addEventListener('keydown', (e) => {
+    const input = document.getElementById('messageInput');
+    if (input) {
+      input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           this.sendMessage();
         }
       });
-      
-      messageInput.addEventListener('input', () => {
-        this.updateSendButtonState();
-      });
+      input.addEventListener('input', () => this.updateSendButtonState());
     }
-
     document.getElementById('autoScroll')?.addEventListener('change', (e) => {
       this.settings.autoScroll = e.target.checked;
       this.saveSettings();
     });
-
     document.getElementById('connectTimeout')?.addEventListener('change', (e) => {
       this.settings.connectTimeout = parseInt(e.target.value) * 1000;
-      this.saveSettings();
-    });
-
-    document.getElementById('screenshotFormat')?.addEventListener('change', (e) => {
-      this.settings.screenshotFormat = e.target.value;
       this.saveSettings();
     });
   }
 
   async fetchAgents() {
     try {
-      const response = await fetch('/api/agents');
-      const data = await response.json();
-
+      const res = await fetch('/api/agents');
+      const data = await res.json();
       if (data.agents) {
-        data.agents.forEach(agent => {
-          this.agents.set(agent.id, agent);
-        });
-        this.renderAgentCards();
+        data.agents.forEach(a => this.agents.set(a.id, a));
       }
-    } catch (error) {
-      console.error('Failed to fetch agents:', error);
+    } catch (e) {
+      console.error('fetchAgents:', e);
+    }
+  }
+
+  async fetchConversations() {
+    try {
+      const res = await fetch('/api/conversations');
+      const data = await res.json();
+      if (data.conversations) {
+        this.conversations.clear();
+        data.conversations.forEach(c => this.conversations.set(c.id, c));
+      }
+    } catch (e) {
+      console.error('fetchConversations:', e);
+    }
+  }
+
+  async fetchMessages(conversationId) {
+    try {
+      const res = await fetch(`/api/conversations/${conversationId}/messages`);
+      const data = await res.json();
+      return data.messages || [];
+    } catch (e) {
+      console.error('fetchMessages:', e);
+      return [];
+    }
+  }
+
+  renderAll() {
+    this.renderAgentCards();
+    this.renderChatHistory();
+    if (this.currentConversation) {
+      this.displayConversation(this.currentConversation);
     }
   }
 
   renderAgentCards() {
     const container = document.getElementById('agentCards');
     if (!container) return;
-
     container.innerHTML = '';
-
     if (this.agents.size === 0) {
-      container.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.875rem;">No agents available</p>';
+      container.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.875rem;">No agents found. Install claude or opencode.</p>';
       return;
     }
-
-    let firstAgent = true;
+    let first = true;
     this.agents.forEach((agent, id) => {
-      const card = document.createElement('button');
-      card.className = `agent-card ${this.selectedAgent === id ? 'active' : ''}`;
-      card.onclick = () => this.selectAgent(id);
-
-      const icon = agent.icon || '🤖';
-      const displayName = agent.name || id;
-
-      card.innerHTML = `
-        <span class="agent-card-icon">${icon}</span>
-        <span class="agent-card-name">${escapeHtml(displayName)}</span>
-      `;
-
-      container.appendChild(card);
-
-      if (!firstAgent) {
+      if (!first) {
         const sep = document.createElement('span');
         sep.className = 'agent-separator';
         sep.textContent = '|';
-        container.insertBefore(sep, card);
+        container.appendChild(sep);
       }
-      firstAgent = false;
+      first = false;
+      const card = document.createElement('button');
+      card.className = `agent-card ${this.selectedAgent === id ? 'active' : ''}`;
+      card.onclick = () => this.selectAgent(id);
+      card.innerHTML = `
+        <span class="agent-card-icon">${escapeHtml(agent.icon || 'A')}</span>
+        <span class="agent-card-name">${escapeHtml(agent.name || id)}</span>
+      `;
+      container.appendChild(card);
     });
   }
 
   selectAgent(id) {
     this.selectedAgent = id;
+    localStorage.setItem('gmgui-selectedAgent', id);
     this.renderAgentCards();
-
-    // Hide welcome section and show ready state
-    const welcomeSection = document.querySelector('.welcome-section');
-    if (welcomeSection) {
-      welcomeSection.style.display = 'none';
-    }
-
-    // Ensure chat input is visible and focused
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-      messageInput.focus();
-    }
-  }
-
-  loadConversations() {
-    const stored = localStorage.getItem('gmgui-conversations');
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        this.conversations = new Map(Object.entries(data));
-      } catch (e) {
-        console.error('Failed to load conversations:', e);
-      }
-    }
-    this.renderChatHistory();
-  }
-
-  saveConversations() {
-    const data = Object.fromEntries(this.conversations);
-    localStorage.setItem('gmgui-conversations', JSON.stringify(data));
-  }
-
-  startNewChat(folderPath = null) {
-    const id = `chat-${Date.now()}`;
-    const title = folderPath 
-      ? `📁 ${folderPath.split('/').pop() || folderPath}`
-      : `Chat ${this.conversations.size + 1}`;
-    
-    const conversation = {
-      id,
-      title,
-      messages: [],
-      createdAt: new Date().toLocaleString(),
-      folderPath: folderPath || null,
-    };
-    this.conversations.set(id, conversation);
-    this.currentConversation = id;
-    this.saveConversations();
-    this.renderChatHistory();
-    this.displayConversation(id);
+    const welcome = document.querySelector('.welcome-section');
+    if (welcome) welcome.style.display = 'none';
+    const input = document.getElementById('messageInput');
+    if (input) input.focus();
   }
 
   renderChatHistory() {
     const list = document.getElementById('chatList');
     if (!list) return;
-
     list.innerHTML = '';
-
     if (this.conversations.size === 0) {
       list.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.875rem; padding: 0.5rem;">No chats yet</p>';
       return;
     }
-
     const sorted = Array.from(this.conversations.values()).sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+      (a, b) => (b.updated_at || 0) - (a.updated_at || 0)
     );
-
     sorted.forEach(conv => {
       const item = document.createElement('button');
       item.className = `chat-item ${this.currentConversation === conv.id ? 'active' : ''}`;
-      
       const titleSpan = document.createElement('span');
       titleSpan.className = 'chat-item-title';
-      titleSpan.textContent = conv.title;
-      
+      titleSpan.textContent = conv.title || 'Untitled';
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'chat-item-delete';
-      deleteBtn.textContent = '✕';
+      deleteBtn.textContent = 'x';
       deleteBtn.title = 'Delete chat';
       deleteBtn.onclick = (e) => {
         e.stopPropagation();
-        this.showDeleteConfirmDialog(conv.id);
+        this.deleteConversation(conv.id);
       };
-      
       item.appendChild(titleSpan);
       item.appendChild(deleteBtn);
       item.onclick = () => this.displayConversation(conv.id);
@@ -244,663 +190,337 @@ class GMGUIApp {
     });
   }
 
-  showDeleteConfirmDialog(conversationId) {
-    const modal = document.getElementById('deleteConfirmModal');
-    if (!modal) return;
-
-    const confirmBtn = modal.querySelector('.btn-confirm');
-    const cancelBtn = modal.querySelector('.btn-cancel');
-
-    const handleConfirm = () => {
-      this.conversations.delete(conversationId);
-      this.saveConversations();
-      
-      if (this.currentConversation === conversationId) {
-        this.currentConversation = null;
-        const firstChat = Array.from(this.conversations.values())[0];
-        if (firstChat) {
-          this.displayConversation(firstChat.id);
-        } else {
-          const messagesDiv = document.getElementById('chatMessages');
-          if (messagesDiv) {
-            messagesDiv.innerHTML = `
-              <div class="welcome-section">
-                <h2>Hi, what's your plan for today?</h2>
-                <div class="agent-selection">
-                  <div id="agentCards" class="agent-cards"></div>
-                </div>
-              </div>
-            `;
-            this.renderAgentCards();
-          }
-        }
-      }
-      this.renderChatHistory();
-      this.closeDeleteConfirmDialog();
-    };
-
-    const handleCancel = () => {
-      this.closeDeleteConfirmDialog();
-    };
-
-    confirmBtn.onclick = handleConfirm;
-    cancelBtn.onclick = handleCancel;
-    modal.classList.add('active');
-  }
-
-  closeDeleteConfirmDialog() {
-    const modal = document.getElementById('deleteConfirmModal');
-    if (modal) {
-      modal.classList.remove('active');
-    }
-  }
-
-  displayConversation(id) {
-    this.currentConversation = id;
-    const conversation = this.conversations.get(id);
-
-    if (!conversation) return;
-
-    const messagesDiv = document.getElementById('chatMessages');
-    if (!messagesDiv) return;
-
-    let headerHtml = '';
-    if (conversation.folderPath) {
-      headerHtml = `
-        <div class="chat-context-header">
-          <span class="folder-icon">📁</span>
-          <span class="folder-context">${escapeHtml(conversation.folderPath)}</span>
-        </div>
-      `;
-    }
-
-    if (conversation.messages.length === 0) {
-      if (this.selectedAgent) {
-        // Agent already selected, just show empty chat
-        messagesDiv.innerHTML = headerHtml;
+  async deleteConversation(id) {
+    this.conversations.delete(id);
+    if (this.currentConversation === id) {
+      this.currentConversation = null;
+      const first = Array.from(this.conversations.values())[0];
+      if (first) {
+        this.displayConversation(first.id);
       } else {
-        // No agent selected, show welcome section with agent cards
-        messagesDiv.innerHTML = headerHtml + `
-          <div class="welcome-section">
-            <h2>Hi, what's your plan for today?</h2>
-            <div class="agent-selection">
-              <div id="agentCards" class="agent-cards"></div>
-            </div>
-          </div>
-        `;
-        this.renderAgentCards();
-      }
-    } else {
-      messagesDiv.innerHTML = headerHtml;
-      conversation.messages.forEach(msg => {
-        this.addMessageToDisplay(msg);
-      });
-      if (this.settings.autoScroll) {
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        this.showWelcome();
       }
     }
-
     this.renderChatHistory();
   }
 
+  showWelcome() {
+    const div = document.getElementById('chatMessages');
+    if (!div) return;
+    div.innerHTML = `
+      <div class="welcome-section">
+        <h2>Hi, what's your plan for today?</h2>
+        <div class="agent-selection">
+          <div id="agentCards" class="agent-cards"></div>
+        </div>
+      </div>
+    `;
+    this.renderAgentCards();
+  }
+
+  async displayConversation(id) {
+    this.currentConversation = id;
+    const conv = this.conversations.get(id);
+    if (!conv) return;
+    if (conv.agentId && !this.selectedAgent) {
+      this.selectedAgent = conv.agentId;
+    }
+    const messages = await this.fetchMessages(id);
+    const div = document.getElementById('chatMessages');
+    if (!div) return;
+    div.innerHTML = '';
+    if (messages.length === 0 && !this.selectedAgent) {
+      div.innerHTML = `
+        <div class="welcome-section">
+          <h2>Hi, what's your plan for today?</h2>
+          <div class="agent-selection">
+            <div id="agentCards" class="agent-cards"></div>
+          </div>
+        </div>
+      `;
+      this.renderAgentCards();
+    } else {
+      messages.forEach(msg => this.addMessageToDisplay(msg));
+      if (this.settings.autoScroll) {
+        div.scrollTop = div.scrollHeight;
+      }
+    }
+    this.renderChatHistory();
+    this.renderAgentCards();
+  }
+
   addMessageToDisplay(msg) {
-    const messagesDiv = document.getElementById('chatMessages');
-    if (!messagesDiv) return;
-
-    const msgEl = document.createElement('div');
-    msgEl.className = `message ${msg.role}`;
-
+    const div = document.getElementById('chatMessages');
+    if (!div) return;
+    const el = document.createElement('div');
+    el.className = `message ${msg.role}`;
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
-    bubble.textContent = msg.content;
+    bubble.textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+    el.appendChild(bubble);
+    div.appendChild(el);
+  }
 
-    msgEl.appendChild(bubble);
-    messagesDiv.appendChild(msgEl);
+  async startNewChat(folderPath) {
+    if (!this.selectedAgent) {
+      const firstAgent = Array.from(this.agents.keys())[0];
+      if (firstAgent) {
+        this.selectedAgent = firstAgent;
+      }
+    }
+    const title = folderPath
+      ? folderPath.split('/').pop() || folderPath
+      : `Chat ${this.conversations.size + 1}`;
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: this.selectedAgent || 'claude-code', title }),
+      });
+      const data = await res.json();
+      if (data.conversation) {
+        const conv = data.conversation;
+        if (folderPath) conv.folderPath = folderPath;
+        this.conversations.set(conv.id, conv);
+        this.currentConversation = conv.id;
+        this.renderChatHistory();
+        this.displayConversation(conv.id);
+      }
+    } catch (e) {
+      console.error('startNewChat:', e);
+    }
   }
 
   async sendMessage() {
     const input = document.getElementById('messageInput');
     const message = input.value.trim();
-
-    // State validation
-    if (!message) {
-      return; // Silently ignore empty messages
-    }
-
+    if (!message) return;
     if (!this.selectedAgent) {
-      this.logMessage('system', 'Please select an agent first');
+      this.addSystemMessage('Please select an agent first');
       return;
     }
-
     if (!this.currentConversation) {
-      this.logMessage('system', 'No conversation selected');
-      return;
+      await this.startNewChat();
     }
-
+    if (!this.currentConversation) return;
+    const conv = this.conversations.get(this.currentConversation);
+    this.addMessageToDisplay({ role: 'user', content: message });
+    input.value = '';
+    this.updateSendButtonState();
+    const processingEl = this.addProcessingIndicator();
     try {
-      const conversation = this.conversations.get(this.currentConversation);
-      if (!conversation) return;
-
-      const userMsg = {
-        role: 'user',
-        content: message,
-        timestamp: Date.now(),
-      };
-
-      conversation.messages.push(userMsg);
-      this.addMessageToDisplay(userMsg);
-      input.value = '';
-      this.updateSendButtonState();
-
-      const payload = {
-        type: 'message',
-        content: message,
-        agentId: this.selectedAgent,
-        timestamp: Date.now(),
-        folderContext: {
-          path: conversation.folderPath || (localStorage.getItem('gmgui-home') || '/config'),
-          isFolder: true,
-        },
-      };
-
-      const response = await fetch(`/api/agents/${this.selectedAgent}`, {
+      const folderPath = conv?.folderPath || localStorage.getItem('gmgui-home') || '/config';
+      const res = await fetch(`/api/conversations/${this.currentConversation}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          content: message,
+          agentId: this.selectedAgent,
+          folderContext: { path: folderPath, isFolder: true },
+        }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
-
-        if (data.sessionId) {
-          // Agent is processing asynchronously, connect WebSocket for real-time updates
-          const processingMsg = {
-            role: 'system',
-            content: `Processing with ${this.selectedAgent}...`,
-            timestamp: Date.now(),
-            sessionId: data.sessionId,
-          };
-          conversation.messages.push(processingMsg);
-          this.addMessageToDisplay(processingMsg);
-          this.saveConversations();
-
-          // Connect WebSocket for real-time updates
-          this.connectSessionWebSocket(data.sessionId, conversation, processingMsg);
-        } else if (this.selectedAgent === 'code' && data.response) {
-          const responseText = this.extractACPResponse(data.response);
-          const agentMsg = {
-            role: 'assistant',
-            content: responseText || `Claude Code processed your request in ${payload.folderContext?.path || 'current directory'}`,
-            timestamp: Date.now(),
-          };
-          conversation.messages.push(agentMsg);
-          this.addMessageToDisplay(agentMsg);
-          this.saveConversations();
-        } else {
-          const agentMsg = {
-            role: 'assistant',
-            content: `Response from ${this.selectedAgent}`,
-            timestamp: Date.now(),
-          };
-          conversation.messages.push(agentMsg);
-          this.addMessageToDisplay(agentMsg);
-          this.saveConversations();
-        }
-
-        if (this.settings.autoScroll) {
-          const messagesDiv = document.getElementById('chatMessages');
-          messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-      } else {
-        const error = await response.json();
-        const errorMsg = {
-          role: 'system',
-          content: `Error: ${error.error}`,
-          timestamp: Date.now(),
-        };
-        conversation.messages.push(errorMsg);
-        this.addMessageToDisplay(errorMsg);
+      if (!res.ok) {
+        const err = await res.json();
+        processingEl.remove();
+        this.addMessageToDisplay({ role: 'system', content: `Error: ${err.error || 'Request failed'}` });
+        return;
       }
-    } catch (error) {
-      const errorMsg = {
-        role: 'system',
-        content: `Error: ${error.message}`,
-        timestamp: Date.now(),
-      };
-      const conversation = this.conversations.get(this.currentConversation);
-      if (conversation) {
-        conversation.messages.push(errorMsg);
-        this.addMessageToDisplay(errorMsg);
-      }
-    }
-  }
-
-  connectSessionWebSocket(sessionId, conversation, processingMsg) {
-    // Check if we already have a connection for this session
-    if (this.sessionConnections.has(sessionId)) {
-      return;
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const wsUrl = `${protocol}://${window.location.host}/session/${sessionId}`;
-
-    try {
-      const ws = new WebSocket(wsUrl);
-      ws.binaryType = 'arraybuffer';
-
-      ws.onopen = () => {
-        console.log(`Connected to session ${sessionId}`);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          // Decode msgpackr binary data
-          const sessionState = this.unpackMessage(event.data);
-          this.handleSessionUpdate(sessionState, conversation, processingMsg);
-        } catch (err) {
-          console.error('Error unpacking session message:', err);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error(`WebSocket error for session ${sessionId}:`, error);
-        // Fall back to polling on error
-        this.pollSessionStatus(sessionId, conversation, processingMsg);
-      };
-
-      ws.onclose = () => {
-        console.log(`Disconnected from session ${sessionId}`);
-        this.sessionConnections.delete(sessionId);
-      };
-
-      this.sessionConnections.set(sessionId, ws);
-    } catch (err) {
-      console.error('Failed to connect WebSocket:', err);
-      // Fall back to polling
-      this.pollSessionStatus(sessionId, conversation, processingMsg);
-    }
-  }
-
-  unpackMessage(data) {
-    // Simple msgpackr unpacking
-    // For now, we'll use a fallback if msgpackr is not available
-    try {
-      if (window.msgpackr) {
-        return window.msgpackr.unpack(new Uint8Array(data));
+      const data = await res.json();
+      if (data.session) {
+        this.pollSession(data.session.id, this.currentConversation, processingEl);
       } else {
-        // Fallback: try JSON
-        return JSON.parse(new TextDecoder().decode(data));
+        processingEl.remove();
       }
     } catch (e) {
-      console.error('Unpack error:', e);
-      return null;
+      processingEl.remove();
+      this.addMessageToDisplay({ role: 'system', content: `Error: ${e.message}` });
+    }
+    if (this.settings.autoScroll) {
+      const div = document.getElementById('chatMessages');
+      if (div) div.scrollTop = div.scrollHeight;
     }
   }
 
-  handleSessionUpdate(sessionState, conversation, processingMsg) {
-    if (!sessionState) return;
-
-    const msgIndex = conversation.messages.indexOf(processingMsg);
-    if (msgIndex === -1) return;
-
-    if (sessionState.status === 'completed') {
-      const responseText = this.extractACPResponse(sessionState.response);
-      const agentMsg = {
-        role: 'assistant',
-        content: responseText || `Completed in ${sessionState.folderPath || 'current directory'}`,
-        timestamp: Date.now(),
-      };
-      conversation.messages[msgIndex] = agentMsg;
-      this.saveConversations();
-      this.displayConversation(this.currentConversation);
-
-      // Close WebSocket connection
-      if (this.sessionConnections.has(sessionState.sessionId)) {
-        this.sessionConnections.get(sessionState.sessionId).close();
-      }
-    } else if (sessionState.status === 'error') {
-      const errorMsg = {
-        role: 'system',
-        content: `Error: ${sessionState.error}`,
-        timestamp: Date.now(),
-      };
-      conversation.messages[msgIndex] = errorMsg;
-      this.saveConversations();
-      this.displayConversation(this.currentConversation);
-
-      // Close WebSocket connection
-      if (this.sessionConnections.has(sessionState.sessionId)) {
-        this.sessionConnections.get(sessionState.sessionId).close();
-      }
-    } else if (sessionState.status === 'processing' && sessionState.progress) {
-      // Update with progress
-      processingMsg.content = `${sessionState.agentId}: ${sessionState.progress}`;
-      this.displayConversation(this.currentConversation);
-    }
+  addProcessingIndicator() {
+    const div = document.getElementById('chatMessages');
+    if (!div) return document.createElement('div');
+    const el = document.createElement('div');
+    el.className = 'message system';
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = `Processing with ${this.selectedAgent}...`;
+    el.appendChild(bubble);
+    div.appendChild(el);
+    if (this.settings.autoScroll) div.scrollTop = div.scrollHeight;
+    return el;
   }
 
-  async pollSessionStatus(sessionId, conversation, processingMsg) {
-    // Fallback polling for when WebSocket is not available
-    const maxAttempts = 1200; // 10 minutes with 500ms intervals
-    let attempt = 0;
+  addSystemMessage(text) {
+    this.addMessageToDisplay({ role: 'system', content: text });
+  }
 
+  async pollSession(sessionId, conversationId, processingEl) {
+    if (this.polling.has(sessionId)) return;
+    this.polling.set(sessionId, true);
+    let attempts = 0;
+    const maxAttempts = 600;
     const poll = async () => {
+      if (!this.polling.has(sessionId)) return;
       try {
-        const response = await fetch(`/api/sessions/${sessionId}`);
-        if (!response.ok) {
-          console.error('Failed to poll session:', response.status);
+        const res = await fetch(`/api/sessions/${sessionId}`);
+        if (!res.ok) {
+          this.polling.delete(sessionId);
+          processingEl.remove();
+          this.addMessageToDisplay({ role: 'system', content: 'Session not found' });
           return;
         }
-
-        const sessionState = await response.json();
-        this.handleSessionUpdate(sessionState, conversation, processingMsg);
-
-        if (sessionState.status === 'processing' && attempt < maxAttempts) {
-          // Still processing, poll again
-          attempt++;
-          setTimeout(poll, 500);
+        const data = await res.json();
+        const session = data.session;
+        if (session.status === 'completed') {
+          this.polling.delete(sessionId);
+          processingEl.remove();
+          const messages = await this.fetchMessages(conversationId);
+          const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
+          if (lastAssistant) {
+            const content = lastAssistant.content;
+            let text = content;
+            try {
+              const parsed = JSON.parse(content);
+              text = this.extractACPResponse(parsed);
+            } catch (_) {}
+            this.addMessageToDisplay({ role: 'assistant', content: text });
+          }
+          if (this.settings.autoScroll) {
+            const div = document.getElementById('chatMessages');
+            if (div) div.scrollTop = div.scrollHeight;
+          }
+          return;
         }
-      } catch (error) {
-        console.error('Polling error:', error);
+        if (session.status === 'error') {
+          this.polling.delete(sessionId);
+          processingEl.remove();
+          this.addMessageToDisplay({ role: 'system', content: `Error: ${session.error || 'Unknown error'}` });
+          return;
+        }
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 500);
+        } else {
+          this.polling.delete(sessionId);
+          processingEl.remove();
+          this.addMessageToDisplay({ role: 'system', content: 'Session timed out' });
+        }
+      } catch (e) {
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 1000);
+        } else {
+          this.polling.delete(sessionId);
+          processingEl.remove();
+          this.addMessageToDisplay({ role: 'system', content: `Poll error: ${e.message}` });
+        }
       }
     };
-
     poll();
+  }
+
+  extractACPResponse(response) {
+    if (!response) return '';
+    let text = '';
+    if (response.updates && Array.isArray(response.updates)) {
+      for (const update of response.updates) {
+        if (update.textDelta) text += update.textDelta;
+        else if (update.content && typeof update.content === 'string') text += update.content;
+      }
+    }
+    if (response.stopReason) {
+      if (text) text += `\n\n[Completed: ${response.stopReason}]`;
+      else text = `Operation completed: ${response.stopReason}`;
+    }
+    if (!text && typeof response === 'object') {
+      text = JSON.stringify(response);
+    }
+    return text.trim();
   }
 
   updateSendButtonState() {
     const input = document.getElementById('messageInput');
-    const sendBtn = document.getElementById('sendBtn');
-    
-    if (sendBtn) {
-      sendBtn.disabled = !input || !input.value.trim();
-    }
-  }
-
-  async captureScreenshot() {
-    const format = this.settings.screenshotFormat || 'png';
-    this.showLoading(true);
-
-    try {
-      const response = await fetch('/api/screenshot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.lastScreenshot = data;
-        this.showScreenshotModal(data.path);
-        this.logMessage('system', 'Screenshot captured');
-      } else {
-        const error = await response.json();
-        this.logMessage('system', `Screenshot failed: ${error.error}`);
-      }
-    } catch (error) {
-      this.logMessage('system', `Screenshot error: ${error.message}`);
-    } finally {
-      this.showLoading(false);
-    }
-  }
-
-  showScreenshotModal(path) {
-    const modal = document.getElementById('screenshotModal');
-    const img = document.getElementById('screenshotImage');
-
-    if (modal && img) {
-      img.src = path;
-      modal.classList.add('active');
-    }
-  }
-
-  closeScreenshotModal() {
-    const modal = document.getElementById('screenshotModal');
-    if (modal) {
-      modal.classList.remove('active');
-    }
-  }
-
-  async sendScreenshot() {
-    if (!this.lastScreenshot || !this.selectedAgent) {
-      this.logMessage('system', 'No screenshot or agent selected');
-      return;
-    }
-
-    try {
-      const message = `Captured screenshot: ${this.lastScreenshot.filename}`;
-      const payload = {
-        type: 'message',
-        content: message,
-        agentId: this.selectedAgent,
-        attachment: {
-          type: 'screenshot',
-          path: this.lastScreenshot.path,
-        },
-        timestamp: Date.now(),
-      };
-
-      const response = await fetch(`/api/agents/${this.selectedAgent}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        this.logMessage('system', 'Screenshot sent to agent');
-        this.closeScreenshotModal();
-      } else {
-        const error = await response.json();
-        this.logMessage('system', `Send failed: ${error.error}`);
-      }
-    } catch (error) {
-      this.logMessage('system', `Send error: ${error.message}`);
-    }
-  }
-
-  downloadScreenshot() {
-    if (!this.lastScreenshot) return;
-
-    const img = document.getElementById('screenshotImage');
-    const link = document.createElement('a');
-    link.href = this.lastScreenshot.path;
-    link.download = this.lastScreenshot.filename;
-    link.click();
-  }
-
-  triggerFileUpload() {
-    document.getElementById('fileInput').click();
-  }
-
-  async handleFileUpload() {
-    const input = document.getElementById('fileInput');
-    const files = input.files;
-
-    if (files.length === 0) return;
-
-    this.showLoading(true);
-
-    try {
-      const formData = new FormData();
-      for (const file of files) {
-        formData.append('files', file);
-      }
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.logMessage('system', `Uploaded ${data.files.length} file(s)`);
-        input.value = '';
-      } else {
-        const error = await response.json();
-        this.logMessage('system', `Upload failed: ${error.error}`);
-      }
-    } catch (error) {
-      this.logMessage('system', `Upload error: ${error.message}`);
-    } finally {
-      this.showLoading(false);
-    }
-  }
-
-  logMessage(type, content) {
-    if (!this.currentConversation) {
-      this.startNewChat();
-    }
-
-    const conversation = this.conversations.get(this.currentConversation);
-    if (!conversation) return;
-
-    const msg = {
-      role: type,
-      content,
-      timestamp: Date.now(),
-    };
-
-    conversation.messages.push(msg);
-    this.addMessageToDisplay(msg);
-    this.saveConversations();
-
-    if (this.settings.autoScroll) {
-      const messagesDiv = document.getElementById('chatMessages');
-      if (messagesDiv) {
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
-    }
-  }
-
-  showLoading(show) {
-    const overlay = document.getElementById('loadingOverlay');
-    if (overlay) {
-      if (show) {
-        overlay.classList.add('active');
-      } else {
-        overlay.classList.remove('active');
-      }
-    }
+    const btn = document.getElementById('sendBtn');
+    if (btn) btn.disabled = !input || !input.value.trim();
   }
 
   openFolderBrowser() {
     const modal = document.getElementById('folderBrowserModal');
     if (!modal) return;
-
     const pathInput = document.getElementById('folderPath');
     pathInput.value = '~/';
-
     this.loadFolderContents(this.expandHome('~/'));
     modal.classList.add('active');
   }
 
   closeFolderBrowser() {
     const modal = document.getElementById('folderBrowserModal');
-    if (modal) {
-      modal.classList.remove('active');
-    }
+    if (modal) modal.classList.remove('active');
   }
 
   async loadFolderContents(folderPath) {
     const list = document.getElementById('folderBrowserList');
     if (!list) return;
-
     list.innerHTML = '<div style="padding: 1rem; color: var(--text-tertiary);">Loading...</div>';
-
     try {
-      const response = await fetch('/api/folders', {
+      const res = await fetch('/api/folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: folderPath }),
       });
-
-      if (response.ok) {
-        const data = await response.json();
+      if (res.ok) {
+        const data = await res.json();
         this.renderFolderList(data.folders, folderPath);
       } else {
         list.innerHTML = '<div style="padding: 1rem; color: var(--color-danger);">Error loading folder</div>';
       }
-    } catch (error) {
-      console.error('Error loading folder:', error);
-      list.innerHTML = '<div style="padding: 1rem; color: var(--color-danger);">Error: ' + error.message + '</div>';
+    } catch (e) {
+      list.innerHTML = '<div style="padding: 1rem; color: var(--color-danger);">Error: ' + e.message + '</div>';
     }
   }
 
   renderFolderList(folders, currentPath) {
     const list = document.getElementById('folderBrowserList');
     if (!list) return;
-
     list.innerHTML = '';
-
     if (currentPath !== '/' && currentPath !== '/root') {
       const parentPath = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
       const parentItem = document.createElement('div');
       parentItem.className = 'folder-item';
-      parentItem.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); transition: var(--transition-fast);';
-      parentItem.innerHTML = '<span style="font-size: 1rem;">📁</span><span>..</span>';
-      parentItem.onmouseover = () => parentItem.style.background = 'var(--bg-tertiary)';
-      parentItem.onmouseout = () => parentItem.style.background = 'transparent';
+      parentItem.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color);';
+      parentItem.innerHTML = '<span>../</span>';
       parentItem.onclick = () => {
         document.getElementById('folderPath').value = parentPath;
         this.loadFolderContents(parentPath);
       };
       list.appendChild(parentItem);
     }
-
     if (!folders || folders.length === 0) {
-      const emptyItem = document.createElement('div');
-      emptyItem.style.cssText = 'padding: 1rem; color: var(--text-tertiary); text-align: center;';
-      emptyItem.textContent = 'No subfolders found';
-      list.appendChild(emptyItem);
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding: 1rem; color: var(--text-tertiary); text-align: center;';
+      empty.textContent = 'No subfolders found';
+      list.appendChild(empty);
       return;
     }
-
     folders.forEach(folder => {
       const item = document.createElement('div');
-      item.className = 'folder-item';
-      item.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color); transition: var(--transition-fast);';
-      item.innerHTML = `<span style="font-size: 1rem;">📁</span><span>${escapeHtml(folder.name)}</span>`;
-
-      item.onmouseover = () => item.style.background = 'var(--bg-tertiary)';
-      item.onmouseout = () => item.style.background = 'transparent';
+      item.style.cssText = 'padding: 0.75rem 1rem; cursor: pointer; display: flex; align-items: center; gap: 0.75rem; border-bottom: 1px solid var(--border-color);';
+      item.textContent = folder.name;
       item.onclick = () => {
         const newPath = currentPath === '/' ? '/' + folder.name : currentPath + '/' + folder.name;
         document.getElementById('folderPath').value = newPath;
         this.loadFolderContents(newPath);
       };
-
       list.appendChild(item);
     });
   }
-
-  extractACPResponse(response) {
-    if (!response) return '';
-    
-    let text = '';
-    
-    if (response.updates && Array.isArray(response.updates)) {
-      for (const update of response.updates) {
-        if (update.textDelta) {
-          text += update.textDelta;
-        } else if (update.content && typeof update.content === 'string') {
-          text += update.content;
-        }
-      }
-    }
-    
-    if (response.stopReason) {
-      if (text) {
-        text += `\n\n[Completed: ${response.stopReason}]`;
-      } else {
-        text = `Operation completed: ${response.stopReason}`;
-      }
-    }
-    
-    return text.trim();
-  }
 }
 
-// Global helper functions
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -909,16 +529,12 @@ function escapeHtml(text) {
 
 function showNewChatModal() {
   const modal = document.getElementById('newChatModal');
-  if (modal) {
-    modal.classList.add('active');
-  }
+  if (modal) modal.classList.add('active');
 }
 
 function closeNewChatModal() {
   const modal = document.getElementById('newChatModal');
-  if (modal) {
-    modal.classList.remove('active');
-  }
+  if (modal) modal.classList.remove('active');
 }
 
 function createChatInWorkspace() {
@@ -931,83 +547,40 @@ function createChatInFolder() {
   app.openFolderBrowser();
 }
 
-function sendMessage() {
-  app.sendMessage();
-}
+function sendMessage() { app.sendMessage(); }
 
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
-  if (sidebar) {
-    sidebar.classList.toggle('open');
-  }
+  if (sidebar) sidebar.classList.toggle('open');
 }
 
 function switchTab(tabName) {
-  if (tabName === 'settings') {
-    const panel = document.getElementById('settingsPanel');
-    const mainContent = document.querySelector('.main-content');
-    if (panel && mainContent) {
-      panel.style.display = 'flex';
-      mainContent.style.display = 'none';
-    }
-  } else if (tabName === 'chat') {
-    const panel = document.getElementById('settingsPanel');
-    const mainContent = document.querySelector('.main-content');
-    if (panel && mainContent) {
-      panel.style.display = 'none';
-      mainContent.style.display = 'flex';
-    }
+  const panel = document.getElementById('settingsPanel');
+  const main = document.querySelector('.main-content');
+  if (tabName === 'settings' && panel && main) {
+    panel.style.display = 'flex';
+    main.style.display = 'none';
+  } else if (tabName === 'chat' && panel && main) {
+    panel.style.display = 'none';
+    main.style.display = 'flex';
   }
 }
 
-function captureScreenshot() {
-  app.captureScreenshot();
-}
-
-function closeScreenshotModal() {
-  app.closeScreenshotModal();
-}
-
-function sendScreenshot() {
-  app.sendScreenshot();
-}
-
-function downloadScreenshot() {
-  app.downloadScreenshot();
-}
-
-function triggerFileUpload() {
-  app.triggerFileUpload();
-}
-
-function handleFileUpload() {
-  app.handleFileUpload();
-}
-
-function closeFolderBrowser() {
-  app.closeFolderBrowser();
-}
+function closeFolderBrowser() { app.closeFolderBrowser(); }
 
 function browseFolders() {
   const pathInput = document.getElementById('folderPath');
-  const path = pathInput.value.trim() || '~/';
-  const expandedPath = app.expandHome(path);
-  app.loadFolderContents(expandedPath);
+  const p = pathInput.value.trim() || '~/';
+  app.loadFolderContents(app.expandHome(p));
 }
 
 function confirmFolderSelection() {
   const pathInput = document.getElementById('folderPath');
-  const path = pathInput.value.trim();
-
-  if (!path) {
-    app.logMessage('system', 'Please select or enter a folder path');
-    return;
-  }
-
-  const expandedPath = app.expandHome(path);
-  app.startNewChat(expandedPath);
+  const p = pathInput.value.trim();
+  if (!p) return;
+  app.startNewChat(app.expandHome(p));
   app.closeFolderBrowser();
 }
 
-// Initialize app
 const app = new GMGUIApp();
+window._app = app;

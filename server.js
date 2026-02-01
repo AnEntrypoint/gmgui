@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { pack, unpack } from 'msgpackr';
 import os from 'os';
+import { execSync } from 'child_process';
 import { queries } from './database.js';
 import ACPLauncher from './acp-launcher.js';
 
@@ -85,6 +86,25 @@ class ACPSessionManager {
 }
 
 const acpSessionManager = new ACPSessionManager();
+
+function discoverAgents() {
+  const agents = [];
+  const binaries = [
+    { cmd: 'claude', id: 'claude-code', name: 'Claude Code', icon: 'C' },
+    { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O' },
+  ];
+  for (const bin of binaries) {
+    try {
+      const result = execSync(`which ${bin.cmd} 2>/dev/null`, { encoding: 'utf-8' }).trim();
+      if (result) {
+        agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result });
+      }
+    } catch (_) {}
+  }
+  return agents;
+}
+
+const discoveredAgents = discoverAgents();
 
 // Parse request body
 function parseBody(req) {
@@ -232,10 +252,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Agents endpoint (legacy support)
     if (req.url === '/api/agents' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ agents: [] }));
+      res.end(JSON.stringify({ agents: discoveredAgents }));
       return;
     }
 
