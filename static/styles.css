@@ -812,6 +812,41 @@ html, body {
   border-top: 1px solid var(--border-color);
 }
 
+.html-block {
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.html-header {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-tertiary);
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.html-content {
+  padding: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  overflow-x: auto;
+}
+
+.html-content > * {
+  margin: 0.5rem 0;
+}
+
+.html-content > *:first-child {
+  margin-top: 0;
+}
+
+.html-content > *:last-child {
+  margin-bottom: 0;
+}
+
 @media (max-width: 768px) {
   .stream-container { max-width: 90%; }
 }

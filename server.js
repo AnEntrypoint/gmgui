@@ -251,6 +251,8 @@ async function processMessage(conversationId, messageId, sessionId, content, age
         broadcastStream(conversationId, { type: 'text_delta', text: u.content.text });
       } else if (kind === 'agent_thought_chunk' && u.content?.text) {
         broadcastStream(conversationId, { type: 'thought_delta', text: u.content.text });
+      } else if (kind === 'html_content' && u.content?.html) {
+        broadcastStream(conversationId, { type: 'html_section', html: u.content.html, title: u.content.title, id: u.content.id });
       } else if (kind === 'tool_call') {
         broadcastStream(conversationId, { type: 'tool_call', toolCallId: u.toolCallId, title: u.title, kind: u.kind, status: u.status, content: u.content, locations: u.locations });
       } else if (kind === 'tool_call_update') {

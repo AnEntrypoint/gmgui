@@ -401,6 +401,11 @@ class GMGUIApp {
         if (block) this.updateToolBlock(block, event);
         textBlock = null;
         autoScroll();
+      } else if (event.type === 'html_section') {
+        textBlock = null;
+        const htmlEl = this.createHtmlBlock(event);
+        streamWrap.appendChild(htmlEl);
+        autoScroll();
       } else if (event.type === 'plan') {
         const planEl = this.createPlanBlock(event.entries);
         streamWrap.appendChild(planEl);
@@ -488,6 +493,23 @@ class GMGUIApp {
         wrap.appendChild(item);
       });
     }
+    return wrap;
+  }
+
+  createHtmlBlock(event) {
+    const wrap = document.createElement('div');
+    wrap.className = 'html-block';
+    if (event.id) wrap.id = `html-${event.id}`;
+    if (event.title) {
+      const header = document.createElement('div');
+      header.className = 'html-header';
+      header.textContent = event.title;
+      wrap.appendChild(header);
+    }
+    const content = document.createElement('div');
+    content.className = 'html-content';
+    content.innerHTML = event.html;
+    wrap.appendChild(content);
     return wrap;
   }
 
