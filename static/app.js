@@ -446,10 +446,37 @@ class GMGUIApp {
     if (!div) return;
     const el = document.createElement('div');
     el.className = `message ${msg.role}`;
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    bubble.textContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-    el.appendChild(bubble);
+
+    if (typeof msg.content === 'string') {
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      bubble.textContent = msg.content;
+      el.appendChild(bubble);
+    } else if (typeof msg.content === 'object' && msg.content !== null) {
+      if (msg.content.text) {
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = msg.content.text;
+        el.appendChild(bubble);
+      }
+      if (msg.content.blocks && Array.isArray(msg.content.blocks)) {
+        msg.content.blocks.forEach(block => {
+          if (block.type === 'html') {
+            const htmlEl = this.createHtmlBlock(block);
+            el.appendChild(htmlEl);
+          } else if (block.type === 'image') {
+            const imgEl = this.createImageBlock(block);
+            el.appendChild(imgEl);
+          }
+        });
+      }
+    } else {
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
+      bubble.textContent = JSON.stringify(msg.content);
+      el.appendChild(bubble);
+    }
+
     div.appendChild(el);
   }
 

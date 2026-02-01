@@ -270,6 +270,7 @@ async function processMessage(conversationId, messageId, sessionId, content, age
     const conn = await getACP(agentId || 'claude-code', cwd);
 
     let fullText = '';
+    const blocks = [];
     conn.onUpdate = (params) => {
       const u = params.update;
       if (!u) return;
@@ -280,9 +281,11 @@ async function processMessage(conversationId, messageId, sessionId, content, age
       } else if (kind === 'agent_thought_chunk' && u.content?.text) {
         broadcastStream(conversationId, { type: 'thought_delta', text: u.content.text });
       } else if (kind === 'html_content' && u.content?.html) {
+        blocks.push({ type: 'html', html: u.content.html, title: u.content.title, id: u.content.id });
         broadcastStream(conversationId, { type: 'html_section', html: u.content.html, title: u.content.title, id: u.content.id });
       } else if (kind === 'image_content' && u.content?.path) {
         const imageUrl = BASE_URL + '/api/image/' + encodeURIComponent(u.content.path);
+        blocks.push({ type: 'image', path: u.content.path, url: imageUrl, title: u.content.title, alt: u.content.alt });
         broadcastStream(conversationId, { type: 'image_section', url: imageUrl, path: u.content.path, title: u.content.title, alt: u.content.alt });
       } else if (kind === 'tool_call') {
         broadcastStream(conversationId, { type: 'tool_call', toolCallId: u.toolCallId, title: u.title, kind: u.kind, status: u.status, content: u.content, locations: u.locations });
@@ -297,7 +300,8 @@ async function processMessage(conversationId, messageId, sessionId, content, age
     conn.onUpdate = null;
 
     const responseText = fullText || (result?.stopReason ? `Completed: ${result.stopReason}` : 'No response.');
-    queries.createMessage(conversationId, 'assistant', responseText);
+    const messageContent = blocks.length > 0 ? { text: responseText, blocks } : responseText;
+    queries.createMessage(conversationId, 'assistant', messageContent);
     queries.updateSession(sessionId, { status: 'completed', response: { text: responseText }, completed_at: Date.now() });
     queries.createEvent('session.completed', {}, conversationId, sessionId);
     broadcastStream(conversationId, { type: 'done', stopReason: result?.stopReason || 'end_turn' });
