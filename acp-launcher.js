@@ -31,49 +31,58 @@ export default class ACPConnection {
 
   async connect(agentType, cwd) {
     this.cwd = cwd;
-    const env = { ...process.env };
-    delete env.NODE_OPTIONS;
-    delete env.NODE_INSPECT;
-    delete env.NODE_DEBUG;
+
+    const acpSetup = async () => {
+      await this._spawnACP(agentType, cwd);
+      await this.sendRequest('initialize', {
+        protocolVersion: 1,
+        clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
+      }, 4000);
+      const result = await this.sendRequest('session/new', { cwd, mcpServers: [] }, 4000);
+      this.sessionId = result.sessionId;
+      await this.sendRequest('session/set_mode', { sessionId: this.sessionId, modeId: 'bypassPermissions' }, 2000);
+    };
+
+    const deadline = new Promise((_, reject) => setTimeout(() => reject(new Error('ACP handshake timeout (5s)')), 5000));
 
     try {
-      await this._tryACP(agentType, cwd, env);
+      await Promise.race([acpSetup(), deadline]);
       console.log(`[ACP] Connected via ACP bridge (${agentType})`);
     } catch (acpErr) {
       console.log(`[ACP] Bridge failed: ${acpErr.message}`);
       console.log(`[ACP] Falling back to claude --print mode`);
       this.printMode = true;
+      this.sessionId = 'print-' + Date.now();
       if (this.child) {
         try { this.child.kill('SIGTERM'); } catch (_) {}
         this.child = null;
       }
+      for (const [id, req] of this.pendingRequests) {
+        clearTimeout(req.timeoutId);
+      }
+      this.pendingRequests.clear();
     }
   }
 
-  _tryACP(agentType, cwd, env) {
+  _spawnACP(agentType, cwd) {
     return new Promise((resolve, reject) => {
+      const env = { ...process.env };
+      delete env.NODE_OPTIONS;
+      delete env.NODE_INSPECT;
+      delete env.NODE_DEBUG;
+
       try {
-        if (agentType === 'opencode') {
-          this.child = spawn('opencode', ['acp'], { cwd, stdio: ['pipe', 'pipe', 'pipe'], env, shell: false });
-        } else {
-          this.child = spawn('claude-code-acp', [], { cwd, stdio: ['pipe', 'pipe', 'pipe'], env, shell: false });
-        }
+        const cmd = agentType === 'opencode' ? 'opencode' : 'claude-code-acp';
+        const args = agentType === 'opencode' ? ['acp'] : [];
+        this.child = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env, shell: false });
       } catch (err) {
         reject(new Error(`Failed to spawn ACP: ${err.message}`));
         return;
       }
 
-      const timeoutId = setTimeout(() => {
-        reject(new Error('ACP bridge timeout (5s)'));
-      }, 5000);
-
       this.child.stderr.on('data', d => console.error(`[ACP:stderr]`, d.toString().trim()));
-      this.child.on('error', err => {
-        clearTimeout(timeoutId);
-        reject(new Error(`ACP spawn error: ${err.message}`));
-      });
-      this.child.on('exit', (code, signal) => {
-        clearTimeout(timeoutId);
+      this.child.on('error', err => reject(new Error(`ACP spawn error: ${err.message}`)));
+      this.child.on('exit', () => {
         this.child = null;
         for (const [id, req] of this.pendingRequests) {
           req.reject(new Error('ACP process exited'));
@@ -84,38 +93,28 @@ export default class ACPConnection {
 
       this.child.stdout.setEncoding('utf8');
       this.child.stdout.on('data', data => {
-        clearTimeout(timeoutId);
         this.buffer += data;
         const lines = this.buffer.split('\n');
         this.buffer = lines.pop() || '';
         for (const line of lines) {
           if (!line.trim()) continue;
-          try {
-            this.handleMessage(JSON.parse(line));
-          } catch (e) {
-            console.error('[ACP:parse]', line.substring(0, 200), e.message);
-          }
+          try { this.handleMessage(JSON.parse(line)); }
+          catch (e) { console.error('[ACP:parse]', line.substring(0, 200), e.message); }
         }
       });
 
-      setTimeout(() => resolve(), 500);
+      setTimeout(resolve, 300);
     });
   }
 
   handleMessage(msg) {
-    if (msg.method) {
-      this.handleIncoming(msg);
-      return;
-    }
+    if (msg.method) { this.handleIncoming(msg); return; }
     if (msg.id !== undefined && this.pendingRequests.has(msg.id)) {
       const req = this.pendingRequests.get(msg.id);
       this.pendingRequests.delete(msg.id);
       clearTimeout(req.timeoutId);
-      if (msg.error) {
-        req.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
-      } else {
-        req.resolve(msg.result);
-      }
+      if (msg.error) req.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
+      else req.resolve(msg.result);
     }
   }
 
@@ -131,23 +130,13 @@ export default class ACPConnection {
       return;
     }
     if (msg.method === 'fs/read_text_file' && msg.id !== undefined) {
-      const filePath = msg.params?.path;
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        this.sendResponse(msg.id, { content });
-      } catch (e) {
-        this.sendError(msg.id, -32000, e.message);
-      }
+      try { this.sendResponse(msg.id, { content: fs.readFileSync(msg.params?.path, 'utf-8') }); }
+      catch (e) { this.sendError(msg.id, -32000, e.message); }
       return;
     }
     if (msg.method === 'fs/write_text_file' && msg.id !== undefined) {
-      const { path: filePath, content } = msg.params || {};
-      try {
-        fs.writeFileSync(filePath, content, 'utf-8');
-        this.sendResponse(msg.id, null);
-      } catch (e) {
-        this.sendError(msg.id, -32000, e.message);
-      }
+      try { fs.writeFileSync(msg.params?.path, msg.params?.content, 'utf-8'); this.sendResponse(msg.id, null); }
+      catch (e) { this.sendError(msg.id, -32000, e.message); }
       return;
     }
   }
@@ -198,7 +187,6 @@ export default class ACPConnection {
   async newSession(cwd) {
     if (this.printMode) {
       this.cwd = cwd;
-      this.sessionId = 'print-' + Date.now();
       return { sessionId: this.sessionId };
     }
     const result = await this.sendRequest('session/new', { cwd, mcpServers: [] }, 120000);
@@ -213,39 +201,10 @@ export default class ACPConnection {
 
   async injectSkills() {
     if (this.printMode) return {};
-    const skillDescriptions = {
-      'html_rendering': {
-        name: 'HTML Rendering',
-        description: 'Render styled HTML blocks directly in the chat interface',
-        capability: 'The HTML will render as a styled block in the conversation.'
-      },
-      'image_display': {
-        name: 'Image Display',
-        description: 'Display images from the filesystem in styled blocks',
-        capability: 'Supported formats: PNG, JPEG, GIF, WebP, SVG.'
-      },
-      'scrot': {
-        name: 'Screenshot Utility',
-        description: 'Capture screenshots of the desktop or specific windows',
-        capability: 'Use scrot command-line tool to capture and save images to filesystem'
-      },
-      'fs_access': {
-        name: 'Filesystem Access',
-        description: 'Read and write files, browse directories',
-        capability: 'Full read/write access to user home directory and workspace'
-      }
-    };
-
-    const skillNames = Object.values(skillDescriptions).map(s => s.name).join(', ');
-    const prompt = [{
-      type: 'text',
-      text: `RESPOND WITH RICH HTML USING RIPPLEUI COMPONENTS.\n\n${RIPPLEUI_SYSTEM_PROMPT}\n\nAvailable skills: ${skillNames}`
-    }];
-
     return this.sendRequest('session/skill_inject', {
       sessionId: this.sessionId,
-      skills: Object.values(skillDescriptions),
-      notification: prompt
+      skills: [],
+      notification: [{ type: 'text', text: RIPPLEUI_SYSTEM_PROMPT }]
     }).catch(() => null);
   }
 
@@ -300,13 +259,8 @@ export default class ACPConnection {
         }
       });
 
-      child.stderr.on('data', d => {
-        console.error('[claude-print:stderr]', d.toString().trim());
-      });
-
-      child.on('error', err => {
-        reject(new Error(`claude --print spawn error: ${err.message}`));
-      });
+      child.stderr.on('data', d => console.error('[claude-print:stderr]', d.toString().trim()));
+      child.on('error', err => reject(new Error(`claude --print spawn error: ${err.message}`)));
 
       child.on('close', code => {
         if (buffer.trim()) {
@@ -316,16 +270,11 @@ export default class ACPConnection {
             if (parsed.type === 'result') resultData = parsed;
           } catch (_) {}
         }
-
         if (code !== 0 && !fullText) {
           reject(new Error(`claude --print exited with code ${code}`));
           return;
         }
-
-        resolve({
-          stopReason: resultData?.subtype || 'end_turn',
-          result: resultData?.result || fullText
-        });
+        resolve({ stopReason: resultData?.subtype || 'end_turn', result: resultData?.result || fullText });
       });
 
       child.stdin.end();
@@ -338,24 +287,9 @@ export default class ACPConnection {
         if (block.type === 'text' && block.text) {
           appendText(block.text);
           if (this.onUpdate) {
-            this.onUpdate({
-              update: {
-                sessionUpdate: 'agent_message_chunk',
-                content: { text: block.text }
-              }
-            });
+            this.onUpdate({ update: { sessionUpdate: 'agent_message_chunk', content: { text: block.text } } });
           }
         }
-      }
-    }
-    if (parsed.type === 'result' && parsed.result) {
-      if (this.onUpdate) {
-        this.onUpdate({
-          update: {
-            sessionUpdate: 'agent_message_chunk',
-            content: { text: '' }
-          }
-        });
       }
     }
   }
