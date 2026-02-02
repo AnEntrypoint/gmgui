@@ -853,22 +853,22 @@ class GMGUIApp {
 
   updateSendButtonState() {
     const input = document.getElementById('messageInput');
-    const gm-btn = document.getElementById('sendBtn');
-    if (gm-btn) gm-btn.disabled = !input || !input.value.trim();
+    const sendBtn = document.getElementById('sendBtn');
+    if (sendBtn) sendBtn.disabled = !input || !input.value.trim();
   }
 
   openFolderBrowser() {
-    const gm-modal = document.getElementById('folderBrowserModal');
-    if (!gm-modal) return;
+    const dlgModal = document.getElementById('folderBrowserModal');
+    if (!dlgModal) return;
     const pathInput = document.getElementById('folderPath');
     pathInput.value = '~/';
     this.loadFolderContents(this.expandHome('~/'));
-    gm-modal.classList.add('active');
+    dlgModal.classList.add('active');
   }
 
   closeFolderBrowser() {
-    const gm-modal = document.getElementById('folderBrowserModal');
-    if (gm-modal) gm-modal.classList.remove('active');
+    const dlgModal = document.getElementById('folderBrowserModal');
+    if (dlgModal) dlgModal.classList.remove('active');
   }
 
   async loadFolderContents(folderPath) {
@@ -936,13 +936,13 @@ function escapeHtml(text) {
 }
 
 function showNewChatModal() {
-  const gm-modal = document.getElementById('newChatModal');
-  if (gm-modal) gm-modal.classList.add('active');
+  const dlgModal = document.getElementById('newChatModal');
+  if (dlgModal) dlgModal.classList.add('active');
 }
 
 function closeNewChatModal() {
-  const gm-modal = document.getElementById('newChatModal');
-  if (gm-modal) gm-modal.classList.remove('active');
+  const dlgModal = document.getElementById('newChatModal');
+  if (dlgModal) dlgModal.classList.remove('active');
 }
 
 function createChatInWorkspace() {
