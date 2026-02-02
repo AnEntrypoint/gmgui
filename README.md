@@ -7,20 +7,12 @@ A buildless, hot-reloading web client for managing multiple Claude Agent Protoco
 ## Get Started Now - One Command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
+bunx gmgui
 ```
 
-That's it. One command. No setup, no git clone, no npm install required.
+That's it. One command starts the server and opens http://localhost:3000/gm/ in your browser.
 
-**What happens:**
-1. Script downloads gmgui from GitHub
-2. Installs dependencies automatically
-3. Starts the server
-4. Opens http://localhost:3000/gm/ in your browser
-
-**Works anywhere:** Any directory, any system, any shell - just bash and curl.
-
-**Auto-detects runtime:** Uses bun if available (3-4x faster), falls back to node.js automatically.
+**Works anywhere:** Any system with Bun installed.
 
 **Stop anytime:** Press Ctrl+C - clean shutdown.
 
@@ -172,19 +164,17 @@ Works on all modern browsers:
 
 ## Performance
 
-- **Fast Startup**: ~100ms with bun, ~500ms with node
+- **Fast Startup**: ~100ms with Bun
 - **No Build Step**: Source code runs directly
 - **Efficient Messaging**: MessagePack reduces payload size by 50%
 - **Real-time Updates**: <50ms WebSocket latency
 - **Memory Efficient**: ~20MB typical usage
 
-The installer automatically uses Bun if available (3-4x faster than Node.js), otherwise falls back to Node.js.
-
 ## Troubleshooting
 
 **Port Already in Use**
 ```bash
-PORT=3001 curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
+PORT=3001 bunx gmgui
 ```
 
 **Agent Won't Connect**
