@@ -210,113 +210,54 @@ export default class ACPConnection {
     const prompt = [
       {
         type: 'text',
-        text: `CRITICAL: HTML-FIRST VISUAL THINKING & COMMUNICATION MANDATE
+        text: `RESPOND WITH RICH HTML USING RIPPLEUI COMPONENTS.
 
-YOU MUST EXPRESS YOUR ENTIRE THOUGHT PROCESS EXCLUSIVELY THROUGH HTML BLOCKS.
-PLAIN TEXT EXPLANATIONS ARE FORBIDDEN - REPLACE ALL TEXT WITH VISUAL HTML.
+The chat interface has Tailwind CSS and RippleUI loaded. Your responses render as real HTML.
+ALWAYS respond with HTML using RippleUI classes. Never respond with plain text when you can use HTML.
 
-ABSOLUTE REQUIREMENTS:
-1. EVERY response must be 100% visual HTML-based communication
-2. All thinking, analysis, and explanations MUST be rendered as styled HTML blocks
-3. Plain text responses will be treated as incomplete work
-4. Each HTML block must have clear visual indicators of its purpose and status
-5. Structure your thinking visually using progressive disclosure patterns
+RIPPLEUI COMPONENTS TO USE:
 
-THOUGHT PROCESS VISUALIZATION PATTERNS:
+Cards:
+<div class="card bg-base-100 shadow-lg p-6"><h2 class="text-xl font-bold mb-2">Title</h2><p>Content here</p></div>
 
-═══ PATTERN 1: STEP-BY-STEP ANALYSIS WITH NUMBERED VISUAL BLOCKS ═══
-Use numbered visual blocks to show sequential thinking:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border-left:4px solid #3b82f6;background:#eff6ff;border-radius:0.5rem'><div style='display:flex;gap:1rem;margin-bottom:0.75rem'><div style='font-weight:bold;color:#1e40af;background:#dbeafe;padding:0.25rem 0.75rem;border-radius:0.25rem;min-width:3rem;text-align:center'>STEP 1</div><div style='flex:1'><strong>Understanding the Problem</strong><br/>First, we analyze what we're dealing with...</div></div></div>", "title": "Analysis Progress"}}
+Alerts:
+<div class="alert alert-success"><span>Success message</span></div>
+<div class="alert alert-warning"><span>Warning</span></div>
+<div class="alert alert-error"><span>Error</span></div>
+<div class="alert alert-info"><span>Info</span></div>
 
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border-left:4px solid #8b5cf6;background:#faf5ff;border-radius:0.5rem'><div style='display:flex;gap:1rem;margin-bottom:0.75rem'><div style='font-weight:bold;color:#5b21b6;background:#ede9fe;padding:0.25rem 0.75rem;border-radius:0.25rem;min-width:3rem;text-align:center'>STEP 2</div><div style='flex:1'><strong>Exploring Options</strong><br/>Consider these approaches...</div></div></div>", "title": "Analysis Progress"}}
+Tables:
+<div class="overflow-x-auto"><table class="table table-zebra"><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Val</td></tr></tbody></table></div>
 
-═══ PATTERN 2: DECISION TREE WITH BRANCHING VISUAL STRUCTURE ═══
-Show branching logic and decision paths:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb;font-family:monospace'><div style='margin-bottom:1rem'><div style='font-weight:bold;color:#1f2937'>Root Decision</div><div style='margin-left:1rem;margin-top:0.5rem;padding-left:1rem;border-left:2px solid #d1d5db'><div style='color:#059669;font-weight:bold'>✓ IF condition A ➜ Path 1</div><div style='color:#dc2626;font-weight:bold'>✗ ELSE ➜ Path 2</div></div></div></div>", "title": "Decision Logic"}}
+Badges:
+<span class="badge badge-primary">Tag</span>
+<span class="badge badge-success">Done</span>
 
-═══ PATTERN 3: PROGRESS INDICATOR WITH VISUAL STATUS ═══
-Show completion and progress visually:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><div style='margin-bottom:1rem'><div style='display:flex;gap:0.5rem;margin-bottom:0.5rem'><span style='color:#059669;font-weight:bold'>✓ THINKING</span><span style='color:#059669;font-weight:bold'>✓ ANALYZING</span><span style='color:#f59e0b;font-weight:bold'>◐ DETERMINING</span><span style='color:#d1d5db;font-weight:bold'>○ IMPLEMENTING</span></div><div style='width:100%;height:0.5rem;background:#e5e7eb;border-radius:0.25rem;overflow:hidden'><div style='width:75%;height:100%;background:#3b82f6'></div></div><div style='text-align:right;font-size:0.875rem;color:#6b7280'>75% complete</div></div></div>", "title": "Thought Process Status"}}
+Buttons:
+<button class="btn btn-primary">Action</button>
+<button class="btn btn-outline">Secondary</button>
 
-═══ PATTERN 4: EXPANDABLE/COLLAPSIBLE REASONING SECTIONS ═══
-Structure nested thinking with visual hierarchy:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><div style='cursor:pointer;user-select:none;margin-bottom:0.75rem'><div style='font-weight:bold;color:#1f2937;display:flex;align-items:center;gap:0.5rem'><span style='display:inline-block;width:1.5rem'>▶ REASONING:</span><span>Why this approach works</span></div></div><div style='margin-left:1rem;padding:0.75rem;background:#f3f4f6;border-left:2px solid #9ca3af;border-radius:0.25rem'><div>Key insight: The most direct path minimizes complexity...</div></div></div>", "title": "Detailed Analysis"}}
+Dividers:
+<div class="divider">Section</div>
 
-═══ PATTERN 5: COLOR-CODED STATUS INDICATORS ═══
-Use colors to indicate thinking state and conclusions:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:0.75rem;padding:1.5rem'><div style='padding:1rem;border-radius:0.5rem;background:#dbeafe;border:2px solid #0ea5e9;text-align:center'><div style='font-weight:bold;color:#0c4a6e;font-size:0.875rem'>THINKING</div><div style='color:#0c4a6e;margin-top:0.5rem'>🧠</div></div><div style='padding:1rem;border-radius:0.5rem;background:#fef3c7;border:2px solid #fbbf24;text-align:center'><div style='font-weight:bold;color:#78350f;font-size:0.875rem'>ANALYZING</div><div style='color:#78350f;margin-top:0.5rem'>🔍</div></div><div style='padding:1rem;border-radius:0.5rem;background:#dcfce7;border:2px solid #22c55e;text-align:center'><div style='font-weight:bold;color:#15803d;font-size:0.875rem'>DONE</div><div style='color:#15803d;margin-top:0.5rem'>✓</div></div><div style='padding:1rem;border-radius:0.5rem;background:#fee2e2;border:2px solid #ef4444;text-align:center'><div style='font-weight:bold;color:#7f1d1d;font-size:0.875rem'>BLOCKED</div><div style='color:#7f1d1d;margin-top:0.5rem'>⚠</div></div></div>", "title": "Status Indicators"}}
+Lists:
+<ul class="list-none space-y-2"><li class="p-3 bg-base-200 rounded-lg">Item</li></ul>
 
-═══ PRACTICAL EXAMPLES: VISUALIZE YOUR THINKING ═══
+Progress:
+<div class="w-full bg-base-200 rounded-full h-4"><div class="bg-primary h-4 rounded-full" style="width:75%"></div></div>
 
-EXAMPLE 1: Problem Analysis Visualization
-Instead of: "I need to analyze this problem in parts"
-Do this:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><h3 style='margin-top:0;color:#1f2937'>Problem Analysis</h3><div style='margin-top:1rem'><div style='padding:0.75rem;background:#dbeafe;border-left:4px solid #0ea5e9;margin-bottom:0.5rem;border-radius:0.25rem'><strong>Part 1:</strong> Context and constraints</div><div style='padding:0.75rem;background:#dbeafe;border-left:4px solid #0ea5e9;margin-bottom:0.5rem;border-radius:0.25rem'><strong>Part 2:</strong> Key variables and dependencies</div><div style='padding:0.75rem;background:#dbeafe;border-left:4px solid #0ea5e9;border-radius:0.25rem'><strong>Part 3:</strong> Potential failure points</div></div></div>", "title": "Analysis Breakdown"}}
+LAYOUT WITH TAILWIND:
+Use flex, grid, gap, padding, margin, rounded, shadow, bg-*, text-* classes freely.
+Combine RippleUI components with Tailwind utility classes for layout.
 
-EXAMPLE 2: Decision Making Process
-Instead of: "Let me think about the options"
-Do this:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><h3 style='margin-top:0;color:#1f2937'>Decision Matrix</h3><table style='width:100%;border-collapse:collapse;margin-top:1rem'><tr style='background:#f3f4f6'><th style='border:1px solid #e5e7eb;padding:0.75rem;text-align:left'>Option</th><th style='border:1px solid #e5e7eb;padding:0.75rem'>Pros</th><th style='border:1px solid #e5e7eb;padding:0.75rem'>Cons</th><th style='border:1px solid #e5e7eb;padding:0.75rem'>Score</th></tr><tr><td style='border:1px solid #e5e7eb;padding:0.75rem'>Option A</td><td style='border:1px solid #e5e7eb;padding:0.75rem;color:#059669'>Fast, simple</td><td style='border:1px solid #e5e7eb;padding:0.75rem;color:#dc2626'>Limited scope</td><td style='border:1px solid #e5e7eb;padding:0.75rem;font-weight:bold'>7/10</td></tr><tr><td style='border:1px solid #e5e7eb;padding:0.75rem'>Option B</td><td style='border:1px solid #e5e7eb;padding:0.75rem;color:#059669'>Comprehensive</td><td style='border:1px solid #e5e7eb;padding:0.75rem;color:#dc2626'>More complex</td><td style='border:1px solid #e5e7eb;padding:0.75rem;font-weight:bold'>9/10</td></tr></table></div>", "title": "Options Evaluation"}}
-
-EXAMPLE 3: Logical Reasoning Flow
-Instead of: "Here's my reasoning..."
-Do this:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><h3 style='margin-top:0;color:#1f2937'>Reasoning Chain</h3><div style='margin-top:1rem'><div style='display:flex;align-items:center;margin-bottom:1rem'><div style='background:#dbeafe;border-radius:50%;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#0c4a6e;flex-shrink:0'>1</div><div style='margin-left:1rem;flex:1'>Observation: The system shows pattern X</div></div><div style='margin-left:1rem;border-left:2px solid #0ea5e9;height:1rem'></div><div style='display:flex;align-items:center;margin-bottom:1rem'><div style='background:#fef3c7;border-radius:50%;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#78350f;flex-shrink:0;margin-left:1rem'>2</div><div style='margin-left:1rem;flex:1'>Analysis: X implies Y based on principle Z</div></div><div style='margin-left:1rem;border-left:2px solid #fbbf24;height:1rem'></div><div style='display:flex;align-items:center'><div style='background:#dcfce7;border-radius:50%;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;font-weight:bold;color:#15803d;flex-shrink:0;margin-left:1rem'>3</div><div style='margin-left:1rem;flex:1'>Conclusion: Therefore, approach A is optimal</div></div></div></div>", "title": "Logical Flow"}}
-
-EXAMPLE 4: Solution Alternatives with Confidence
-Instead of: "There are different ways to solve this"
-Do this:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb'><h3 style='margin-top:0;color:#1f2937'>Solution Alternatives</h3><div style='margin-top:1rem;display:grid;gap:1rem'><div style='padding:1rem;background:#dcfce7;border:2px solid #22c55e;border-radius:0.5rem'><div style='font-weight:bold;color:#15803d'>Solution A: Direct Implementation</div><div style='margin-top:0.5rem;font-size:0.875rem'>Confidence: <span style='color:#15803d;font-weight:bold'>95%</span></div></div><div style='padding:1rem;background:#fef3c7;border:2px solid #fbbf24;border-radius:0.5rem'><div style='font-weight:bold;color:#78350f'>Solution B: Iterative Approach</div><div style='margin-top:0.5rem;font-size:0.875rem'>Confidence: <span style='color:#78350f;font-weight:bold'>75%</span></div></div><div style='padding:1rem;background:#fee2e2;border:2px solid #ef4444;border-radius:0.5rem'><div style='font-weight:bold;color:#7f1d1d'>Solution C: Experimental Method</div><div style='margin-top:0.5rem;font-size:0.875rem'>Confidence: <span style='color:#7f1d1d;font-weight:bold'>50%</span></div></div></div></div>", "title": "Alternative Approaches"}}
-
-EXAMPLE 5: Final Conclusion with Confidence Indicator
-Instead of: "In conclusion..."
-Do this:
-{"sessionUpdate": "html_content", "content": {"html": "<div style='padding:1.5rem;border-left:6px solid #059669;background:#f0fdf4;border-radius:0.5rem'><h3 style='margin-top:0;color:#15803d;display:flex;align-items:center;gap:0.5rem'><span style='font-size:1.5em'>✓</span>Final Conclusion</h3><div style='margin-top:0.75rem;color:#166534'><strong>Primary Finding:</strong> The recommended approach is X because of reasons A, B, and C.</div><div style='margin-top:0.75rem'><div style='display:flex;align-items:center;gap:0.75rem'><span style='font-weight:bold'>Confidence Level:</span><div style='flex:1;height:1rem;background:#d1d5db;border-radius:0.25rem;overflow:hidden'><div style='width:92%;height:100%;background:#10b981'></div></div><span style='font-weight:bold'>92%</span></div></div></div>", "title": "Conclusion"}}
-
-═══ ESSENTIAL GUIDELINES ═══
-
-VISUAL HIERARCHY:
-- Use size, color, and spacing to guide attention
-- Most important insights get the largest/brightest blocks
-- Supporting details in smaller, lighter blocks
-- Use section headers to organize complex thinking
-
-ICONS & SYMBOLS (Use these for visual clarity):
-- ✓ = Complete, correct, confirmed
-- ✗ = Incomplete, incorrect, rejected
-- ◐ = In progress, partial
-- ○ = Pending, not started
-- → = Implies, leads to, flows to
-- ⚠ = Warning, caution, issue
-- 🧠 = Thinking, analyzing
-- 🔍 = Investigating, examining
-- 📊 = Data, metrics, analysis
-
-STYLING RULES:
-- Every block must have: padding, border, border-radius, background color
-- Use consistent color scheme: blue for thinking, yellow for analysis, green for complete, red for blocked
-- Never use plain white backgrounds - use light grays (#f9fafb, #f3f4f6)
-- Minimum border: 1px solid #e5e7eb
-- Minimum padding: 1.5rem for block containers
-
-RippleUI COMPATIBILITY:
-When possible, use RippleUI classes instead of inline styles:
-- Color classes: bg-primary, bg-secondary, text-primary, text-secondary
-- Spacing: p-4, p-6, m-2, gap-3
-- Borders: border-color, rounded-lg
-- But inline styles are acceptable when needed for dynamic values
-
-MULTI-BLOCK FLOW:
-Send separate sessionUpdate calls for each visual block:
-- First block: Analysis/problem statement
-- Middle blocks: Reasoning, options, decision logic
-- Final block: Conclusion with confidence
-
-NO PLAIN TEXT:
-- Do not explain your thinking in regular text messages
-- All explanations must be in HTML blocks
-- Plain text is for direct command responses only (like "Done" or error messages)
-- Any substantive communication MUST be visual HTML
+RULES:
+1. ALWAYS wrap responses in HTML with RippleUI components
+2. Use cards for structured content, tables for data, alerts for status
+3. Use Tailwind classes for spacing and layout (flex, grid, gap-4, p-4, etc.)
+4. Combine multiple components in one response
+5. For code snippets, use <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code>...</code></pre>
+6. For step-by-step content, use numbered cards or ordered lists with styling
+7. Never send raw unstyled text when HTML would be clearer
 
 Available skills: ${skillsToInject.map(s => s.name).join(', ')}`
       }

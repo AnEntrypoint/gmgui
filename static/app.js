@@ -490,43 +490,75 @@ class GMGUIApp {
   }
 
 
+  sanitizeHtml(raw) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = raw;
+    tmp.querySelectorAll('script,iframe,object,embed,form,meta,link').forEach(el => el.remove());
+    tmp.querySelectorAll('*').forEach(el => {
+      for (const attr of Array.from(el.attributes)) {
+        if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+        if (attr.name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:')) el.removeAttribute(attr.name);
+      }
+    });
+    return tmp.innerHTML;
+  }
+
+  looksLikeHtml(text) {
+    const trimmed = text.trim();
+    if (/^<[a-z][\s\S]*>/i.test(trimmed)) return true;
+    if (/<\/(div|span|p|table|ul|ol|h[1-6]|section|article|header|footer|nav|main|aside|details|summary|figure|figcaption|blockquote|pre|code|a|strong|em|img|br|hr)>/i.test(trimmed)) return true;
+    const tagCount = (trimmed.match(/<[a-z][^>]*>/gi) || []).length;
+    if (tagCount >= 3) return true;
+    return false;
+  }
+
   parseAndRenderContent(content) {
     const elements = [];
-    if (typeof content === 'string') {
-      const htmlCodeBlockRegex = /```html\n([\s\S]*?)\n```/g;
-      let lastIndex = 0;
-      let match;
+    if (typeof content !== 'string') return null;
 
-      while ((match = htmlCodeBlockRegex.exec(content)) !== null) {
-        if (match.index > lastIndex) {
-          const textBefore = content.substring(lastIndex, match.index);
-          if (textBefore.trim()) {
-            const bubble = document.createElement('div');
-            bubble.className = 'message-bubble';
-            bubble.textContent = textBefore;
-            elements.push(bubble);
-          }
-        }
+    const htmlCodeBlockRegex = /```html\n([\s\S]*?)\n```/g;
+    let lastIndex = 0;
+    let match;
 
-        const htmlContent = match[1];
-        const htmlEl = this.createHtmlBlock({ html: htmlContent });
-        elements.push(htmlEl);
-        lastIndex = htmlCodeBlockRegex.lastIndex;
-      }
-
-      if (lastIndex < content.length) {
-        const textAfter = content.substring(lastIndex);
-        if (textAfter.trim()) {
-          const bubble = document.createElement('div');
-          bubble.className = 'message-bubble';
-          bubble.textContent = textAfter;
-          elements.push(bubble);
+    while ((match = htmlCodeBlockRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        const textBefore = content.substring(lastIndex, match.index);
+        if (textBefore.trim()) {
+          elements.push(this.renderTextOrHtml(textBefore));
         }
       }
-
-      return elements.length > 0 ? elements : null;
+      elements.push(this.createSandboxedHtml(match[1]));
+      lastIndex = htmlCodeBlockRegex.lastIndex;
     }
-    return null;
+
+    if (lastIndex < content.length) {
+      const remaining = content.substring(lastIndex);
+      if (remaining.trim()) {
+        elements.push(this.renderTextOrHtml(remaining));
+      }
+    }
+
+    return elements.length > 0 ? elements : null;
+  }
+
+  renderTextOrHtml(text) {
+    if (this.looksLikeHtml(text)) {
+      return this.createSandboxedHtml(text);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.textContent = text;
+    return bubble;
+  }
+
+  createSandboxedHtml(rawHtml) {
+    const wrap = document.createElement('div');
+    wrap.className = 'html-block rendered-html';
+    const content = document.createElement('div');
+    content.className = 'html-content';
+    content.innerHTML = this.sanitizeHtml(rawHtml);
+    wrap.appendChild(content);
+    return wrap;
   }
 
   addMessageToDisplay(msg) {
@@ -784,7 +816,7 @@ class GMGUIApp {
 
   createHtmlBlock(event) {
     const wrap = document.createElement('div');
-    wrap.className = 'html-block';
+    wrap.className = 'html-block rendered-html';
     if (event.id) wrap.id = `html-${event.id}`;
     if (event.title) {
       const header = document.createElement('div');
@@ -794,7 +826,7 @@ class GMGUIApp {
     }
     const content = document.createElement('div');
     content.className = 'html-content';
-    content.innerHTML = event.html;
+    content.innerHTML = this.sanitizeHtml(event.html);
     wrap.appendChild(content);
     return wrap;
   }
