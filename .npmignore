@@ -1,0 +1,13 @@
+tmp/
+.git/
+.github/
+node_modules/
+.vscode/
+.idea/
+*.log
+.DS_Store
+test/
+__tests__/
+.env
+.env.*
+.git*
