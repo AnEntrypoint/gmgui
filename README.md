@@ -210,3 +210,4 @@ curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh 
 ```
 
 Then open http://localhost:3000/gm/ in your browser
+# Triggered npm publishing
