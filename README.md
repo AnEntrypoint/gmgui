@@ -18,9 +18,25 @@ A buildless, hot-reloading web client for managing multiple Claude Agent Protoco
 
 ## Quick Start
 
+### One-Liner (Recommended)
+
+**For Bun users:**
+```bash
+bun run gh:AnEntrypoint/gmgui
+```
+
+**For Node.js users:**
+```bash
+npx gmgui
+```
+
+Both download and run directly from GitHub with zero setup required.
+
+### Traditional Installation
+
 ```bash
 # Install
-git clone https://github.com/lanmower/gmgui.git
+git clone https://github.com/AnEntrypoint/gmgui.git
 cd gmgui
 npm install
 

@@ -1,0 +1,12 @@
+node_modules/
+static/
+bun.lock
+bun.lockb
+.git/
+.github/
+test-integration.sh
+run-browser-tests.js
+*.md
+.env*
+vite.config.js
+package-lock.json
