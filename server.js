@@ -425,7 +425,13 @@ function onServerReady() {
   // Auto-import Claude Code conversations
   const imported = queries.importClaudeCodeConversations();
   if (imported.length > 0) {
-    console.log(`Auto-imported ${imported.filter(i => i.status === 'imported').length} Claude Code conversations`);
+    const importedCount = imported.filter(i => i.status === 'imported').length;
+    const skippedCount = imported.filter(i => i.status === 'skipped').length;
+    if (importedCount > 0) {
+      console.log(`Auto-imported ${importedCount} new Claude Code conversations (${skippedCount} already imported)`);
+    } else if (skippedCount > 0) {
+      console.log(`Claude Code conversations ready (${skippedCount} already imported)`);
+    }
   }
 }
 
