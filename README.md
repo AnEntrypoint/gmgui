@@ -4,6 +4,23 @@ A buildless, hot-reloading web client for managing multiple Claude Agent Protoco
 
 **Status**: ✅ Production Ready | **Version**: 1.0.0 | **License**: MIT
 
+## Get Started Now (30 seconds)
+
+### Start GMGUI with One Command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
+```
+
+That's it! No setup, no git clone, no npm install required. The script:
+- Automatically detects bun or node (uses bun if available for 3-4x faster startup)
+- Downloads gmgui from GitHub
+- Installs dependencies
+- Starts the server immediately
+- Opens http://localhost:3000/gm/ in your browser
+
+Works from any directory on any system with just bash and curl.
+
 ## Features
 
 - **Multi-Agent Management**: Connect unlimited ACP agents and switch between them instantly
@@ -16,33 +33,17 @@ A buildless, hot-reloading web client for managing multiple Claude Agent Protoco
 - **Hot Reload**: Auto-refresh browser on file changes (development mode)
 - **Minimal Dependencies**: Only 1 production dependency (ws)
 
-## Quick Start
+## Alternative Installation Methods
 
-### One-Liner with Bash/Curl (No npx needed)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
-```
-
-This works from ANY directory on ANY system:
-- **Auto-detects** bun or node (prefers bun, 3-4x faster)
-- **Downloads** gmgui from GitHub automatically
-- **Installs** dependencies automatically
-- **Starts** the server immediately
-- **Zero setup required** - just run and open http://localhost:3000/gm/
-
-### One-Liner with npx (npm/Node.js)
+### Option 1: Using npm (if you prefer npm over curl)
 
 ```bash
 npx gmgui
 ```
 
-This works with both Bun and Node.js:
-- **Bun users:** Automatically detected and used (3-4x faster)
-- **Node.js users:** Runs with standard Node.js runtime
-- **Zero setup required** - just run the command from any directory
+This is the npm registry approach - works with both Bun and Node.js.
 
-### Traditional Installation
+### Option 2: Clone and Run Locally
 
 ```bash
 # Install
@@ -221,23 +222,27 @@ npm run test:integration
 
 See [TESTING.md](TESTING.md) for detailed testing instructions.
 
-## Bun Support (Recommended)
+## Bun Support (Recommended for Speed)
 
-The project now fully supports Bun with automatic SQLite persistence:
+The project fully supports Bun with automatic SQLite persistence:
 
 ```bash
-# Install Bun (optional for 3-4x faster startup)
-curl -fsSL https://bun.sh/install | bash
-
-# Run gmgui - Bun is auto-detected if installed
-npx gmgui
+# Start gmgui - Bun is auto-detected if installed
+curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
 ```
+
+If Bun is not installed, the script automatically uses Node.js instead.
 
 Benefits when Bun is installed:
 - 3-4x faster startup than Node.js
 - Native SQLite database (data.db)
 - Automatic detection - no special commands needed
 - Same API interface, zero code changes
+
+To install Bun for maximum performance:
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
 
 ## Troubleshooting
 
@@ -282,4 +287,10 @@ MIT - Free to use, modify, and distribute
 
 ---
 
-**Ready to manage multiple ACP agents?** Start with `npx gmgui` and open http://localhost:3000
+**Ready to manage multiple ACP agents?** Run this now:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
+```
+
+Then open http://localhost:3000/gm/ in your browser
