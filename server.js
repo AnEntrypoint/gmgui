@@ -290,7 +290,7 @@ function serveFile(filePath, res) {
     if (err) { res.writeHead(500); res.end('Server error'); return; }
     let content = data.toString();
     if (ext === '.html') {
-      const baseTag = `<script>window.__BASE_URL='${BASE_URL}'; window.__AUTH_TOKEN=localStorage.getItem('gmgui-token');</script>`;
+      const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>`;
       content = content.replace('<head>', '<head>\n  ' + baseTag);
       if (watch) {
         content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
@@ -421,6 +421,11 @@ function onServerReady() {
   console.log(`GMGUI running on http://localhost:${PORT}${BASE_URL}/`);
   console.log(`Agents: ${discoveredAgents.map(a => a.name).join(', ') || 'none'}`);
   console.log(`Hot reload: ${watch ? 'on' : 'off'}`);
+  // Auto-import Claude Code conversations
+  const imported = queries.importClaudeCodeConversations();
+  if (imported.length > 0) {
+    console.log(`Auto-imported ${imported.filter(i => i.status === 'imported').length} Claude Code conversations`);
+  }
 }
 
 server.listen(PORT, onServerReady);

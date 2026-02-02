@@ -98,10 +98,26 @@ class GMGUIApp {
     this.setupEventListeners();
     await this.fetchHome();
     await this.fetchAgents();
+    await this.autoImportClaudeCode();
     await this.fetchConversations();
     this.connectSyncWebSocket();
     this.setupCrossTabSync();
+    this.startPeriodicSync();
     this.renderAll();
+  }
+
+  startPeriodicSync() {
+    setInterval(() => {
+      this.fetchConversations().then(() => this.renderChatHistory());
+    }, 30000);
+  }
+
+  async autoImportClaudeCode() {
+    try {
+      await fetch(BASE_URL + '/api/import/claude-code');
+    } catch (e) {
+      console.error('autoImportClaudeCode:', e);
+    }
   }
 
   connectSyncWebSocket() {
@@ -259,6 +275,9 @@ class GMGUIApp {
   }
 
   setupEventListeners() {
+    window.addEventListener('focus', () => {
+      this.fetchConversations().then(() => this.renderChatHistory());
+    });
     const input = document.getElementById('messageInput');
     if (input) {
       input.addEventListener('keydown', (e) => {
