@@ -624,7 +624,8 @@ class GMGUIApp {
     const conv = this.conversations.get(this.currentConversation);
 
     const idempotencyKey = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    this.addMessageToDisplay({ role: 'user', content: message });
+    const tempId = `pending-${idempotencyKey}`;
+    this.addMessageToDisplay({ role: 'user', content: message, id: tempId });
     input.value = '';
     this.updateSendButtonState();
 
@@ -646,6 +647,8 @@ class GMGUIApp {
         return;
       }
       const data = await res.json();
+      const optimisticEl = document.querySelector(`[data-message-id="${tempId}"]`);
+      if (optimisticEl) optimisticEl.dataset.messageId = data.message.id;
       this.idempotencyKeys.set(idempotencyKey, data.session.id);
       this.startPollingMessages(this.currentConversation);
     } catch (e) {
@@ -665,8 +668,12 @@ class GMGUIApp {
     if (this.pollingInterval) clearInterval(this.pollingInterval);
 
     let pollCount = 0;
-    const maxNoResponsePolls = 60; // Stop polling after 60 polls with no change
-    let lastMessageCount = 0;
+    const maxNoResponsePolls = 60;
+    let lastKnownIds = new Set(
+      Array.from(document.querySelectorAll('#chatMessages [data-message-id]'))
+        .map(el => el.dataset.messageId)
+        .filter(id => id && !id.startsWith('pending-'))
+    );
 
     this.pollingInterval = setInterval(async () => {
       try {
@@ -674,17 +681,19 @@ class GMGUIApp {
         const data = await res.json();
         const messages = data.messages || [];
 
-        // If we got new messages, render them
-        if (messages.length > lastMessageCount) {
-          const newMessages = messages.slice(lastMessageCount);
-          newMessages.forEach(msg => {
+        let added = false;
+        messages.forEach(msg => {
+          if (msg.id && !lastKnownIds.has(msg.id)) {
             const existingEl = document.querySelector(`[data-message-id="${msg.id}"]`);
             if (!existingEl) {
               this.addMessageToDisplay(msg);
+              added = true;
             }
-          });
-          lastMessageCount = messages.length;
-          pollCount = 0; // Reset counter when we get activity
+            lastKnownIds.add(msg.id);
+          }
+        });
+        if (added) {
+          pollCount = 0;
 
           if (this.settings.autoScroll) {
             const div = document.getElementById('chatMessages');
