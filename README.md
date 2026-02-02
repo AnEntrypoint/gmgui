@@ -4,22 +4,25 @@ A buildless, hot-reloading web client for managing multiple Claude Agent Protoco
 
 **Status**: ✅ Production Ready | **Version**: 1.0.0 | **License**: MIT
 
-## Get Started Now (30 seconds)
-
-### Start GMGUI with One Command
+## Get Started Now - One Command
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
 ```
 
-That's it! No setup, no git clone, no npm install required. The script:
-- Automatically detects bun or node (uses bun if available for 3-4x faster startup)
-- Downloads gmgui from GitHub
-- Installs dependencies
-- Starts the server immediately
-- Opens http://localhost:3000/gm/ in your browser
+That's it. One command. No setup, no git clone, no npm install required.
 
-Works from any directory on any system with just bash and curl.
+**What happens:**
+1. Script downloads gmgui from GitHub
+2. Installs dependencies automatically
+3. Starts the server
+4. Opens http://localhost:3000/gm/ in your browser
+
+**Works anywhere:** Any directory, any system, any shell - just bash and curl.
+
+**Auto-detects runtime:** Uses bun if available (3-4x faster), falls back to node.js automatically.
+
+**Stop anytime:** Press Ctrl+C - clean shutdown.
 
 ## Features
 
@@ -30,75 +33,33 @@ Works from any directory on any system with just bash and curl.
 - **Modern Responsive UI**: Beautiful interface that works on mobile, tablet, and desktop
 - **Conversation History**: Full message history with timestamps
 - **Zero Build Step**: Pure HTML/CSS/JavaScript - no bundling or transpilation
-- **Hot Reload**: Auto-refresh browser on file changes (development mode)
 - **Minimal Dependencies**: Only 1 production dependency (ws)
 
-## Alternative Installation Methods
+## How It Works
 
-### Option 1: Using npm (if you prefer npm over curl)
-
-```bash
-npx gmgui
-```
-
-This is the npm registry approach - works with both Bun and Node.js.
-
-### Option 2: Clone and Run Locally
-
-```bash
-# Install
-git clone https://github.com/AnEntrypoint/gmgui.git
-cd gmgui
-npm install
-
-# Run
-npm start
-
-# Open browser to http://localhost:3000/gm/
-```
-
-## Key Features
-
-### Chat Interface
+**Chat Interface**
 - Real-time message display with timestamps
-- Auto-scrolling console output
-- Clear chat history
 - Send/receive messages with agents
+- Clear chat history
 
-### File Management
-- Upload multiple files simultaneously
-- Download uploaded files
-- File metadata (size, timestamp)
-- Files stored in conversation directory for agent access
+**File Management**
+- Upload files for agents to access
+- Download files from conversations
+- Files stored automatically
 
-### Desktop Sharing
+**Desktop Sharing**
 - Capture desktop screenshots
-- Preview screenshots before sending
-- Share screenshots with agents
-- Multiple screenshot tool support (scrot, gnome-screenshot, ImageMagick)
+- Share directly with agents
 
-### Agent Management
-- Add agents by ID and WebSocket endpoint
+**Agent Management**
+- Add agents by ID and endpoint
 - View connection status
 - Switch between agents
-- Monitor real-time updates
 
-### Responsive Design
-**Desktop (1024px+)**
-- Sidebar navigation with agent list
-- Three-tab interface (Chat, Files, Settings)
-- Full-featured controls
-
-**Tablet (768-1024px)**
-- Optimized layout with adjusted spacing
-- Touch-friendly buttons
-- Accessible sidebar
-
-**Mobile (<768px)**
-- Single-column layout
-- Stacked navigation
-- Optimized for small screens
-- Large touch targets
+**Responsive Design**
+- Works on desktop, tablet, and mobile
+- Touch-friendly interface
+- Optimized for all screen sizes
 
 ## API Endpoints
 
@@ -179,127 +140,76 @@ Using `~/.gmgui/` follows Unix conventions:
 ```
 gmgui/
 ├── server.js                    # HTTP + WebSocket server
-├── server-bun.js               # Bun alternative (faster, SQLite)
-├── package.json                # Dependencies
+├── database.js                  # SQLite persistence
+├── acp-launcher.js              # Agent management
+├── bin/gmgui.cjs                # npm entry point
 ├── static/
-│   ├── index.html             # Main UI
-│   ├── app.js                 # Frontend logic
-│   ├── styles.css             # Responsive styles
-│   ├── skills.js              # Display skills
-│   ├── agent-discovery.js     # Auto-discovery
-│   ├── conversation-history.js # Message history
-│   └── rippleui.css           # CSS framework
-├── README.md                   # This file
-├── QUICKSTART.md              # 5-minute setup
-├── FEATURES.md                # Detailed features
-└── TESTING.md                 # Testing guide
+│   ├── index.html              # Main UI
+│   ├── app.js                  # Frontend logic
+│   ├── styles.css              # Responsive styles
+│   ├── theme.js                # Theme management
+│   └── rippleui.css            # CSS framework
+├── install.sh                   # One-liner installer
+├── package.json                 # Dependencies
+└── README.md                    # This file
 ```
 
 ## Development
 
-### Enable Hot Reload
+### Enable Hot Reload (during development)
 ```bash
 npm run dev
 ```
 Changes to `static/` files auto-refresh the browser.
 
-### Test File Upload
-```bash
-curl -F "file=@test.txt" http://localhost:3000/api/upload
-```
-
-### Test Screenshot Endpoint
-```bash
-curl -X POST http://localhost:3000/api/screenshot
-```
-
-## Performance
-
-- **Startup**: ~100ms
-- **No build step**: Instant development
-- **Binary messaging**: MessagePack reduces payload size by 50%
-- **WebSocket**: <50ms latency for real-time updates
-- **Memory**: ~20MB typical usage
-- **Throughput**: 1000+ messages/second
-
 ## Browser Support
 
+Works on all modern browsers:
 - Chrome/Edge 63+
 - Firefox 55+
 - Safari 11+
-- All modern mobile browsers
+- Mobile browsers (iOS Safari, Chrome Mobile, etc.)
 
-## Testing
+## Performance
 
-Run comprehensive tests:
-```bash
-npm run test:integration
-```
+- **Fast Startup**: ~100ms with bun, ~500ms with node
+- **No Build Step**: Source code runs directly
+- **Efficient Messaging**: MessagePack reduces payload size by 50%
+- **Real-time Updates**: <50ms WebSocket latency
+- **Memory Efficient**: ~20MB typical usage
 
-See [TESTING.md](TESTING.md) for detailed testing instructions.
-
-## Bun Support (Recommended for Speed)
-
-The project fully supports Bun with automatic SQLite persistence:
-
-```bash
-# Start gmgui - Bun is auto-detected if installed
-curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
-```
-
-If Bun is not installed, the script automatically uses Node.js instead.
-
-Benefits when Bun is installed:
-- 3-4x faster startup than Node.js
-- Native SQLite database (data.db)
-- Automatic detection - no special commands needed
-- Same API interface, zero code changes
-
-To install Bun for maximum performance:
-```bash
-curl -fsSL https://bun.sh/install | bash
-```
+The installer automatically uses Bun if available (3-4x faster than Node.js), otherwise falls back to Node.js.
 
 ## Troubleshooting
 
-### Port Already in Use
+**Port Already in Use**
 ```bash
-PORT=3001 npm start
+PORT=3001 curl -fsSL https://raw.githubusercontent.com/AnEntrypoint/gmgui/main/install.sh | bash
 ```
 
-### Agent Won't Connect
-1. Verify agent endpoint is accessible: `curl ws://endpoint`
-2. Check browser console for WebSocket errors
-3. Ensure agent is sending valid ACP messages
+**Agent Won't Connect**
+- Verify agent endpoint is accessible
+- Check browser console for errors
+- Ensure agent is sending valid ACP messages
 
-### Files Not Uploading
-1. Check browser console for errors
-2. Verify `/tmp/gmgui-conversations` directory exists
-3. Ensure sufficient disk space
-
-### Screenshot Not Working
-1. Verify scrot is installed: `which scrot`
-2. Check X11/Wayland display is available
-3. System may require `DISPLAY=:0` environment variable
+**Files Not Uploading**
+- Check browser console for errors
+- Verify sufficient disk space available
 
 ## Security
 
 - Path traversal protection on file uploads
-- CORS headers configured properly
-- No sensitive data in logs
 - WebSocket message validation
 - File upload restrictions
+- No sensitive data in logs
 
 ## License
 
 MIT - Free to use, modify, and distribute
 
-## Getting Help
+## Need Help?
 
-- Check [QUICKSTART.md](QUICKSTART.md) for setup issues
-- Review [FEATURES.md](FEATURES.md) for capability details
-- See [TESTING.md](TESTING.md) for testing instructions
-- Open an issue on GitHub for bugs
+Open an issue on GitHub: https://github.com/AnEntrypoint/gmgui/issues
 
 ---
 
