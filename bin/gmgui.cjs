@@ -5,28 +5,41 @@ const fs = require('fs');
 
 const projectRoot = path.join(__dirname, '..');
 
+function hasBun() {
+  try {
+    spawnSync('which', ['bun'], { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function gmgui(args = []) {
   const command = args[0] || 'start';
 
   if (command === 'start') {
+    const useBun = hasBun();
+    const installer = useBun ? 'bun' : 'npm';
+
     // Ensure dependencies are installed
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
     if (!fs.existsSync(nodeModulesPath)) {
-      console.log('Installing dependencies...');
-      const installResult = spawnSync('npm', ['install'], {
+      console.log(`Installing dependencies with ${installer}...`);
+      const installResult = spawnSync(installer, ['install'], {
         cwd: projectRoot,
         stdio: 'inherit'
       });
       if (installResult.status !== 0) {
-        throw new Error(`npm install failed with code ${installResult.status}`);
+        throw new Error(`${installer} install failed with code ${installResult.status}`);
       }
     }
 
     const port = process.env.PORT || 3000;
     const baseUrl = process.env.BASE_URL || '/gm';
+    const runtime = useBun ? 'bun' : 'node';
 
     return new Promise((resolve, reject) => {
-      const ps = spawn('node', [path.join(projectRoot, 'server.js')], {
+      const ps = spawn(runtime, [path.join(projectRoot, 'server.js')], {
         cwd: projectRoot,
         env: { ...process.env, PORT: port, BASE_URL: baseUrl },
         stdio: 'inherit'
