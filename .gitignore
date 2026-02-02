@@ -13,3 +13,4 @@ build/
 .code-search/
 .glootie-stop-verified
 bun.lock
+tmp/
