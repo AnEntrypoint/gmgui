@@ -420,20 +420,24 @@ class GMGUIApp {
   async deleteConversation(id) {
     try {
       const res = await fetch(`${BASE_URL}/api/conversations/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        console.error('deleteConversation failed:', res.status);
+        return;
+      }
+      this.conversations.delete(id);
+      if (this.currentConversation === id) {
+        this.currentConversation = null;
+        const first = Array.from(this.conversations.values())[0];
+        if (first) {
+          this.displayConversation(first.id);
+        } else {
+          this.showWelcome();
+        }
+      }
+      this.renderChatHistory();
     } catch (e) {
       console.error('deleteConversation:', e);
     }
-    this.conversations.delete(id);
-    if (this.currentConversation === id) {
-      this.currentConversation = null;
-      const first = Array.from(this.conversations.values())[0];
-      if (first) {
-        this.displayConversation(first.id);
-      } else {
-        this.showWelcome();
-      }
-    }
-    this.renderChatHistory();
   }
 
   showWelcome() {

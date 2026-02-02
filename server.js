@@ -126,6 +126,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'DELETE') {
         const deleted = queries.deleteConversation(convMatch[1]);
         if (!deleted) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Not found' })); return; }
+        broadcastSync({ type: 'conversation_deleted', conversationId: convMatch[1] });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ deleted: true }));
         return;

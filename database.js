@@ -30,7 +30,7 @@ try {
 }
 
 function initSchema() {
-  db.run(`
+  db.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
       agentId TEXT NOT NULL,
@@ -38,13 +38,11 @@ function initSchema() {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       status TEXT DEFAULT 'active'
-    )
-  `);
+    );
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_conversations_agent ON conversations(agentId)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC)`);
+    CREATE INDEX IF NOT EXISTS idx_conversations_agent ON conversations(agentId);
+    CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       conversationId TEXT NOT NULL,
@@ -52,12 +50,10 @@ function initSchema() {
       content TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       FOREIGN KEY (conversationId) REFERENCES conversations(id)
-    )
-  `);
+    );
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversationId)`);
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversationId);
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       conversationId TEXT NOT NULL,
@@ -67,13 +63,11 @@ function initSchema() {
       response TEXT,
       error TEXT,
       FOREIGN KEY (conversationId) REFERENCES conversations(id)
-    )
-  `);
+    );
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversationId)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(conversationId, status)`);
+    CREATE INDEX IF NOT EXISTS idx_sessions_conversation ON sessions(conversationId);
+    CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(conversationId, status);
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS events (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -83,21 +77,19 @@ function initSchema() {
       created_at INTEGER NOT NULL,
       FOREIGN KEY (conversationId) REFERENCES conversations(id),
       FOREIGN KEY (sessionId) REFERENCES sessions(id)
-    )
-  `);
+    );
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_events_conversation ON events(conversationId)`);
+    CREATE INDEX IF NOT EXISTS idx_events_conversation ON events(conversationId);
 
-  db.run(`
     CREATE TABLE IF NOT EXISTS idempotencyKeys (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       created_at INTEGER NOT NULL,
       ttl INTEGER NOT NULL
-    )
-  `);
+    );
 
-  db.run(`CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotencyKeys(created_at)`);
+    CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotencyKeys(created_at);
+  `);
 }
 
 function migrateFromJson() {
@@ -395,10 +387,10 @@ export const queries = {
     const conv = this.getConversation(id);
     if (!conv) return false;
 
-    db.run('DELETE FROM messages WHERE conversationId = ?', [id]);
-    db.run('DELETE FROM sessions WHERE conversationId = ?', [id]);
-    db.run('DELETE FROM events WHERE conversationId = ?', [id]);
-    db.run('DELETE FROM conversations WHERE id = ?', [id]);
+    db.prepare('DELETE FROM events WHERE conversationId = ?').run(id);
+    db.prepare('DELETE FROM sessions WHERE conversationId = ?').run(id);
+    db.prepare('DELETE FROM messages WHERE conversationId = ?').run(id);
+    db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
 
     return true;
   },
@@ -406,14 +398,11 @@ export const queries = {
   cleanup() {
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
 
-    db.run('DELETE FROM events WHERE created_at < ?', [thirtyDaysAgo]);
-    db.run(
-      'DELETE FROM sessions WHERE completed_at IS NOT NULL AND completed_at < ?',
-      [thirtyDaysAgo]
-    );
+    db.prepare('DELETE FROM events WHERE created_at < ?').run(thirtyDaysAgo);
+    db.prepare('DELETE FROM sessions WHERE completed_at IS NOT NULL AND completed_at < ?').run(thirtyDaysAgo);
 
     const now = Date.now();
-    db.run('DELETE FROM idempotencyKeys WHERE (created_at + ttl) < ?', [now]);
+    db.prepare('DELETE FROM idempotencyKeys WHERE (created_at + ttl) < ?').run(now);
   },
 
   setIdempotencyKey(key, value) {
