@@ -454,6 +454,25 @@ class GMGUIApp {
     this.renderAgentCards();
   }
 
+  groupConsecutiveMessages(messages) {
+    if (!messages.length) return [];
+    const grouped = [];
+    let current = { ...messages[0], content: typeof messages[0].content === 'string' ? messages[0].content : messages[0].content };
+    for (let i = 1; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role === current.role && msg.role === 'assistant') {
+        const curText = typeof current.content === 'string' ? current.content : (current.content?.text || '');
+        const msgText = typeof msg.content === 'string' ? msg.content : (msg.content?.text || '');
+        current = { ...current, content: curText + '\n\n' + msgText };
+      } else {
+        grouped.push(current);
+        current = { ...msg };
+      }
+    }
+    grouped.push(current);
+    return grouped;
+  }
+
   async displayConversation(id) {
     this.currentConversation = id;
     const conv = this.conversations.get(id);
@@ -479,7 +498,8 @@ class GMGUIApp {
       `;
       this.renderAgentCards();
     } else {
-      messages.forEach(msg => this.addMessageToDisplay(msg));
+      const grouped = this.groupConsecutiveMessages(messages);
+      grouped.forEach(msg => this.addMessageToDisplay(msg));
 
       if (this.settings.autoScroll) {
         div.scrollTop = div.scrollHeight;

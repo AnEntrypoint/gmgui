@@ -1,7 +1,11 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const CLAUDE_BIN = '/home/user/.local/bin/claude';
+const API_KEY_PATH = path.join(os.homedir(), '.claude', 'oauth-api-key');
+const API_URL = 'https://api.anthropic.com/v1/messages';
 
 const RIPPLEUI_SYSTEM_PROMPT = `ALWAYS respond with HTML using RippleUI components. The chat renders HTML. Use: cards (class='card'), alerts (class='alert alert-info'), tables (class='table table-zebra'), badges (class='badge badge-primary'), buttons (class='btn btn-primary'). Wrap all responses in styled HTML with Tailwind CSS utility classes for layout.
 
@@ -214,84 +218,63 @@ export default class ACPConnection {
     return this.sendRequest('session/prompt', { sessionId: this.sessionId, prompt: promptContent }, 300000);
   }
 
-  _sendPrintPrompt(prompt) {
+  async _sendPrintPrompt(prompt) {
     const text = typeof prompt === 'string' ? prompt : (Array.isArray(prompt) ? prompt.map(p => p.text || '').join('\n') : String(prompt));
+    let apiKey;
+    try { apiKey = fs.readFileSync(API_KEY_PATH, 'utf-8').trim(); }
+    catch (e) { throw new Error('No API key found at ' + API_KEY_PATH); }
 
-    return new Promise((resolve, reject) => {
-      const args = [
-        '-p',
-        '--output-format', 'stream-json',
-        '--verbose',
-        '--model', 'sonnet',
-        '--dangerously-skip-permissions',
-        '--no-session-persistence',
-        '--append-system-prompt', RIPPLEUI_SYSTEM_PROMPT,
-        text
-      ];
-
-      const env = { ...process.env };
-      delete env.NODE_OPTIONS;
-      delete env.NODE_INSPECT;
-      delete env.NODE_DEBUG;
-
-      const child = spawn(CLAUDE_BIN, args, {
-        cwd: this.cwd,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env
-      });
-
-      let buffer = '';
-      let fullText = '';
-      let resultData = null;
-
-      child.stdout.setEncoding('utf8');
-      child.stdout.on('data', data => {
-        buffer += data;
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const parsed = JSON.parse(line);
-            this._handleStreamJson(parsed, t => { fullText += t; });
-            if (parsed.type === 'result') resultData = parsed;
-          } catch (_) {}
-        }
-      });
-
-      child.stderr.on('data', d => console.error('[claude-print:stderr]', d.toString().trim()));
-      child.on('error', err => reject(new Error(`claude --print spawn error: ${err.message}`)));
-
-      child.on('close', code => {
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer);
-            this._handleStreamJson(parsed, t => { fullText += t; });
-            if (parsed.type === 'result') resultData = parsed;
-          } catch (_) {}
-        }
-        if (code !== 0 && !fullText) {
-          reject(new Error(`claude --print exited with code ${code}`));
-          return;
-        }
-        resolve({ stopReason: resultData?.subtype || 'end_turn', result: resultData?.result || fullText });
-      });
-
-      child.stdin.end();
+    const body = JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: RIPPLEUI_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: text }],
+      stream: true,
     });
-  }
 
-  _handleStreamJson(parsed, appendText) {
-    if (parsed.type === 'assistant' && parsed.message?.content) {
-      for (const block of parsed.message.content) {
-        if (block.type === 'text' && block.text) {
-          appendText(block.text);
-          if (this.onUpdate) {
-            this.onUpdate({ update: { sessionUpdate: 'agent_message_chunk', content: { text: block.text } } });
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Anthropic API ${res.status}: ${errText.substring(0, 200)}`);
+    }
+
+    let fullText = '';
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6);
+        if (data === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(data);
+          if (evt.type === 'content_block_delta' && evt.delta?.text) {
+            fullText += evt.delta.text;
+            if (this.onUpdate) {
+              this.onUpdate({ update: { sessionUpdate: 'agent_message_chunk', content: { text: evt.delta.text } } });
+            }
           }
-        }
+        } catch (_) {}
       }
     }
+
+    return { stopReason: 'end_turn', result: fullText };
   }
 
   isRunning() {
