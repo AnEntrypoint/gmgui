@@ -219,11 +219,12 @@ export const queries = {
 
     const id = generateId('msg');
     const now = Date.now();
+    const storedContent = typeof content === 'string' ? content : JSON.stringify(content);
 
     const stmt = db.prepare(
       `INSERT INTO messages (id, conversationId, role, content, created_at) VALUES (?, ?, ?, ?, ?)`
     );
-    stmt.run(id, conversationId, role, content, now);
+    stmt.run(id, conversationId, role, storedContent, now);
 
     const updateConvStmt = db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?');
     updateConvStmt.run(now, conversationId);
@@ -292,7 +293,8 @@ export const queries = {
     if (!session) return null;
 
     const status = data.status !== undefined ? data.status : session.status;
-    const response = data.response !== undefined ? data.response : session.response;
+    const rawResponse = data.response !== undefined ? data.response : session.response;
+    const response = rawResponse && typeof rawResponse === 'object' ? JSON.stringify(rawResponse) : rawResponse;
     const error = data.error !== undefined ? data.error : session.error;
     const completed_at = data.completed_at !== undefined ? data.completed_at : session.completed_at;
 
