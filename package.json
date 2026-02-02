@@ -8,6 +8,14 @@
     "gmgui": "./bin/gmgui.cjs",
     "start": "./bin/gmgui.cjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnEntrypoint/agentgui.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AnEntrypoint/agentgui/issues"
+  },
+  "homepage": "https://github.com/AnEntrypoint/agentgui#readme",
   "scripts": {
     "start": "node server.js",
     "start:bun": "bun run server-bun.js",
