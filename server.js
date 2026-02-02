@@ -330,7 +330,7 @@ async function processMessage(conversationId, messageId, sessionId, content, age
     const result = await conn.sendPrompt(content);
     conn.onUpdate = null;
 
-    const responseText = fullText || (result?.stopReason ? `Completed: ${result.stopReason}` : 'No response.');
+    const responseText = fullText || result?.result || (result?.stopReason ? `Completed: ${result.stopReason}` : 'No response.');
     const messageContent = blocks.length > 0 ? { text: responseText, blocks } : responseText;
 
     const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
