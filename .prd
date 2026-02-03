@@ -1,48 +1,25 @@
 # agentgui Work Items
 
-## SUMMARY
-- ✅ Phase 1: Claude Code Conversation Import - COMPLETE (90 conversations imported)
-- 🔄 Phase 2-3: OpenCode Integration - BLOCKED (no persistent conversation storage found)
-- ⚠️ Issue #1: Conversation timeout - INVESTIGATED (API performance issue deferred)
-- ✅ Issue #2: Message input - VERIFIED (Form is properly wired)
-- 📋 10/12 Test categories remain (systematic execution needed)
+## REMAINING WORK
 
-## ACTIVE 🔄
-
-### Phase 2: OpenCode Integration (PRIORITY 2)
-**User Request:** Import all OpenCode conversations and keep them in sync
-
-**Investigation Result:**
-- OpenCode does NOT store persistent conversation history like Claude Code
+### Phase 2: OpenCode Integration (BLOCKED - No Persistent Storage)
+**Investigation:** OpenCode does NOT store persistent conversation history.
 - ~/.config/opencode/opencode.json contains only MCP server config
 - No sessions-index.json or history.jsonl found in OpenCode directories
-- OpenCode may not persist conversations to filesystem
+- Recommendation: Document as limitation, defer until OpenCode SDK provides conversation API
 
-**Options:**
-- [ ] Option A: Implement OpenCode CLI integration to query conversations at runtime (requires OpenCode SDK/API)
-- [ ] Option B: Focus on Claude Code import (already complete) and document OpenCode limitation
-- [ ] Option C: Create placeholder for future OpenCode support when SDK is available
-
-**Tasks (waiting for approach decision):**
-- [ ] Implement OpenCode history loader (if feasible)
-- [ ] Merge both sources in database
-- [ ] Display merged history in sidebar
-- [ ] Support agent type filtering
-
-### Phase 3: Sync & Consistency (PRIORITY 3)
+### Phase 3: Sync & Consistency (BLOCKED - Depends on Phase 2)
 - [ ] File watchers for history changes
 - [ ] Auto-import new conversations from CLI
 - [ ] Keep GUI database in sync with filesystem
-- [ ] Handle conflicts (same conversation in both systems)
+- [ ] Handle conflicts
 - [ ] Implement read-only mode for imported conversations
 
-## ISSUES TO FIX ⚠️
-
-**Issue #1: Timeout on Conversation Selection (DEFERRED)**
-- Root cause: displayConversation() calls fetchMessages() API (/static/app.js line 762)
-- Likely cause: Slow or failing API call to /api/conversations/{id}/messages
-- Deferred: Requires backend performance optimization
-- Can test once backend is responsive
+### Issue #1: Conversation Selection Timeout (DEFERRED)
+- Root cause identified: fetchMessages() API performance issue
+- Location: /static/app.js line 762
+- Deferred: Requires backend API optimization
+- Status: Can test once backend is responsive
 
 ## Test Categories Remaining (10 of 12)
 - [ ] Category 2: Real-Time Streaming with Persistence
