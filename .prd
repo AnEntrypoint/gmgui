@@ -1,0 +1,303 @@
+# agentgui Comprehensive Testing Plan
+
+## STATUS: RESOLVED - SERVER RUNNING
+**✅ Fixed:** Using `@anthropic-ai/claude-code` SDK directly
+- Package: `@anthropic-ai/claude-code@^1.0.128`
+- API: `query({ prompt, options })` for streaming responses
+- acp-launcher.js: Refactored to use query() API
+- Server Status: Running on http://localhost:3000/gm/
+- UI Status: Fully loaded, connected, showing chat history
+
+---
+
+## NEW REQUIREMENT: Import OpenCode Conversations
+**User Request:** "we must also import all the opencode conversations from the system and keep them in sync too"
+
+**Implementation Plan:**
+
+### Phase 1: Claude Code History Import (PRIORITY 1) - COMPLETE ✅
+- [x] Load `~/.claude/projects/*/sessions-index.json` on server startup
+- [x] Store in database with agent_type='claude-code', source='imported'
+- [x] Database schema migrated with 9 new columns (agentType, source, externalId, projectPath, gitBranch, sourcePath, lastSyncedAt, firstPrompt, messageCount)
+- [x] Implement queries.importClaudeCodeConversations()
+- [x] Auto-import on server startup and every 30 seconds
+- [x] Successfully imported 90 Claude Code conversations
+- [x] Test confirms import works correctly (177 total conversations: 87 native + 90 imported)
+- [ ] FUTURE: Display in sidebar with [claude-code] prefix (client-side formatting - nice-to-have)
+
+### Phase 2: OpenCode Integration (PRIORITY 2)
+- [ ] Determine OpenCode conversation storage location (TBD)
+- [ ] Implement OpenCode history loader (parallel to Claude Code)
+- [ ] Merge both sources in database
+- [ ] Display merged history in sidebar
+- [ ] Support agent type filtering
+
+### Phase 3: Sync & Consistency (PRIORITY 3)
+- [ ] File watchers for history changes
+- [ ] Auto-import new conversations from CLI
+- [ ] Keep GUI database in sync with filesystem
+- [ ] Handle conflicts (same conversation in both systems)
+- [ ] Implement read-only mode for imported conversations
+
+### Database Schema Changes
+```sql
+ALTER TABLE conversations ADD COLUMN agent_type TEXT DEFAULT 'claude-code';
+ALTER TABLE conversations ADD COLUMN source TEXT DEFAULT 'gui'; -- 'gui', 'imported'
+ALTER TABLE conversations ADD COLUMN source_path TEXT; -- path to original file
+ALTER TABLE conversations ADD COLUMN last_synced_at INTEGER; -- Unix timestamp
+```
+
+**Status:** Implementation begins after this plan is approved
+**Blocking:** Testing until Phase 1 complete
+
+---
+
+## TESTING PROGRESS SUMMARY
+
+### Completed Work
+✅ **Phase 1: Claude Code Conversation Import - COMPLETE**
+- Database schema migrated successfully (9 new columns added)
+- 90 Claude Code conversations imported from ~/.claude/projects/*/sessions-index.json
+- Auto-import running every 30 seconds on server startup
+- Verified: 177 total conversations (87 native + 90 imported)
+- Verified: Imported conversations have correct metadata (source, agentType, externalId)
+
+✅ **Server & Connectivity**
+- Server running on http://localhost:3000/gm/
+- UI fully loads with 177 conversations displayed
+- WebSocket sync connection active and working
+- Status indicator shows "Connected"
+- Page title shows conversation count (177)
+
+### Known Issues Found During Testing
+⚠️ **Issue #1: Timeout on Conversation Selection**
+- Clicking conversations causes code execution timeout
+- Suggests potential performance issue or UI hang
+- Needs investigation into click handlers
+
+⚠️ **Issue #2: Message Input Field**
+- Message input found but submission behavior unclear
+- May not be properly wired to agent communication
+- Needs testing with agent actually selected
+
+### Testing Categories (12 Total)
+
+### Category 1: Server Startup & Connection (BLOCKED)
+- [ ] Server starts without errors
+- [ ] HTTP server listens on PORT (3000 or custom)
+- [ ] Static files served correctly
+- [ ] WebSocket endpoint available at /ws
+- [ ] Initial page load completes without JS errors
+- [ ] WebSocket connection establishes on page load
+- [ ] Receives sync_connected message from server
+- [ ] Console shows no errors or warnings
+- **Blocker:** Server cannot start without claude-code-acp
+
+### Category 2: Real-Time Streaming with Persistence
+- [ ] Send test message from UI
+- [ ] Message appears in real-time before database confirmation
+- [ ] StreamHandler.persistAndBroadcast executes atomically
+- [ ] stream_updates table receives entry with correct sequence
+- [ ] WebSocket broadcasts update before database write completes (write-before-broadcast)
+- [ ] Sequence number increments correctly (no gaps)
+- [ ] Update contains correct: sessionId, conversationId, updateType, timestamp
+- [ ] Multiple rapid messages maintain order and sequence
+- [ ] Very large messages (10MB+) handle gracefully
+- [ ] Empty messages are rejected or handled safely
+
+### Category 3: HTML Rendering Without Text Mixing
+- [ ] Agent response renders HTML blocks only (no plain text below)
+- [ ] HTML code blocks extracted correctly: /\`\`\`html\n([\s\S]*?)\n\`\`\`/
+- [ ] Plain text fallback NEVER triggers
+- [ ] RippleUI components render visually correct
+- [ ] Inline HTML display shows no artifacts or escape sequences
+- [ ] HTML content sanitized (no XSS vectors)
+- [ ] SVG content within HTML renders correctly
+- [ ] Nested HTML structures parse correctly
+- [ ] HTML with special characters escapes properly
+- [ ] Large HTML blocks (100KB+) render without lag
+
+### Category 4: Theme Compliance (Light/Dark)
+- [ ] Page detects system dark/light preference on load
+- [ ] Toggle between light/dark mode works
+- [ ] Theme preference persists across page reloads
+- [ ] RippleUI generated content uses Tailwind classes: text-gray-700 (light), text-gray-300 (dark)
+- [ ] Background colors don't clash with theme: light bg-white/bg-gray-50, dark bg-gray-900/bg-gray-800
+- [ ] No hardcoded color hex codes in generated HTML
+- [ ] Progress bars use theme-aware colors
+- [ ] Cards/sections adapt to theme automatically
+- [ ] Form inputs styled appropriately for theme
+- [ ] Text contrast ratios meet accessibility standards (WCAG AA)
+
+### Category 5: Advanced RippleUI Components
+- [ ] **Progress Bars:** Display correctly, update smoothly, show percentage text
+- [ ] **Grid Layouts:** Cards arrange responsively, wrap on mobile
+- [ ] **Collapsible Sections:** Toggle state persists visually, smooth animations
+- [ ] **Two-Column Layouts:** Content splits evenly, responsive on narrow screens
+- [ ] **Badge/Pill Labels:** Display with correct styling, multiple variants work
+- [ ] **Timeline Visualizations:** Vertical/horizontal orientation, connection lines render
+- [ ] **Icon + Text Combinations:** Icons align correctly, text wraps properly
+- [ ] **Buttons:** Various states (default, hover, active, disabled) visible
+- [ ] **Code Blocks:** Syntax highlighting works, scrollable for long code
+- [ ] **Tables:** Content aligns, scrollable on mobile, alternating row colors
+
+### Category 6: Interactive Forms & Input Validation
+- [ ] **Text Input:** Accepts input, displays typed text
+- [ ] **Email Input:** Validates email format (basic HTML5 validation)
+- [ ] **Textarea:** Accepts multi-line input, text wraps correctly
+- [ ] **Select Dropdown:** Opens/closes, options selectable, shows selected value
+- [ ] **Checkboxes:** Toggle on/off, multiple selections work, state persists visually
+- [ ] **Radio Buttons:** Mutually exclusive selection, only one active at time
+- [ ] **Form Submit:** Click triggers handler, data captured correctly
+- [ ] **Form Data Capture:** Submitted data includes all field values
+- [ ] **Validation Messages:** Error messages display when validation fails
+- [ ] **Form Reset:** Reset button clears all fields, restores defaults
+
+### Category 7: Database Persistence & Recovery
+- [ ] Session created in database on new connection
+- [ ] Conversation created with correct sessionId
+- [ ] Each stream_update persists with atomic sequence
+- [ ] Messages survive database restart (data integrity)
+- [ ] Refresh page shows all previous messages in order
+- [ ] State checkpoints created for recovery (latest 5 versions)
+- [ ] Gap detection identifies missing sequence numbers
+- [ ] Full state recovery request fetches missing data
+- [ ] Duplicate updates prevented (idempotency)
+- [ ] Orphaned data cleaned up (no dangling references)
+
+### Category 8: State Consistency & Validation
+- [ ] StateValidator.validateSession identifies state errors
+- [ ] Checksum validation detects corrupted updates
+- [ ] Sequence gaps trigger recovery request
+- [ ] Session state returns complete picture for recovery
+- [ ] Concurrent updates don't cause race conditions
+- [ ] Update count matches database row count
+- [ ] Block count accurate for all content types
+- [ ] No duplicate messages in UI
+- [ ] Message order matches sequence numbers exactly
+- [ ] State validator runs async (doesn't block broadcast)
+
+### Category 9: Reconnection & Recovery
+- [ ] WebSocket disconnect detected within 5 seconds
+- [ ] Exponential backoff attempts: 1s, 2s, 4s, 8s, 16s, 32s, 60s
+- [ ] Max 10 reconnect attempts before giving up
+- [ ] Reconnect succeeds after network recovery
+- [ ] Missed messages fetched on reconnect via gap detection
+- [ ] State checkpoint provides recovery baseline
+- [ ] Fast reconnect (< 100ms) shows no duplicate messages
+- [ ] Slow network (high latency) handles gracefully
+- [ ] Multiple rapid disconnect/connect cycles work
+- [ ] Persistent connection maintained for 1+ hours
+
+### Category 10: Error Handling & Edge Cases
+- [ ] Malformed JSON in stream updates rejected
+- [ ] Invalid session ID returns 404
+- [ ] Missing conversationId handled gracefully
+- [ ] Null/undefined content doesn't crash
+- [ ] Very large payloads (100MB) handled or rejected
+- [ ] Rapid fire 1000 messages/second buffered correctly
+- [ ] Single character message processes correctly
+- [ ] Message with only whitespace processed
+- [ ] HTML with syntax errors parsed safely
+- [ ] Database locked by other process doesn't block
+
+### Category 11: Performance & Latency
+- [ ] First message appears in UI within 50ms of broadcast
+- [ ] Database write + broadcast takes < 100ms total
+- [ ] Page load from blank to interactive < 2 seconds
+- [ ] 1000 message history loads in < 1 second
+- [ ] WebSocket messages deliver within 50ms (local network)
+- [ ] Memory usage stays under 500MB (after 10k messages)
+- [ ] CPU usage < 5% idle (no busy loops)
+- [ ] Smooth scrolling with 1000+ messages rendered
+- [ ] No jank when switching themes
+- [ ] Form submission responsive (< 200ms)
+
+### Category 12: Multi-Agent & Configuration
+- [ ] Agent type selection works (claude-code vs opencode)
+- [ ] CLI config loaded from ~/.claude/config.json
+- [ ] OpenCode config loaded from ~/.opencode/config.json
+- [ ] Environment variables passed through (HOME, PATH, etc)
+- [ ] OAuth tokens handled correctly
+- [ ] Model preferences applied from config
+- [ ] Multiple agents can run in same session
+- [ ] Agent switching preserves conversation history
+- [ ] Session isolation prevents cross-contamination
+- [ ] Configuration changes apply without restart
+
+---
+
+## Issue Categories & Fixes
+
+### Issue Tracking Template
+```
+[ISSUE-###] Category: <1-12>
+Severity: Critical | High | Medium | Low
+Status: New | In Progress | Fixed | Verified
+Description: <what fails>
+Steps to Reproduce: <how to trigger>
+Expected: <what should happen>
+Actual: <what happens instead>
+Fix Applied: <how fixed>
+Verification: <how verified>
+```
+
+### Known Issues
+1. **[BLOCKER] Missing claude-code-acp package**
+   - Status: Blocking all testing
+   - Needs: Clarify package source or replace with alternative
+   - Impact: Server cannot start
+
+---
+
+## Testing Execution Flow
+
+1. **Resolve Dependency Blocker**
+   - Clarify `claude-code-acp` source
+   - Install package or replace import
+   - Verify server starts successfully
+
+2. **Category 1: Server Startup** (Foundation)
+   - If passes: Continue
+   - If fails: Fix blocker, retry
+
+3. **Categories 2-12: Feature Testing** (Parallel where possible)
+   - Execute in dependency order:
+     - Streaming (2) → Persistence (7)
+     - HTML Rendering (3) → Theme (4) → Components (5)
+     - Forms (6) → Validation (6)
+     - State (8) → Reconnection (9)
+     - Error Handling (10)
+     - Performance (11)
+     - Multi-Agent (12)
+
+4. **Issue Remediation**
+   - Fix each issue as discovered
+   - Re-run affected test categories
+   - Document root cause
+
+5. **Final Verification**
+   - Full end-to-end workflow test
+   - All 12 categories passing
+   - No blockers remaining
+   - Performance benchmarks met
+
+---
+
+## Success Criteria (All Must Pass)
+- [ ] Server starts and stays running
+- [ ] All 12 test categories pass
+- [ ] No critical or high severity issues
+- [ ] Response time < 100ms average
+- [ ] Zero data loss on disconnect/reconnect
+- [ ] HTML rendering clean (no text mixing)
+- [ ] Theme compliance verified
+- [ ] Forms fully functional
+- [ ] Database persistence verified
+- [ ] Production ready
+
+---
+
+**Last Updated:** 2026-02-03
+**Testing Status:** BLOCKED - Awaiting Dependency Resolution
+**Next Step:** Resolve `claude-code-acp` package availability

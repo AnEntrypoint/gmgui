@@ -30,6 +30,7 @@ try {
 }
 
 function initSchema() {
+  // Create table with minimal schema - columns will be added by migration
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       id TEXT PRIMARY KEY,
@@ -182,6 +183,45 @@ function migrateFromJson() {
 
 initSchema();
 migrateFromJson();
+
+// Migration: Add imported conversation columns if they don't exist
+try {
+  const result = db.prepare("PRAGMA table_info(conversations)").all();
+  const columnNames = result.map(r => r.name);
+  const requiredColumns = {
+    agentType: 'TEXT DEFAULT "claude-code"',
+    source: 'TEXT DEFAULT "gui"',
+    externalId: 'TEXT',
+    firstPrompt: 'TEXT',
+    messageCount: 'INTEGER DEFAULT 0',
+    projectPath: 'TEXT',
+    gitBranch: 'TEXT',
+    sourcePath: 'TEXT',
+    lastSyncedAt: 'INTEGER'
+  };
+
+  let addedColumns = false;
+  for (const [colName, colDef] of Object.entries(requiredColumns)) {
+    if (!columnNames.includes(colName)) {
+      db.exec(`ALTER TABLE conversations ADD COLUMN ${colName} ${colDef}`);
+      console.log(`[Migration] Added column ${colName} to conversations table`);
+      addedColumns = true;
+    }
+  }
+
+  // Add indexes for new columns
+  if (addedColumns) {
+    try {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_external ON conversations(externalId)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_agent_type ON conversations(agentType)`);
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_conversations_source ON conversations(source)`);
+    } catch (e) {
+      console.warn('[Migration] Index creation warning:', e.message);
+    }
+  }
+} catch (err) {
+  console.error('[Migration] Error:', err.message);
+}
 
 function generateId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -660,6 +700,111 @@ export const queries = {
   clearSessionStreamUpdates(sessionId) {
     const stmt = db.prepare('DELETE FROM stream_updates WHERE sessionId = ?');
     stmt.run(sessionId);
+  },
+
+  createImportedConversation(data) {
+    const id = generateId('conv');
+    const now = Date.now();
+    const stmt = db.prepare(
+      `INSERT INTO conversations (
+        id, agentId, title, created_at, updated_at, status,
+        agentType, source, externalId, firstPrompt, messageCount,
+        projectPath, gitBranch, sourcePath, lastSyncedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    stmt.run(
+      id,
+      data.externalId || id,
+      data.title,
+      data.created || now,
+      data.modified || now,
+      'active',
+      data.agentType || 'claude-code',
+      data.source || 'imported',
+      data.externalId,
+      data.firstPrompt,
+      data.messageCount || 0,
+      data.projectPath,
+      data.gitBranch,
+      data.sourcePath,
+      now
+    );
+    return { id, ...data };
+  },
+
+  getConversationByExternalId(agentType, externalId) {
+    const stmt = db.prepare(
+      'SELECT * FROM conversations WHERE agentType = ? AND externalId = ?'
+    );
+    return stmt.get(agentType, externalId);
+  },
+
+  getConversationsByAgentType(agentType) {
+    const stmt = db.prepare(
+      'SELECT * FROM conversations WHERE agentType = ? AND status != ? ORDER BY updated_at DESC'
+    );
+    return stmt.all(agentType, 'deleted');
+  },
+
+  getImportedConversations() {
+    const stmt = db.prepare(
+      'SELECT * FROM conversations WHERE source = ? AND status != ? ORDER BY updated_at DESC'
+    );
+    return stmt.all('imported', 'deleted');
+  },
+
+  importClaudeCodeConversations() {
+    const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+    if (!fs.existsSync(projectsDir)) return [];
+
+    const imported = [];
+    const projects = fs.readdirSync(projectsDir);
+
+    for (const projectName of projects) {
+      const indexPath = path.join(projectsDir, projectName, 'sessions-index.json');
+      if (!fs.existsSync(indexPath)) continue;
+
+      try {
+        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+        const entries = index.entries || [];
+
+        for (const entry of entries) {
+          try {
+            const existing = this.getConversationByExternalId('claude-code', entry.sessionId);
+            if (existing) {
+              imported.push({ status: 'skipped', id: existing.id });
+              continue;
+            }
+
+            this.createImportedConversation({
+              externalId: entry.sessionId,
+              agentType: 'claude-code',
+              title: entry.summary || entry.firstPrompt || `Conversation ${entry.sessionId.slice(0, 8)}`,
+              firstPrompt: entry.firstPrompt,
+              messageCount: entry.messageCount || 0,
+              created: new Date(entry.created).getTime(),
+              modified: new Date(entry.modified).getTime(),
+              projectPath: entry.projectPath,
+              gitBranch: entry.gitBranch,
+              sourcePath: entry.fullPath,
+              source: 'imported'
+            });
+
+            imported.push({
+              status: 'imported',
+              id: entry.sessionId,
+              title: entry.summary || entry.firstPrompt
+            });
+          } catch (err) {
+            console.error(`[DB] Error importing session ${entry.sessionId}:`, err.message);
+          }
+        }
+      } catch (err) {
+        console.error(`[DB] Error reading ${indexPath}:`, err.message);
+      }
+    }
+
+    return imported;
   }
 };
 
