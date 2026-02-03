@@ -62,15 +62,9 @@ export class StreamHandler {
       this.sequence = persistedUpdate.sequence;
       this.updateCount++;
 
-      // Validate consistency after write
-      const validation = StateValidator.validateSession(this.sessionId);
-      if (!validation.valid) {
-        console.error(`[StreamHandler] State validation failed after update:`, validation);
-        // Log but continue - database is still source of truth
-      }
-
       // CRITICAL: Broadcast happens AFTER database write confirms
       // This ensures clients see data that's already persisted
+      // Broadcast immediately with zero delay
       this.broadcastFn({
         type: 'stream_update',
         sessionId: this.sessionId,
@@ -79,8 +73,19 @@ export class StreamHandler {
         update: persistedUpdate.content,
         sequence: this.sequence,
         persisted: true,
-        timestamp: persistedUpdate.created_at,
-        validation: validation.valid ? undefined : { error: validation.error }
+        timestamp: persistedUpdate.created_at
+      });
+
+      // Validate consistency asynchronously (don't block broadcast)
+      setImmediate(() => {
+        try {
+          const validation = StateValidator.validateSession(this.sessionId);
+          if (!validation.valid) {
+            console.error(`[StreamHandler] State validation failed: ${validation.error}`);
+          }
+        } catch (validationErr) {
+          console.error(`[StreamHandler] Validation error: ${validationErr.message}`);
+        }
       });
     } catch (err) {
       console.error(`[StreamHandler] Error persisting update: ${err.message}`);

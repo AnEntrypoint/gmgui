@@ -551,10 +551,10 @@ async function processMessage(conversationId, messageId, sessionId, content, age
     console.error(`[processMessage] State history: ${JSON.stringify(summary, null, 2)}`);
 
   } finally {
-    // Cleanup: remove from state store after completion
-    setTimeout(() => {
+    // Cleanup: remove from state store immediately (async to not block)
+    setImmediate(() => {
       sessionStateStore.remove(sessionId);
-    }, 5000);
+    });
 
     // Log final state
     console.log(`[processMessage] Final state: ${stateManager.getState()}`);
