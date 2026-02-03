@@ -67,13 +67,13 @@ export default class ACPConnection {
       await this.sendRequest('initialize', {
         protocolVersion: 1,
         clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
-      }, 4000);
-      const result = await this.sendRequest('session/new', { cwd, mcpServers: [] }, 4000);
+      }, 10000);
+      const result = await this.sendRequest('session/new', { cwd, mcpServers: [] }, 30000);
       this.sessionId = result.sessionId;
-      await this.sendRequest('session/set_mode', { sessionId: this.sessionId, modeId: 'bypassPermissions' }, 2000);
+      await this.sendRequest('session/set_mode', { sessionId: this.sessionId, modeId: 'bypassPermissions' }, 10000);
     };
 
-    const deadline = new Promise((_, reject) => setTimeout(() => reject(new Error('ACP handshake timeout (5s)')), 5000));
+    const deadline = new Promise((_, reject) => setTimeout(() => reject(new Error('ACP handshake timeout (60s)')), 60000));
 
     try {
       await Promise.race([acpSetup(), deadline]);
