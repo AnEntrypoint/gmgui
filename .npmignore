@@ -11,3 +11,7 @@ __tests__/
 .env
 .env.*
 .git*
+bun.lock
+color-table.html
+test-block.html
+install.sh

@@ -5,8 +5,8 @@
   "type": "module",
   "main": "server.js",
   "bin": {
-    "gmgui": "./bin/gmgui.cjs",
-    "start": "./bin/gmgui.cjs"
+    "agentgui": "./bin/gmgui.cjs",
+    "gmgui": "./bin/gmgui.cjs"
   },
   "repository": {
     "type": "git",
