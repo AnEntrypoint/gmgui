@@ -109,41 +109,52 @@ function migrateFromJson() {
         }
       }
 
-      if (data.messages) {
-        for (const id in data.messages) {
-          const msg = data.messages[id];
-          db.prepare(
-            `INSERT OR REPLACE INTO messages (id, conversationId, role, content, created_at) VALUES (?, ?, ?, ?, ?)`
-          ).run(msg.id, msg.conversationId, msg.role, msg.content, msg.created_at);
-        }
-      }
+       if (data.messages) {
+         for (const id in data.messages) {
+           const msg = data.messages[id];
+           // Ensure content is always a string (stringify objects)
+           const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+           db.prepare(
+             `INSERT OR REPLACE INTO messages (id, conversationId, role, content, created_at) VALUES (?, ?, ?, ?, ?)`
+           ).run(msg.id, msg.conversationId, msg.role, contentStr, msg.created_at);
+         }
+       }
 
-      if (data.sessions) {
-        for (const id in data.sessions) {
-          const sess = data.sessions[id];
-          db.prepare(
-            `INSERT OR REPLACE INTO sessions (id, conversationId, status, started_at, completed_at, response, error) VALUES (?, ?, ?, ?, ?, ?, ?)`
-          ).run(sess.id, sess.conversationId, sess.status, sess.started_at, sess.completed_at || null, sess.response || null, sess.error || null);
-        }
-      }
+       if (data.sessions) {
+         for (const id in data.sessions) {
+           const sess = data.sessions[id];
+           // Ensure response and error are strings, not objects
+           const responseStr = sess.response ? (typeof sess.response === 'string' ? sess.response : JSON.stringify(sess.response)) : null;
+           const errorStr = sess.error ? (typeof sess.error === 'string' ? sess.error : JSON.stringify(sess.error)) : null;
+           db.prepare(
+             `INSERT OR REPLACE INTO sessions (id, conversationId, status, started_at, completed_at, response, error) VALUES (?, ?, ?, ?, ?, ?, ?)`
+           ).run(sess.id, sess.conversationId, sess.status, sess.started_at, sess.completed_at || null, responseStr, errorStr);
+         }
+       }
 
-      if (data.events) {
-        for (const id in data.events) {
-          const evt = data.events[id];
-          db.prepare(
-            `INSERT OR REPLACE INTO events (id, type, conversationId, sessionId, data, created_at) VALUES (?, ?, ?, ?, ?, ?)`
-          ).run(evt.id, evt.type, evt.conversationId || null, evt.sessionId || null, JSON.stringify(evt.data), evt.created_at);
-        }
-      }
+       if (data.events) {
+         for (const id in data.events) {
+           const evt = data.events[id];
+           // Ensure data is always valid JSON string
+           const dataStr = typeof evt.data === 'string' ? evt.data : JSON.stringify(evt.data || {});
+           db.prepare(
+             `INSERT OR REPLACE INTO events (id, type, conversationId, sessionId, data, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+           ).run(evt.id, evt.type, evt.conversationId || null, evt.sessionId || null, dataStr, evt.created_at);
+         }
+       }
 
-      if (data.idempotencyKeys) {
-        for (const key in data.idempotencyKeys) {
-          const entry = data.idempotencyKeys[key];
-          db.prepare(
-            `INSERT OR REPLACE INTO idempotencyKeys (key, value, created_at, ttl) VALUES (?, ?, ?, ?)`
-          ).run(key, JSON.stringify(entry.value), entry.created_at, entry.ttl);
-        }
-      }
+       if (data.idempotencyKeys) {
+         for (const key in data.idempotencyKeys) {
+           const entry = data.idempotencyKeys[key];
+           // Ensure value is always valid JSON string
+           const valueStr = typeof entry.value === 'string' ? entry.value : JSON.stringify(entry.value || {});
+           // Ensure ttl is a number
+           const ttl = typeof entry.ttl === 'number' ? entry.ttl : (entry.ttl ? parseInt(entry.ttl) : null);
+           db.prepare(
+             `INSERT OR REPLACE INTO idempotencyKeys (key, value, created_at, ttl) VALUES (?, ?, ?, ?)`
+           ).run(key, valueStr, entry.created_at, ttl);
+         }
+       }
     });
 
     migrationStmt();

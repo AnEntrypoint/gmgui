@@ -154,10 +154,12 @@ const server = http.createServer(async (req, res) => {
         broadcastSync({ type: 'message_created', conversationId, message });
         const session = queries.createSession(conversationId);
         queries.createEvent('session.created', { messageId: message.id, sessionId: session.id }, conversationId, session.id);
-        res.writeHead(201, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ message, session, idempotencyKey }));
-        processMessage(conversationId, message.id, session.id, body.content, body.agentId, body.folderContext);
-        return;
+         res.writeHead(201, { 'Content-Type': 'application/json' });
+         res.end(JSON.stringify({ message, session, idempotencyKey }));
+         // Fire-and-forget with proper error handling
+         processMessage(conversationId, message.id, session.id, body.content, body.agentId, body.folderContext)
+           .catch(err => console.error('[processMessage] Uncaught error:', err));
+         return;
       }
     }
 
@@ -308,12 +310,15 @@ function serveFile(filePath, res) {
 
 async function processMessage(conversationId, messageId, sessionId, content, agentId, folderContext) {
   try {
+    console.log(`[processMessage] Starting: convId=${conversationId}, agentId=${agentId}, content=${content.substring(0, 50)}`);
     queries.updateSession(sessionId, { status: 'processing' });
     queries.createEvent('session.processing', { sessionId }, conversationId, sessionId);
     broadcastSync({ type: 'session_updated', sessionId, status: 'processing' });
 
     const cwd = folderContext?.path || '/config';
+    console.log(`[processMessage] Getting ACP connection for ${agentId || 'claude-code'}`);
     const conn = await getACP(agentId || 'claude-code', cwd);
+    console.log(`[processMessage] ACP connection acquired`);
 
     let fullText = '';
     const blocks = [];
@@ -335,10 +340,13 @@ async function processMessage(conversationId, messageId, sessionId, content, age
       }
     };
 
+    console.log(`[processMessage] Sending prompt to ACP`);
     const result = await conn.sendPrompt(content);
+    console.log(`[processMessage] Received result: ${result?.stopReason}, fullText length: ${fullText.length}`);
     conn.onUpdate = null;
 
     let responseText = fullText || result?.result || (result?.stopReason ? `Completed: ${result.stopReason}` : 'No response.');
+    console.log(`[processMessage] Response text: ${responseText.substring(0, 100)}`);
     
     // Wrap response in HTML if it's not already
     const isHTML = responseText.trim().startsWith('<');
@@ -371,7 +379,8 @@ async function processMessage(conversationId, messageId, sessionId, content, age
 
     broadcastSync({ type: 'session_updated', sessionId, status: 'completed', message: assistantMessage });
   } catch (e) {
-    console.error('processMessage error:', e.message);
+    console.error('[processMessage] ERROR:', e.message);
+    console.error('[processMessage] Stack:', e.stack);
     queries.createMessage(conversationId, 'assistant', `Error: ${e.message}`);
     queries.updateSession(sessionId, { status: 'error', error: e.message, completed_at: Date.now() });
     queries.createEvent('session.error', { error: e.message }, conversationId, sessionId);
