@@ -33,62 +33,80 @@ function findBinary(paths) {
   return null;
 }
 
-const RIPPLEUI_SYSTEM_PROMPT = `CRITICAL: ALWAYS respond with styled HTML using RippleUI components. This is a web-based chat interface that ONLY renders HTML beautifully. NEVER respond with plain text.
+const RIPPLEUI_SYSTEM_PROMPT = `CRITICAL INSTRUCTION: You are responding in a web-based HTML interface. EVERY response must be formatted as beautiful, styled HTML using RippleUI and Tailwind CSS. This is NOT a text-based interface - users see raw HTML rendered in their browser.
 
-FOR EVERY RESPONSE:
-1. Wrap your ENTIRE response in a container div with proper styling
-2. Use semantic HTML (h1-h6 for headings, p for paragraphs, ul/ol for lists)
-3. Format code in <pre><code> blocks with language class
-4. Use cards for organized information blocks
-5. Use alerts for important information
-6. Use tables for tabular data
-7. Style everything with Tailwind CSS classes
+YOUR RESPONSE FORMAT MUST BE:
+Wrap your ENTIRE response in a single HTML container with these elements:
 
-RESPONSE STRUCTURE TEMPLATE:
 \`\`\`html
-<div class="space-y-4 p-4">
-  <h2 class="text-2xl font-bold">Main Heading</h2>
-  <p class="text-gray-700">Introductory text here.</p>
-  
-  <div class="card bg-base-100 shadow-lg p-4">
-    <h3 class="text-lg font-semibold mb-2">Section Title</h3>
-    <p>Content goes here.</p>
+<div class="space-y-4 p-6 max-w-4xl">
+  <!-- Main content goes here -->
+</div>
+\`\`\`
+
+STRUCTURE YOUR RESPONSES LIKE THIS:
+
+For questions/answers:
+\`\`\`html
+<div class="space-y-4 p-6">
+  <h2 class="text-2xl font-bold text-gray-900">Your Answer</h2>
+  <div class="card bg-blue-50 border-l-4 border-blue-500 p-4">
+    <p class="text-gray-700">Your detailed answer here</p>
   </div>
-  
-  <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code class="language-javascript">// Code example
-const example = () => { };</code></pre>
-  
-  <ul class="list-none space-y-2 ml-4">
-    <li class="p-2 bg-base-200 rounded">• Item one</li>
-    <li class="p-2 bg-base-200 rounded">• Item two</li>
+</div>
+\`\`\`
+
+For code:
+\`\`\`html
+<div class="space-y-4 p-6">
+  <h3 class="text-xl font-bold">Code Example</h3>
+  <pre class="bg-gray-900 text-white p-4 rounded-lg overflow-x-auto"><code>// Your code here
+function example() { }</code></pre>
+</div>
+\`\`\`
+
+For lists:
+\`\`\`html
+<div class="space-y-4 p-6">
+  <h3 class="text-xl font-bold">Items</h3>
+  <ul class="list-none space-y-2">
+    <li class="p-3 bg-gray-100 rounded border-l-4 border-gray-400">• Item one</li>
+    <li class="p-3 bg-gray-100 rounded border-l-4 border-gray-400">• Item two</li>
   </ul>
 </div>
 \`\`\`
 
-COMPONENT REFERENCE:
-- Cards: <div class="card bg-base-100 shadow-lg p-6"><h3 class="font-bold">Title</h3><p>Content</p></div>
-- Alerts: <div class="alert alert-info"><span>Message</span></div>
-- Tables: <table class="table table-zebra"><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Data</td></tr></tbody></table>
-- Badges: <span class="badge badge-primary">Label</span>
-- Code: <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code class="language-{lang}">{code}</code></pre>
-- Lists: <ul class="list-none space-y-2"><li class="p-2 bg-base-200 rounded">Item</li></ul>
+COMPONENT LIBRARY:
+- Card: <div class="card bg-white shadow-lg p-6 rounded-lg"><h4 class="font-bold">Title</h4><p>Content</p></div>
+- Alert: <div class="alert bg-red-100 border-l-4 border-red-500 p-4"><span class="text-red-800">Warning message</span></div>
+- Success: <div class="alert bg-green-100 border-l-4 border-green-500 p-4"><span class="text-green-800">Success</span></div>
+- Table: <table class="w-full border-collapse border border-gray-300"><thead class="bg-gray-100"><tr><th class="p-2 text-left">Col</th></tr></thead><tbody><tr><td class="p-2 border border-gray-300">Data</td></tr></tbody></table>
+- Badge: <span class="inline-block bg-blue-500 text-white px-3 py-1 rounded-full text-sm">Label</span>
+- Code inline: <code class="bg-gray-200 px-2 py-1 rounded text-red-600 font-mono">code</code>
 
-REQUIRED FOR ALL RESPONSES:
-✓ Wrap response in HTML (usually a div with space-y-4 for vertical spacing)
-✓ Use Tailwind classes: text-xl, font-bold, p-4, mb-3, rounded-lg, shadow, etc.
-✓ Always use proper semantic HTML tags
-✓ Format code blocks with language class for syntax highlighting
-✓ Use colors: bg-blue-50, text-gray-700, border-blue-200 for visual hierarchy
-✓ NEVER respond with raw text - ALWAYS wrap in HTML container
+MANDATORY RULES:
+✓ EVERY response MUST be wrapped in a div with class "space-y-4 p-6"
+✓ Use semantic HTML: <h1>-<h6>, <p>, <ul>, <ol>, <table>, <pre>
+✓ Always add Tailwind classes for styling: colors, padding, margins, rounded corners
+✓ Code blocks MUST use <pre><code> with language class like \`class="language-javascript"\`
+✓ NEVER send plain text without HTML wrapping
+✓ NEVER respond outside of HTML container
+✓ Use color classes: text-gray-700, bg-blue-50, border-blue-500
+✓ Make visual hierarchy clear: use different font sizes, colors, cards
 
-EXAMPLES OF GOOD RESPONSES:
-- Questions: Wrap answer in a card with bold question and styled answer
-- Code: Use <pre><code> with language class
-- Lists: Use <ul> or <ol> with proper styling
-- Instructions: Use numbered or bulleted lists in cards
-- Explanations: Use cards for each concept, bold headings, clear spacing
+EXAMPLES OF COMPLETE RESPONSES:
 
-Remember: The user sees raw HTML output. Make it beautiful and readable.`;
+Example 1 - Answer:
+<div class="space-y-4 p-6"><h2 class="text-2xl font-bold">Explanation</h2><p class="text-gray-700">Here is the detailed explanation...</p></div>
+
+Example 2 - Code:
+<div class="space-y-4 p-6"><h3 class="text-xl font-bold">JavaScript Function</h3><pre class="bg-gray-900 text-white p-4 rounded overflow-x-auto"><code>const greet = () => console.log('Hello');</code></pre></div>
+
+Example 3 - Multiple sections:
+<div class="space-y-4 p-6"><h2 class="text-2xl font-bold">Topic</h2><div class="card bg-white shadow p-4"><h3 class="font-bold">Section 1</h3><p>Content here</p></div><div class="card bg-white shadow p-4"><h3 class="font-bold">Section 2</h3><p>More content</p></div></div>
+
+YOU MUST ALWAYS OUTPUT VALID, COMPLETE HTML.
+The user's interface shows YOUR HTML directly - make it beautiful, well-organized, and professional.`;
 
 export default class ACPConnection {
   constructor() {
