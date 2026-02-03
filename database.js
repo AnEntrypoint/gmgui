@@ -89,6 +89,21 @@ function initSchema() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotencyKeys(created_at);
+
+    CREATE TABLE IF NOT EXISTS stream_updates (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT NOT NULL,
+      conversationId TEXT NOT NULL,
+      updateType TEXT NOT NULL,
+      content TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (sessionId) REFERENCES sessions(id),
+      FOREIGN KEY (conversationId) REFERENCES conversations(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_stream_updates_session ON stream_updates(sessionId);
+    CREATE INDEX IF NOT EXISTS idx_stream_updates_created ON stream_updates(created_at);
   `);
 }
 
@@ -596,6 +611,55 @@ export const queries = {
     }
 
     return imported;
+  },
+
+  createStreamUpdate(sessionId, conversationId, updateType, content) {
+    const id = generateId('upd');
+    const now = Date.now();
+
+    // Use transaction to ensure atomic sequence number assignment
+    const transaction = db.transaction(() => {
+      const maxSequence = db.prepare(
+        'SELECT MAX(sequence) as max FROM stream_updates WHERE sessionId = ?'
+      ).get(sessionId);
+      const sequence = (maxSequence?.max || -1) + 1;
+
+      db.prepare(
+        `INSERT INTO stream_updates (id, sessionId, conversationId, updateType, content, sequence, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      ).run(id, sessionId, conversationId, updateType, JSON.stringify(content), sequence, now);
+
+      return sequence;
+    });
+
+    const sequence = transaction();
+
+    return {
+      id,
+      sessionId,
+      conversationId,
+      updateType,
+      content,
+      sequence,
+      created_at: now
+    };
+  },
+
+  getSessionStreamUpdates(sessionId) {
+    const stmt = db.prepare(
+      `SELECT id, sessionId, conversationId, updateType, content, sequence, created_at
+       FROM stream_updates WHERE sessionId = ? ORDER BY sequence ASC`
+    );
+    const rows = stmt.all(sessionId);
+    return rows.map(row => ({
+      ...row,
+      content: JSON.parse(row.content)
+    }));
+  },
+
+  clearSessionStreamUpdates(sessionId) {
+    const stmt = db.prepare('DELETE FROM stream_updates WHERE sessionId = ?');
+    stmt.run(sessionId);
   }
 };
 
