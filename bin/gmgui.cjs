@@ -21,9 +21,12 @@ async function gmgui(args = []) {
     const useBun = hasBun();
     const installer = useBun ? 'bun' : 'npm';
 
-    // Ensure dependencies are installed
+    // Ensure dependencies are installed only if node_modules is missing
+    // Skip this for bunx which manages dependencies independently
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
-    if (!fs.existsSync(nodeModulesPath)) {
+    const isBunx = process.env.npm_execpath && process.env.npm_execpath.includes('bunx');
+
+    if (!isBunx && !fs.existsSync(nodeModulesPath)) {
       console.log(`Installing dependencies with ${installer}...`);
       const installResult = spawnSync(installer, ['install'], {
         cwd: projectRoot,
@@ -45,12 +48,17 @@ async function gmgui(args = []) {
         stdio: 'inherit'
       });
 
-      ps.on('exit', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Server exited with code ${code}`));
-      });
-
       ps.on('error', reject);
+
+      // Keep this process alive indefinitely to keep the server running
+      // The server will handle all actual work; this process just provides the bridge
+      process.stdin.resume();
+
+      // If server exits unexpectedly, log it but keep trying
+      ps.on('exit', (code) => {
+        console.error(`Server process exited with code ${code}`);
+        // Don't reject or resolve - just keep waiting
+      });
     });
   } else {
     throw new Error(`Unknown command: ${command}`);
