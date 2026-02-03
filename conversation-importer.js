@@ -52,18 +52,11 @@ export class ConversationImporter {
     return imported;
   }
 
-  static async importOpenCodeSessions() {
-    // TODO: Implement OpenCode session import once storage location is determined
-    return [];
-  }
-
   static async importAll() {
     console.log('[Importer] Starting conversation import...');
     const claudeCode = await this.importClaudeCodeSessions();
-    const openCode = await this.importOpenCodeSessions();
     console.log(`[Importer] Imported ${claudeCode.length} Claude Code conversations`);
-    console.log(`[Importer] Imported ${openCode.length} OpenCode conversations`);
-    return { claudeCode, openCode };
+    return claudeCode;
   }
 }
 
