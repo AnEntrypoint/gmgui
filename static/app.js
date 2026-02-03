@@ -525,10 +525,15 @@ class GMGUIApp {
 
   looksLikeHtml(text) {
     const trimmed = text.trim();
+    // Check for HTML tags at the start
     if (/^<[a-z][\s\S]*>/i.test(trimmed)) return true;
-    if (/<\/(div|span|p|table|ul|ol|h[1-6]|section|article|header|footer|nav|main|aside|details|summary|figure|figcaption|blockquote|pre|code|a|strong|em|img|br|hr)>/i.test(trimmed)) return true;
+    // Check for closing tags of common HTML elements
+    if (/<\/(div|span|p|table|ul|ol|h[1-6]|section|article|header|footer|nav|main|aside|details|summary|figure|figcaption|blockquote|pre|code|a|strong|em|img|br|hr|button|input|form|label)>/i.test(trimmed)) return true;
+    // Check for Tailwind/RippleUI classes (strong indicator of HTML)
+    if (/class\s*=\s*["'][^"']*(?:card|alert|badge|btn|table|space-y|p-\d+|text-|bg-|rounded|shadow)/.test(trimmed)) return true;
+    // Count HTML tags
     const tagCount = (trimmed.match(/<[a-z][^>]*>/gi) || []).length;
-    if (tagCount >= 3) return true;
+    if (tagCount >= 2) return true; // Lower threshold for HTML detection
     return false;
   }
 

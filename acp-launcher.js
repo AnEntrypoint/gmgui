@@ -33,19 +33,62 @@ function findBinary(paths) {
   return null;
 }
 
-const RIPPLEUI_SYSTEM_PROMPT = `ALWAYS respond with HTML using RippleUI components. The chat renders HTML. Use: cards (class='card'), alerts (class='alert alert-info'), tables (class='table table-zebra'), badges (class='badge badge-primary'), buttons (class='btn btn-primary'). Wrap all responses in styled HTML with Tailwind CSS utility classes for layout.
+const RIPPLEUI_SYSTEM_PROMPT = `CRITICAL: ALWAYS respond with styled HTML using RippleUI components. This is a web-based chat interface that ONLY renders HTML beautifully. NEVER respond with plain text.
 
-RIPPLEUI COMPONENTS:
-Cards: <div class="card bg-base-100 shadow-lg p-6"><h2 class="text-xl font-bold mb-2">Title</h2><p>Content</p></div>
-Alerts: <div class="alert alert-info"><span>Message</span></div>
-Tables: <div class="overflow-x-auto"><table class="table table-zebra"><thead><tr><th>Col</th></tr></thead><tbody><tr><td>Val</td></tr></tbody></table></div>
-Badges: <span class="badge badge-primary">Tag</span>
-Buttons: <button class="btn btn-primary">Action</button>
-Code: <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code>code here</code></pre>
-Lists: <ul class="list-none space-y-2"><li class="p-3 bg-base-200 rounded-lg">Item</li></ul>
+FOR EVERY RESPONSE:
+1. Wrap your ENTIRE response in a container div with proper styling
+2. Use semantic HTML (h1-h6 for headings, p for paragraphs, ul/ol for lists)
+3. Format code in <pre><code> blocks with language class
+4. Use cards for organized information blocks
+5. Use alerts for important information
+6. Use tables for tabular data
+7. Style everything with Tailwind CSS classes
 
-Use Tailwind CSS utility classes for layout (flex, grid, gap-4, p-4, rounded, shadow).
-ALWAYS wrap responses in styled HTML. Never send plain unstyled text.`;
+RESPONSE STRUCTURE TEMPLATE:
+\`\`\`html
+<div class="space-y-4 p-4">
+  <h2 class="text-2xl font-bold">Main Heading</h2>
+  <p class="text-gray-700">Introductory text here.</p>
+  
+  <div class="card bg-base-100 shadow-lg p-4">
+    <h3 class="text-lg font-semibold mb-2">Section Title</h3>
+    <p>Content goes here.</p>
+  </div>
+  
+  <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code class="language-javascript">// Code example
+const example = () => { };</code></pre>
+  
+  <ul class="list-none space-y-2 ml-4">
+    <li class="p-2 bg-base-200 rounded">• Item one</li>
+    <li class="p-2 bg-base-200 rounded">• Item two</li>
+  </ul>
+</div>
+\`\`\`
+
+COMPONENT REFERENCE:
+- Cards: <div class="card bg-base-100 shadow-lg p-6"><h3 class="font-bold">Title</h3><p>Content</p></div>
+- Alerts: <div class="alert alert-info"><span>Message</span></div>
+- Tables: <table class="table table-zebra"><thead><tr><th>Header</th></tr></thead><tbody><tr><td>Data</td></tr></tbody></table>
+- Badges: <span class="badge badge-primary">Label</span>
+- Code: <pre class="bg-base-200 p-4 rounded-lg overflow-x-auto"><code class="language-{lang}">{code}</code></pre>
+- Lists: <ul class="list-none space-y-2"><li class="p-2 bg-base-200 rounded">Item</li></ul>
+
+REQUIRED FOR ALL RESPONSES:
+✓ Wrap response in HTML (usually a div with space-y-4 for vertical spacing)
+✓ Use Tailwind classes: text-xl, font-bold, p-4, mb-3, rounded-lg, shadow, etc.
+✓ Always use proper semantic HTML tags
+✓ Format code blocks with language class for syntax highlighting
+✓ Use colors: bg-blue-50, text-gray-700, border-blue-200 for visual hierarchy
+✓ NEVER respond with raw text - ALWAYS wrap in HTML container
+
+EXAMPLES OF GOOD RESPONSES:
+- Questions: Wrap answer in a card with bold question and styled answer
+- Code: Use <pre><code> with language class
+- Lists: Use <ul> or <ol> with proper styling
+- Instructions: Use numbered or bulleted lists in cards
+- Explanations: Use cards for each concept, bold headings, clear spacing
+
+Remember: The user sees raw HTML output. Make it beautiful and readable.`;
 
 export default class ACPConnection {
   constructor() {
@@ -255,13 +298,44 @@ export default class ACPConnection {
     return this.sendRequest('session/set_mode', { sessionId: this.sessionId, modeId });
   }
 
-  async injectSkills() {
+  async injectSkills(additionalContext = '') {
     if (this.printMode) return {};
-    return this.sendRequest('session/skill_inject', {
-      sessionId: this.sessionId,
-      skills: [],
-      notification: [{ type: 'text', text: RIPPLEUI_SYSTEM_PROMPT }]
-    }).catch(() => null);
+    
+    // Combine the system prompt with any additional context
+    const systemPrompt = additionalContext ? `${RIPPLEUI_SYSTEM_PROMPT}\n\n---\n\n${additionalContext}` : RIPPLEUI_SYSTEM_PROMPT;
+    
+    try {
+      const result = await this.sendRequest('session/skill_inject', {
+        sessionId: this.sessionId,
+        skills: [],
+        notification: [{ type: 'text', text: systemPrompt }]
+      });
+      return result;
+    } catch (e) {
+      // skill_inject may not be supported, try alternative methods
+      console.log(`[ACP] skill_inject failed (may not be supported): ${e.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Inject system prompt as initial context
+   */
+  async injectSystemContext() {
+    if (this.printMode) return {};
+    
+    // Some versions may need the system prompt sent as the first message context
+    try {
+      await this.sendRequest('session/context', {
+        sessionId: this.sessionId,
+        context: RIPPLEUI_SYSTEM_PROMPT,
+        role: 'system'
+      });
+      return { success: true };
+    } catch (e) {
+      // This method may not be supported, silently fail
+      return null;
+    }
   }
 
   async sendPrompt(prompt) {
