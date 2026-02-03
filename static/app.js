@@ -450,7 +450,23 @@ class GMGUIApp {
     if (this.conversations.size === 0) {
       console.warn('[DEBUG] No conversations to display - showing empty state');
       console.warn('[DEBUG] conversations map contents:', this.conversations);
-      list.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.875rem; padding: 0.5rem;">No chats yet</p>';
+      
+      // VISUAL DEBUG: Show debug info on page
+      const debugInfo = `
+        <div style="background: #fee; padding: 1rem; border: 1px solid #f99; border-radius: 0.5rem; margin-bottom: 1rem; font-family: monospace; font-size: 0.75rem;">
+          <strong style="color: #c00;">🔍 DEBUG INFO</strong><br>
+          Conversations: ${this.conversations.size}<br>
+          BASE_URL: ${BASE_URL}<br>
+          Width: ${window.innerWidth}px<br>
+          Sidebar: ${document.getElementById('sidebar')?.offsetHeight > 0 ? 'visible' : 'hidden'}<br>
+          <br>
+          <strong>To debug (F12 console):</strong><br>
+          • app.conversations.size<br>
+          • Array.from(app.conversations.keys()).slice(0,5)
+        </div>
+      `;
+      
+      list.innerHTML = debugInfo + '<p style="color: var(--text-tertiary); font-size: 0.875rem; padding: 0.5rem;">No chats yet</p>';
       return;
     }
     const sorted = Array.from(this.conversations.values()).sort(
@@ -1330,7 +1346,15 @@ function initializeApp() {
     get selectedAgent() { return window.app.selectedAgent; },
     get currentConversation() { return window.app.currentConversation; },
     checkChatListElement() { return document.getElementById('chatList'); },
-    checkChatListChildCount() { return document.getElementById('chatList')?.children?.length || 0; }
+    checkChatListChildCount() { return document.getElementById('chatList')?.children?.length || 0; },
+    async forceRefetch() {
+      console.log('[FORCE] Forcing fetchConversations...');
+      await window.app.fetchConversations();
+      console.log('[FORCE] Conversations loaded:', window.app.conversations.size);
+      window.app.renderChatHistory();
+      console.log('[FORCE] renderChatHistory called');
+      return window.app.conversations.size;
+    }
   };
   
   console.log('[DEBUG] initializeApp: GMGUIApp created successfully');
