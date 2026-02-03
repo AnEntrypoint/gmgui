@@ -96,6 +96,18 @@ class GMGUIApp {
   async init() {
     console.log('[DEBUG] Init: Starting initialization');
     console.log('[DEBUG] Init: BASE_URL =', BASE_URL);
+    console.log('[DEBUG] Init: Window width:', window.innerWidth);
+    
+    // Ensure sidebar is visible on desktop (open on wide screens)
+    const sidebar = document.getElementById('sidebar');
+    if (window.innerWidth >= 768 && sidebar) {
+      console.log('[DEBUG] Init: Wide screen detected, ensuring sidebar is visible');
+      sidebar.classList.remove('open'); // On desktop, sidebar is always visible, no need for 'open' class
+    } else if (sidebar) {
+      console.log('[DEBUG] Init: Mobile/narrow screen detected, opening sidebar');
+      sidebar.classList.add('open');
+    }
+    
     this.loadSettings();
     this.setupEventListeners();
     await this.fetchHome();
@@ -330,20 +342,37 @@ class GMGUIApp {
       console.log('[DEBUG] fetchConversations: Starting fetch from', BASE_URL + '/api/conversations');
       const res = await fetch(BASE_URL + '/api/conversations');
       console.log('[DEBUG] fetchConversations: Response status:', res.status);
+      
+      if (!res.ok) {
+        console.error('[DEBUG] fetchConversations: Response not OK, status:', res.status);
+        return;
+      }
+      
       const data = await res.json();
       console.log('[DEBUG] fetchConversations response count:', data.conversations?.length);
-      console.log('[DEBUG] fetchConversations response data:', data);
+      
       if (data.conversations) {
+        console.log('[DEBUG] fetchConversations: About to clear and load conversations');
         this.conversations.clear();
-        console.log('[DEBUG] fetchConversations: Cleared conversations map');
-        data.conversations.forEach(c => this.conversations.set(c.id, c));
+        console.log('[DEBUG] fetchConversations: Cleared conversations map, size now:', this.conversations.size);
+        
+        data.conversations.forEach(c => {
+          this.conversations.set(c.id, c);
+        });
+        
         console.log('[DEBUG] Loaded conversations, total:', this.conversations.size);
         console.log('[DEBUG] First few conversation IDs:', Array.from(this.conversations.keys()).slice(0, 5));
+        
+        if (this.conversations.size === 0) {
+          console.error('[DEBUG] ERROR: conversations.size is 0 after loading!');
+        }
       } else {
         console.warn('[DEBUG] fetchConversations: data.conversations is undefined or null');
+        console.warn('[DEBUG] fetchConversations: Full response:', data);
       }
     } catch (e) {
-      console.error('fetchConversations error:', e);
+      console.error('[DEBUG] fetchConversations error:', e);
+      console.error('[DEBUG] Error details:', e.message, e.stack);
     }
   }
 
@@ -1280,15 +1309,35 @@ function confirmFolderSelection() {
   app.closeFolderBrowser();
 }
 
-const app = new GMGUIApp();
-window._app = app;
+// Wait for DOM to be fully ready before initializing
+function initializeApp() {
+  console.log('[DEBUG] initializeApp: Checking if DOM is ready');
+  const chatList = document.getElementById('chatList');
+  if (!chatList) {
+    console.warn('[DEBUG] initializeApp: chatList not found, waiting 100ms');
+    setTimeout(initializeApp, 100);
+    return;
+  }
+  
+  console.log('[DEBUG] initializeApp: DOM is ready, creating GMGUIApp');
+  window.app = new GMGUIApp();
+  window._app = window.app;
+  
+  // Debug: Log app state to window for inspection
+  window._debug = {
+    get conversations() { return Array.from(window.app.conversations.values()).map(c => ({ id: c.id, title: c.title })); },
+    get conversationCount() { return window.app.conversations.size; },
+    get selectedAgent() { return window.app.selectedAgent; },
+    get currentConversation() { return window.app.currentConversation; },
+    checkChatListElement() { return document.getElementById('chatList'); },
+    checkChatListChildCount() { return document.getElementById('chatList')?.children?.length || 0; }
+  };
+  
+  console.log('[DEBUG] initializeApp: GMGUIApp created successfully');
+}
 
-// Debug: Log app state to window for inspection
-window._debug = {
-  get conversations() { return Array.from(app.conversations.values()).map(c => ({ id: c.id, title: c.title })); },
-  get conversationCount() { return app.conversations.size; },
-  get selectedAgent() { return app.selectedAgent; },
-  get currentConversation() { return app.currentConversation; },
-  checkChatListElement() { return document.getElementById('chatList'); },
-  checkChatListChildCount() { return document.getElementById('chatList')?.children?.length || 0; }
-};
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  initializeApp();
+}
