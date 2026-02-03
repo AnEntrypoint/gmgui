@@ -396,31 +396,62 @@ class GMGUIApp {
     return p.startsWith('~') ? p.replace('~', home) : p;
   }
 
-  setupEventListeners() {
-    window.addEventListener('focus', () => {
-      this.autoImportClaudeCode().then(() => {
-        this.fetchConversations().then(() => this.renderChatHistory());
-      });
-    });
-    const input = document.getElementById('messageInput');
-    if (input) {
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.sendMessage();
-        }
-      });
-      input.addEventListener('input', () => this.updateSendButtonState());
-    }
-    document.getElementById('autoScroll')?.addEventListener('change', (e) => {
-      this.settings.autoScroll = e.target.checked;
-      this.saveSettings();
-    });
-    document.getElementById('connectTimeout')?.addEventListener('change', (e) => {
-      this.settings.connectTimeout = parseInt(e.target.value) * 1000;
-      this.saveSettings();
-    });
-  }
+   setupEventListeners() {
+     window.addEventListener('focus', () => {
+       this.autoImportClaudeCode().then(() => {
+         this.fetchConversations().then(() => this.renderChatHistory());
+       });
+     });
+     
+     // THEME CHANGE LISTENER: Update HTML blocks when theme changes
+     // Listen for theme changes on document element
+     const themeObserver = new MutationObserver(() => {
+       console.log('[THEME] Theme changed, updating HTML blocks');
+       this.updateHtmlBlockThemes();
+     });
+     
+     themeObserver.observe(document.documentElement, {
+       attributes: true,
+       attributeFilter: ['data-theme']
+     });
+     
+     // Also listen for system theme changes
+     if (window.matchMedia) {
+       window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+         console.log('[THEME] System theme changed, updating HTML blocks');
+         this.updateHtmlBlockThemes();
+       });
+     }
+     
+     const input = document.getElementById('messageInput');
+     if (input) {
+       input.addEventListener('keydown', (e) => {
+         if (e.key === 'Enter' && !e.shiftKey) {
+           e.preventDefault();
+           this.sendMessage();
+         }
+       });
+       input.addEventListener('input', () => this.updateSendButtonState());
+     }
+     document.getElementById('autoScroll')?.addEventListener('change', (e) => {
+       this.settings.autoScroll = e.target.checked;
+       this.saveSettings();
+     });
+     document.getElementById('connectTimeout')?.addEventListener('change', (e) => {
+       this.settings.connectTimeout = parseInt(e.target.value) * 1000;
+       this.saveSettings();
+     });
+   }
+   
+   updateHtmlBlockThemes() {
+     // Update theme attribute and CSS for all existing HTML blocks
+     const currentTheme = document.documentElement.getAttribute('data-theme') || 
+                         (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+     
+     document.querySelectorAll('.html-content').forEach(content => {
+       content.setAttribute('data-theme', currentTheme);
+     });
+   }
 
   async fetchAgents() {
     try {
@@ -799,29 +830,80 @@ class GMGUIApp {
      return container;
    }
 
-  createSandboxedHtml(rawHtml) {
-    const wrap = document.createElement('div');
-    wrap.className = 'html-block rendered-html';
-    const content = document.createElement('div');
-    content.className = 'html-content';
-    
-    // CRITICAL: Ensure RippleUI styles are available for agent HTML
-    // Agent responses use RippleUI/Tailwind classes, so wrap in a context that has those styles
-    let enhancedHtml = rawHtml;
-    
-    // If HTML doesn't already have the RippleUI wrapper classes, add them
-    if (!rawHtml.includes('space-y-4') && !rawHtml.includes('card') && !rawHtml.includes('alert')) {
-      // Wrap in RippleUI container if agent didn't already wrap it
-      enhancedHtml = `<div class="space-y-4 p-6 max-w-4xl">${rawHtml}</div>`;
-      console.log('[HTML] Wrapped agent HTML in RippleUI container for styling');
-    } else {
-      console.log('[HTML] Agent HTML already has RippleUI classes');
-    }
-    
-    content.innerHTML = this.sanitizeHtml(enhancedHtml);
-    wrap.appendChild(content);
-    return wrap;
-  }
+   createSandboxedHtml(rawHtml) {
+     const wrap = document.createElement('div');
+     wrap.className = 'html-block rendered-html';
+     const content = document.createElement('div');
+     content.className = 'html-content';
+     
+     // Get current theme to apply to HTML content
+     const currentTheme = document.documentElement.getAttribute('data-theme') || 
+                         (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+     
+     // CRITICAL: Inject theme-aware CSS to ensure text colors work in dark/light mode
+     const themeCSS = currentTheme === 'dark' 
+       ? `<style>
+            .html-content { 
+              color: #f8fafc; 
+              background: transparent;
+            }
+            .html-content p { color: #cbd5e1; }
+            .html-content h1, .html-content h2, .html-content h3, 
+            .html-content h4, .html-content h5, .html-content h6 { 
+              color: #f8fafc; 
+            }
+            .html-content a { color: #6366f1; }
+            .html-content code { color: #c7d2fe; background: rgba(0,0,0,0.3); }
+            .html-content pre { background: rgba(0,0,0,0.5); color: #e0e7ff; }
+            .html-content table { border-color: #334155; }
+            .html-content th { background: #1a202c; color: #f8fafc; }
+            .html-content td { border-color: #334155; }
+            .html-content blockquote { border-color: #334155; color: #cbd5e1; }
+            .html-content ul, .html-content ol { color: #cbd5e1; }
+            .html-content li { color: #cbd5e1; }
+         </style>`
+       : `<style>
+            .html-content { 
+              color: #1d2129; 
+              background: transparent;
+            }
+            .html-content p { color: #475569; }
+            .html-content h1, .html-content h2, .html-content h3, 
+            .html-content h4, .html-content h5, .html-content h6 { 
+              color: #1d2129; 
+            }
+            .html-content a { color: #4f46e5; }
+            .html-content code { color: #6366f1; background: rgba(99,102,241,0.1); }
+            .html-content pre { background: #f3f4f6; color: #1d2129; }
+            .html-content table { border-color: #e5e7eb; }
+            .html-content th { background: #f9fafb; color: #1d2129; }
+            .html-content td { border-color: #e5e7eb; }
+            .html-content blockquote { border-color: #e5e7eb; color: #475569; }
+            .html-content ul, .html-content ol { color: #475569; }
+            .html-content li { color: #475569; }
+         </style>`;
+     
+     // CRITICAL: Ensure RippleUI styles are available for agent HTML
+     // Agent responses use RippleUI/Tailwind classes, so wrap in a context that has those styles
+     let enhancedHtml = themeCSS + rawHtml;
+     
+     // If HTML doesn't already have the RippleUI wrapper classes, add them
+     if (!rawHtml.includes('space-y-4') && !rawHtml.includes('card') && !rawHtml.includes('alert')) {
+       // Wrap in RippleUI container if agent didn't already wrap it
+       enhancedHtml = themeCSS + `<div class="space-y-4 p-6 max-w-4xl">${rawHtml}</div>`;
+       console.log('[HTML] Wrapped agent HTML in RippleUI container with theme CSS');
+     } else {
+       console.log('[HTML] Agent HTML already has RippleUI classes, applying theme CSS');
+     }
+     
+     content.innerHTML = this.sanitizeHtml(enhancedHtml);
+     wrap.appendChild(content);
+     
+     // Apply theme attribute to content so nested elements inherit
+     content.setAttribute('data-theme', currentTheme);
+     
+     return wrap;
+   }
 
   addMessageToDisplay(msg) {
     const div = document.getElementById('chatMessages');
