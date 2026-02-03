@@ -756,25 +756,43 @@ class GMGUIApp {
      }
      
      // CRITICAL FIX: Don't bundle all text into one bubble
-     // Split by paragraphs (double newlines) to preserve separation
-     const paragraphs = text.split('\n\n').filter(p => p.trim());
+     // Try splitting by paragraph breaks first (double newlines)
+     let parts = text.split('\n\n').filter(p => p.trim());
      
-     if (paragraphs.length === 1) {
-       // Single paragraph - just one bubble
+     // If no paragraphs found, try splitting by single newlines
+     // (handles imported messages that may not have proper paragraph breaks)
+     if (parts.length === 1) {
+       const singleNewlines = text.split('\n').filter(p => p.trim());
+       // Only use single newlines if we get reasonable chunks (3+ non-empty lines)
+       if (singleNewlines.length >= 3) {
+         parts = singleNewlines;
+       }
+     }
+     
+     // If still just one part and it's very long (>500 chars), split by sentences
+     if (parts.length === 1 && text.length > 500) {
+       const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+       if (sentences.length > 1) {
+         parts = sentences.map(s => s.trim()).filter(s => s);
+       }
+     }
+     
+     if (parts.length === 1) {
+       // Single item - just one bubble
        const bubble = document.createElement('div');
        bubble.className = 'message-bubble';
        bubble.textContent = text;
        return bubble;
      }
      
-     // Multiple paragraphs - create separate bubbles for each
+     // Multiple parts - create separate bubbles for each
      const container = document.createElement('div');
      container.className = 'message-bubbles-container';
      
-     for (const para of paragraphs) {
+     for (const part of parts) {
        const bubble = document.createElement('div');
        bubble.className = 'message-bubble';
-       bubble.textContent = para;
+       bubble.textContent = part;
        container.appendChild(bubble);
      }
      
