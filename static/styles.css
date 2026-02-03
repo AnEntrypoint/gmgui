@@ -617,6 +617,7 @@ html, body {
   flex-wrap: wrap;
   gap: 1rem;
   animation: slideUp 0.2s ease;
+  width: 100%;
 }
 
 .message-bubble {
