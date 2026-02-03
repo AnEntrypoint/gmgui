@@ -94,16 +94,23 @@ class GMGUIApp {
   }
 
   async init() {
+    console.log('[DEBUG] Init: Starting initialization');
     this.loadSettings();
     this.setupEventListeners();
     await this.fetchHome();
+    console.log('[DEBUG] Init: Fetched home');
     await this.fetchAgents();
+    console.log('[DEBUG] Init: Fetched agents, count:', this.agents.size);
     await this.autoImportClaudeCode();
+    console.log('[DEBUG] Init: Auto-imported Claude Code conversations');
     await this.fetchConversations();
+    console.log('[DEBUG] Init: Fetched conversations, count:', this.conversations.size);
     this.connectSyncWebSocket();
     this.setupCrossTabSync();
     this.startPeriodicSync();
+    console.log('[DEBUG] Init: About to renderAll with', this.conversations.size, 'conversations');
     this.renderAll();
+    console.log('[DEBUG] Init: renderAll completed');
   }
 
   startPeriodicSync() {
@@ -317,14 +324,23 @@ class GMGUIApp {
 
   async fetchConversations() {
     try {
+      console.log('[DEBUG] fetchConversations: Starting fetch from', BASE_URL + '/api/conversations');
       const res = await fetch(BASE_URL + '/api/conversations');
+      console.log('[DEBUG] fetchConversations: Response status:', res.status);
       const data = await res.json();
+      console.log('[DEBUG] fetchConversations response count:', data.conversations?.length);
+      console.log('[DEBUG] fetchConversations response data:', data);
       if (data.conversations) {
         this.conversations.clear();
+        console.log('[DEBUG] fetchConversations: Cleared conversations map');
         data.conversations.forEach(c => this.conversations.set(c.id, c));
+        console.log('[DEBUG] Loaded conversations, total:', this.conversations.size);
+        console.log('[DEBUG] First few conversation IDs:', Array.from(this.conversations.keys()).slice(0, 5));
+      } else {
+        console.warn('[DEBUG] fetchConversations: data.conversations is undefined or null');
       }
     } catch (e) {
-      console.error('fetchConversations:', e);
+      console.error('fetchConversations error:', e);
     }
   }
 
@@ -340,9 +356,11 @@ class GMGUIApp {
   }
 
   renderAll() {
+    console.log('[DEBUG] renderAll: Called with', this.conversations.size, 'conversations');
     this.renderAgentCards();
     this.renderChatHistory();
     if (this.currentConversation) {
+      console.log('[DEBUG] renderAll: Displaying current conversation', this.currentConversation);
       this.displayConversation(this.currentConversation);
     }
   }
@@ -387,15 +405,22 @@ class GMGUIApp {
 
   renderChatHistory() {
     const list = document.getElementById('chatList');
-    if (!list) return;
+    if (!list) {
+      console.error('[DEBUG] chatList element not found!');
+      return;
+    }
     list.innerHTML = '';
+    console.log('[DEBUG] renderChatHistory - conversations.size:', this.conversations.size);
     if (this.conversations.size === 0) {
+      console.warn('[DEBUG] No conversations to display - showing empty state');
+      console.warn('[DEBUG] conversations map contents:', this.conversations);
       list.innerHTML = '<p style="color: var(--text-tertiary); font-size: 0.875rem; padding: 0.5rem;">No chats yet</p>';
       return;
     }
     const sorted = Array.from(this.conversations.values()).sort(
       (a, b) => (b.updated_at || 0) - (a.updated_at || 0)
     );
+    console.log('[DEBUG] renderChatHistory - sorted conversations count:', sorted.length);
     sorted.forEach(conv => {
       const item = document.createElement('button');
       item.className = `chat-item ${this.currentConversation === conv.id ? 'active' : ''}`;
