@@ -31,13 +31,11 @@
 
 ## ISSUES TO FIX ⚠️
 
-**Issue #1: Timeout on Conversation Selection**
-- Clicking conversations causes code execution timeout
-- Needs investigation into click handlers
-
-**Issue #2: Message Input Field**
-- Message submission behavior unclear
-- May not be properly wired to agent communication
+**Issue #1: Timeout on Conversation Selection (DEFERRED)**
+- Root cause: displayConversation() calls fetchMessages() API (/static/app.js line 762)
+- Likely cause: Slow or failing API call to /api/conversations/{id}/messages
+- Deferred: Requires backend performance optimization
+- Can test once backend is responsive
 
 ## Test Categories Remaining (10 of 12)
 - [ ] Category 2: Real-Time Streaming with Persistence
