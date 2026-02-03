@@ -116,7 +116,6 @@ export default class ACPConnection {
     this.pendingRequests = new Map();
     this.sessionId = null;
     this.onUpdate = null;
-    this.printMode = false;
     this.cwd = '/config';
   }
 
@@ -140,18 +139,13 @@ export default class ACPConnection {
       await Promise.race([acpSetup(), deadline]);
       console.log(`[ACP] Connected via ACP bridge (${agentType})`);
     } catch (acpErr) {
-      console.log(`[ACP] Bridge failed: ${acpErr.message}`);
-      console.log(`[ACP] Falling back to claude --print mode`);
-      this.printMode = true;
-      this.sessionId = 'print-' + Date.now();
+      console.error(`[ACP] ❌ FATAL: Bridge failed: ${acpErr.message}`);
+      console.error(`[ACP] The ACP bridge is REQUIRED. Please install the bridge for ${agentType}.`);
       if (this.child) {
         try { this.child.kill('SIGTERM'); } catch (_) {}
         this.child = null;
       }
-      for (const [id, req] of this.pendingRequests) {
-        clearTimeout(req.timeoutId);
-      }
-      this.pendingRequests.clear();
+      throw acpErr;
     }
   }
 
@@ -294,7 +288,6 @@ export default class ACPConnection {
   }
 
   async initialize() {
-    if (this.printMode) return {};
     return this.sendRequest('initialize', {
       protocolVersion: 1,
       clientCapabilities: { fs: { readTextFile: true, writeTextFile: true } },
@@ -302,77 +295,47 @@ export default class ACPConnection {
   }
 
   async newSession(cwd) {
-    if (this.printMode) {
-      this.cwd = cwd;
-      return { sessionId: this.sessionId };
-    }
     const result = await this.sendRequest('session/new', { cwd, mcpServers: [] }, 120000);
     this.sessionId = result.sessionId;
     return result;
   }
 
   async setSessionMode(modeId) {
-    if (this.printMode) return {};
     return this.sendRequest('session/set_mode', { sessionId: this.sessionId, modeId });
   }
 
   async injectSkills(additionalContext = '') {
-    if (this.printMode) return {};
-    
     // Combine the system prompt with any additional context
     const systemPrompt = additionalContext ? `${RIPPLEUI_SYSTEM_PROMPT}\n\n---\n\n${additionalContext}` : RIPPLEUI_SYSTEM_PROMPT;
-    
-    try {
-      const result = await this.sendRequest('session/skill_inject', {
-        sessionId: this.sessionId,
-        skills: [],
-        notification: [{ type: 'text', text: systemPrompt }]
-      });
-      return result;
-    } catch (e) {
-      // skill_inject may not be supported, try alternative methods
-      console.log(`[ACP] skill_inject failed (may not be supported): ${e.message}`);
-      return null;
-    }
+
+    return this.sendRequest('session/skill_inject', {
+      sessionId: this.sessionId,
+      skills: [],
+      notification: [{ type: 'text', text: systemPrompt }]
+    });
   }
 
   /**
    * Inject system prompt as initial context
    */
   async injectSystemContext() {
-    if (this.printMode) return {};
-    
-    // Some versions may need the system prompt sent as the first message context
-    try {
-      await this.sendRequest('session/context', {
-        sessionId: this.sessionId,
-        context: RIPPLEUI_SYSTEM_PROMPT,
-        role: 'system'
-      });
-      return { success: true };
-    } catch (e) {
-      // This method may not be supported, silently fail
-      return null;
-    }
+    return this.sendRequest('session/context', {
+      sessionId: this.sessionId,
+      context: RIPPLEUI_SYSTEM_PROMPT,
+      role: 'system'
+    });
   }
 
   async sendPrompt(prompt) {
-    if (this.printMode) return this._sendPrintPrompt(prompt);
     const promptContent = Array.isArray(prompt) ? prompt : [{ type: 'text', text: prompt }];
     return this.sendRequest('session/prompt', { sessionId: this.sessionId, prompt: promptContent }, 300000);
   }
 
-  async _sendPrintPrompt(prompt) {
-    throw new Error('Claude Code uses OAuth and requires the ACP bridge. The fallback to direct API calls is not supported because OAuth tokens cannot be used with the Anthropic API directly. Please ensure claude-code-acp is available in your PATH.');
-  }
-
   isRunning() {
-    if (this.printMode) return true;
     return this.child && !this.child.killed;
   }
 
   async terminate() {
-    if (this.printMode) { this.printMode = false; return; }
     if (!this.child) return;
     this.child.stdin.end();
     this.child.kill('SIGTERM');
