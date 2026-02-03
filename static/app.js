@@ -829,30 +829,40 @@ class GMGUIApp {
         });
       }
       
-      // Display segmented content if available
-      if (msg.content.segments && Array.isArray(msg.content.segments)) {
-        console.log('[HTML] Rendering segments from agent response');
-        msg.content.segments.forEach(segment => {
-          el.appendChild(this.renderSegment(segment));
-        });
-      } else if (msg.content.text && !hasHtmlContent) {
-        // Only use text rendering if no HTML blocks were rendered
-        // But ALWAYS check if text itself contains HTML
-        if (this.looksLikeHtml(msg.content.text)) {
-          console.log('[HTML] Agent text content contains HTML - rendering as HTML');
-          el.appendChild(this.createSandboxedHtml(msg.content.text));
-        } else {
-          const parsed = this.parseAndRenderContent(msg.content.text);
-          if (parsed) {
-            parsed.forEach(elem => el.appendChild(elem));
-          } else {
-            const bubble = document.createElement('div');
-            bubble.className = 'message-bubble';
-            bubble.textContent = msg.content.text;
-            el.appendChild(bubble);
-          }
-        }
-      }
+       // CRITICAL: Agent responses are now HTML from system prompt
+       // Check if we have text first (which should be HTML)
+       if (msg.content.text && !hasHtmlContent) {
+         // ALWAYS check if text itself contains HTML first
+         if (this.looksLikeHtml(msg.content.text)) {
+           console.log('[HTML] ✅ Agent response is HTML - rendering directly (NOT segmenting)');
+           el.appendChild(this.createSandboxedHtml(msg.content.text));
+         } else {
+           // Only if NOT HTML, then try segmenting
+           console.log('[HTML] Text is not HTML, attempting segmentation');
+           if (msg.content.segments && Array.isArray(msg.content.segments)) {
+             console.log('[HTML] Rendering', msg.content.segments.length, 'segments');
+             msg.content.segments.forEach(segment => {
+               el.appendChild(this.renderSegment(segment));
+             });
+           } else {
+             const parsed = this.parseAndRenderContent(msg.content.text);
+             if (parsed) {
+               parsed.forEach(elem => el.appendChild(elem));
+             } else {
+               const bubble = document.createElement('div');
+               bubble.className = 'message-bubble';
+               bubble.textContent = msg.content.text;
+               el.appendChild(bubble);
+             }
+           }
+         }
+       } else if (msg.content.segments && Array.isArray(msg.content.segments) && !hasHtmlContent) {
+         // Fallback: only use segments if we have them and no text
+         console.log('[HTML] No text content, rendering segments');
+         msg.content.segments.forEach(segment => {
+           el.appendChild(this.renderSegment(segment));
+         });
+       }
 
       // Display metadata if available
       if (msg.content.metadata) {
