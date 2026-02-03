@@ -33,29 +33,41 @@ export default class ACPConnection {
   }
 
   async sendPrompt(prompt) {
-    const messages = [];
     let fullResponse = '';
 
     try {
       const promptText = typeof prompt === 'string' ? prompt : prompt.map(p => p.text).join('\n');
       const systemMessage = `${SYSTEM_PROMPT}\n\nUser Request: ${promptText}`;
 
-      const response = query({
+      const response = await query({
         prompt: systemMessage,
         options: {}
       });
 
-      for await (const message of response) {
-        fullResponse += message.content?.map(c => c.text || '').join('') || '';
+      // Handle different response formats
+      let responseText = '';
+      if (typeof response === 'string') {
+        responseText = response;
+      } else if (response?.content) {
+        responseText = typeof response.content === 'string' ? response.content : response.content.map(c => c.text || '').join('');
+      } else if (response?.result) {
+        responseText = response.result;
+      } else if (response?.text) {
+        responseText = response.text;
+      } else {
+        responseText = String(response || '');
+      }
 
-        if (this.onUpdate) {
-          this.onUpdate({
-            update: {
-              sessionUpdate: 'agent_message_chunk',
-              content: { text: message.content?.map(c => c.text || '').join('') || '' }
-            }
-          });
-        }
+      fullResponse = responseText;
+
+      // Emit updates for streaming
+      if (this.onUpdate && responseText) {
+        this.onUpdate({
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: { text: responseText }
+          }
+        });
       }
 
       return { content: fullResponse };
