@@ -96,10 +96,15 @@ class GMGUIApp {
       console.error('[CRITICAL] GMGUIApp.init() failed:', err);
       console.error('[CRITICAL] Stack:', err.stack);
       throw err;
-    });
-  }
+     });
+   }
 
-  async init() {
+   // Helper for authenticated API calls - ensures credentials sent for proxy auth
+   async apiFetch(url, options = {}) {
+     return fetch(url, { credentials: 'include', ...options });
+   }
+
+   async init() {
     console.log('[DEBUG] Init: Starting initialization');
     console.log('[DEBUG] Init: BASE_URL =', BASE_URL);
     console.log('[DEBUG] Init: Window width:', window.innerWidth);
@@ -155,7 +160,7 @@ class GMGUIApp {
   async verifyConsistency() {
     // Silent consistency check - only log if mismatch found
     try {
-      const res = await fetch(BASE_URL + '/api/conversations');
+      const res = await this.apiFetch(BASE_URL + '/api/conversations');
       if (!res.ok) return;
       
       const data = await res.json();
@@ -176,7 +181,7 @@ class GMGUIApp {
 
   async autoImportClaudeCode() {
     try {
-      await fetch(BASE_URL + '/api/import/claude-code');
+      await this.apiFetch(BASE_URL + '/api/import/claude-code');
     } catch (e) {
       console.error('autoImportClaudeCode:', e);
     }
@@ -356,7 +361,7 @@ class GMGUIApp {
 
   async fetchHome() {
     try {
-      const res = await fetch(BASE_URL + '/api/home');
+      const res = await this.apiFetch(BASE_URL + '/api/home');
       if (res.ok) {
         const data = await res.json();
         localStorage.setItem('gmgui-home', data.home);
@@ -419,7 +424,7 @@ class GMGUIApp {
 
   async fetchAgents() {
     try {
-      const res = await fetch(BASE_URL + '/api/agents');
+      const res = await this.apiFetch(BASE_URL + '/api/agents');
       const data = await res.json();
       if (data.agents) {
         data.agents.forEach(a => this.agents.set(a.id, a));
@@ -432,7 +437,7 @@ class GMGUIApp {
   async fetchConversations() {
     try {
       console.log('[DEBUG] fetchConversations: Starting fetch from', BASE_URL + '/api/conversations');
-      const res = await fetch(BASE_URL + '/api/conversations');
+      const res = await this.apiFetch(BASE_URL + '/api/conversations');
       console.log('[DEBUG] fetchConversations: Response status:', res.status);
       
       if (!res.ok) {
@@ -470,7 +475,7 @@ class GMGUIApp {
 
   async fetchMessages(conversationId) {
     try {
-      const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
+      const res = await this.apiFetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
       const data = await res.json();
       return data.messages || [];
     } catch (e) {
@@ -589,7 +594,7 @@ class GMGUIApp {
 
   async deleteConversation(id) {
     try {
-      const res = await fetch(`${BASE_URL}/api/conversations/${id}`, { method: 'DELETE' });
+      const res = await this.apiFetch(`${BASE_URL}/api/conversations/${id}`, { method: 'DELETE' });
       if (!res.ok) {
         console.error('deleteConversation failed:', res.status);
         return;
@@ -1055,7 +1060,7 @@ class GMGUIApp {
       ? folderPath.split('/').pop() || folderPath
       : `Chat ${this.conversations.size + 1}`;
     try {
-      const res = await fetch(BASE_URL + '/api/conversations', {
+      const res = await this.apiFetch(BASE_URL + '/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: this.selectedAgent || 'claude-code', title }),
@@ -1096,7 +1101,7 @@ class GMGUIApp {
 
     try {
       const folderPath = conv?.folderPath || localStorage.getItem('gmgui-home') || '/config';
-      const res = await fetch(`${BASE_URL}/api/conversations/${this.currentConversation}/messages`, {
+      const res = await this.apiFetch(`${BASE_URL}/api/conversations/${this.currentConversation}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1142,7 +1147,7 @@ class GMGUIApp {
 
     this.pollingInterval = setInterval(async () => {
       try {
-        const res = await fetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
+        const res = await this.apiFetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
         const data = await res.json();
         const messages = data.messages || [];
 
@@ -1309,7 +1314,7 @@ class GMGUIApp {
     if (!list) return;
     list.innerHTML = '<div style="padding: 1rem; color: var(--text-tertiary);">Loading...</div>';
     try {
-      const res = await fetch(BASE_URL + '/api/folders', {
+      const res = await this.apiFetch(BASE_URL + '/api/folders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: folderPath }),
@@ -1391,7 +1396,7 @@ function createChatInFolder() {
 async function importClaudeCodeConversations() {
   closeNewChatModal();
   try {
-    const res = await fetch(BASE_URL + '/api/import/claude-code');
+    const res = await this.apiFetch(BASE_URL + '/api/import/claude-code');
     const data = await res.json();
 
     if (!data.imported) {
