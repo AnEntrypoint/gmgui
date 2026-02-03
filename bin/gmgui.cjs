@@ -51,13 +51,13 @@ async function gmgui(args = []) {
       ps.on('error', reject);
 
       // Keep this process alive indefinitely to keep the server running
-      // The server will handle all actual work; this process just provides the bridge
       process.stdin.resume();
 
-      // If server exits unexpectedly, log it but keep trying
+      // If server exits, keep this process alive
       ps.on('exit', (code) => {
-        console.error(`Server process exited with code ${code}`);
-        // Don't reject or resolve - just keep waiting
+        if (code !== 0) {
+          console.error(`Server exited with code ${code}`);
+        }
       });
     });
   } else {
