@@ -3,9 +3,35 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
-const CLAUDE_BIN = '/home/user/.local/bin/claude';
-const API_KEY_PATH = path.join(os.homedir(), '.claude', 'oauth-api-key');
-const API_URL = 'https://api.anthropic.com/v1/messages';
+// Common paths where claude-code-acp might be installed
+const CLAUDE_CODE_ACP_PATHS = [
+  '/config/.gmweb/npm-global/bin/claude-code-acp',
+  '/usr/local/bin/claude-code-acp',
+  '/usr/bin/claude-code-acp',
+  path.join(os.homedir(), '.local/bin/claude-code-acp'),
+  path.join(os.homedir(), '.gmweb/npm-global/bin/claude-code-acp'),
+  'claude-code-acp', // fallback to PATH
+];
+
+// Common paths where opencode might be installed
+const OPENCODE_PATHS = [
+  '/usr/local/bin/opencode',
+  '/usr/bin/opencode',
+  path.join(os.homedir(), '.local/bin/opencode'),
+  'opencode', // fallback to PATH
+];
+
+function findBinary(paths) {
+  for (const p of paths) {
+    try {
+      fs.accessSync(p, fs.constants.X_OK);
+      return p;
+    } catch (_) {
+      continue;
+    }
+  }
+  return null;
+}
 
 const RIPPLEUI_SYSTEM_PROMPT = `ALWAYS respond with HTML using RippleUI components. The chat renders HTML. Use: cards (class='card'), alerts (class='alert alert-info'), tables (class='table table-zebra'), badges (class='badge badge-primary'), buttons (class='btn btn-primary'). Wrap all responses in styled HTML with Tailwind CSS utility classes for layout.
 
@@ -75,9 +101,35 @@ export default class ACPConnection {
       delete env.NODE_INSPECT;
       delete env.NODE_DEBUG;
 
+      // Ensure npm global bin directories are in PATH
+      const npmGlobalBins = [
+        '/config/.gmweb/npm-global/bin',
+        path.join(os.homedir(), '.gmweb/npm-global/bin'),
+        path.join(os.homedir(), '.local/bin'),
+        '/usr/local/bin',
+      ];
+      const currentPath = env.PATH || '';
+      const newPathEntries = npmGlobalBins.filter(p => !currentPath.includes(p));
+      if (newPathEntries.length > 0) {
+        env.PATH = [...newPathEntries, currentPath].join(':');
+      }
+
       try {
-        const cmd = agentType === 'opencode' ? 'opencode' : 'claude-code-acp';
-        const args = agentType === 'opencode' ? ['acp'] : [];
+        let cmd;
+        let args;
+        if (agentType === 'opencode') {
+          cmd = findBinary(OPENCODE_PATHS);
+          args = ['acp'];
+        } else {
+          cmd = findBinary(CLAUDE_CODE_ACP_PATHS);
+          args = [];
+        }
+
+        if (!cmd) {
+          reject(new Error(`Could not find ${agentType} ACP binary. Please ensure ${agentType === 'opencode' ? 'opencode' : 'claude-code-acp'} is installed and in your PATH.`));
+          return;
+        }
+
         this.child = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env, shell: false });
       } catch (err) {
         reject(new Error(`Failed to spawn ACP: ${err.message}`));
