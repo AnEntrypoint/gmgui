@@ -10,6 +10,7 @@ import ACPConnection from './acp-launcher.js';
 import { SessionStateStore } from './state-manager.js';
 import { StreamHandler } from './stream-handler.js';
 import { StateValidator } from './state-validator.js';
+import { getConversationSync } from './conversation-sync.js';
 
 // Debug logging to file
 const debugLog = (msg) => {
@@ -136,7 +137,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (routePath === '/api/conversations' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ conversations: queries.getAllConversations() }));
+      res.end(JSON.stringify({ conversations: queries.getConversationsList() }));
       return;
     }
 
@@ -183,8 +184,12 @@ const server = http.createServer(async (req, res) => {
     const messagesMatch = routePath.match(/^\/api\/conversations\/([^/]+)\/messages$/);
     if (messagesMatch) {
       if (req.method === 'GET') {
+        const url = new URL(req.url, 'http://localhost');
+        const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
+        const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0);
+        const result = queries.getPaginatedMessages(messagesMatch[1], limit, offset);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ messages: queries.getConversationMessages(messagesMatch[1]) }));
+        res.end(JSON.stringify(result));
         return;
       }
 
@@ -676,12 +681,20 @@ function onServerReady() {
   console.log(`GMGUI running on http://localhost:${PORT}${BASE_URL}/`);
   console.log(`Agents: ${discoveredAgents.map(a => a.name).join(', ') || 'none'}`);
   console.log(`Hot reload: ${watch ? 'on' : 'off'}`);
-  
+
   // Run auto-import immediately
   performAutoImport();
-  
+
   // Then run it every 30 seconds (constant automatic importing)
   setInterval(performAutoImport, 30000);
+
+  // Start conversation sync to watch for changes
+  try {
+    const sync = getConversationSync();
+    sync.start();
+  } catch (err) {
+    console.error('[SERVER] Error starting conversation sync:', err.message);
+  }
 }
 
 function performAutoImport() {

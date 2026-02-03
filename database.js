@@ -256,6 +256,13 @@ export const queries = {
     return stmt.all('deleted');
   },
 
+  getConversationsList() {
+    const stmt = db.prepare(
+      'SELECT id, title, agentType, created_at, updated_at, messageCount FROM conversations WHERE status != ? ORDER BY updated_at DESC'
+    );
+    return stmt.all('deleted');
+  },
+
   updateConversation(id, data) {
     const conv = this.getConversation(id);
     if (!conv) return null;
@@ -339,6 +346,33 @@ export const queries = {
        return msg;
      });
    },
+
+  getPaginatedMessages(conversationId, limit = 50, offset = 0) {
+    const countStmt = db.prepare('SELECT COUNT(*) as count FROM messages WHERE conversationId = ?');
+    const total = countStmt.get(conversationId).count;
+
+    const stmt = db.prepare(
+      'SELECT * FROM messages WHERE conversationId = ? ORDER BY created_at ASC LIMIT ? OFFSET ?'
+    );
+    const messages = stmt.all(conversationId, limit, offset);
+
+    return {
+      messages: messages.map(msg => {
+        if (typeof msg.content === 'string') {
+          try {
+            msg.content = JSON.parse(msg.content);
+          } catch (_) {
+            // If it's not JSON, leave it as string
+          }
+        }
+        return msg;
+      }),
+      total,
+      limit,
+      offset,
+      hasMore: offset + limit < total
+    };
+  },
 
   createSession(conversationId) {
     const id = generateId('sess');
