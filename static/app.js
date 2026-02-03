@@ -750,15 +750,36 @@ class GMGUIApp {
     return elements.length > 0 ? elements : null;
   }
 
-  renderTextOrHtml(text) {
-    if (this.looksLikeHtml(text)) {
-      return this.createSandboxedHtml(text);
-    }
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    bubble.textContent = text;
-    return bubble;
-  }
+   renderTextOrHtml(text) {
+     if (this.looksLikeHtml(text)) {
+       return this.createSandboxedHtml(text);
+     }
+     
+     // CRITICAL FIX: Don't bundle all text into one bubble
+     // Split by paragraphs (double newlines) to preserve separation
+     const paragraphs = text.split('\n\n').filter(p => p.trim());
+     
+     if (paragraphs.length === 1) {
+       // Single paragraph - just one bubble
+       const bubble = document.createElement('div');
+       bubble.className = 'message-bubble';
+       bubble.textContent = text;
+       return bubble;
+     }
+     
+     // Multiple paragraphs - create separate bubbles for each
+     const container = document.createElement('div');
+     container.className = 'message-bubbles-container';
+     
+     for (const para of paragraphs) {
+       const bubble = document.createElement('div');
+       bubble.className = 'message-bubble';
+       bubble.textContent = para;
+       container.appendChild(bubble);
+     }
+     
+     return container;
+   }
 
   createSandboxedHtml(rawHtml) {
     const wrap = document.createElement('div');
