@@ -7,8 +7,6 @@ import os from 'os';
 import { execSync } from 'child_process';
 import { queries } from './database.js';
 import ACPConnection from './acp-launcher.js';
-import { ResponseFormatter } from './response-formatter.js';
-import { HTMLWrapper } from './html-wrapper.js';
 import { SessionStateStore } from './state-manager.js';
 import { StreamHandler } from './stream-handler.js';
 import { StateValidator } from './state-validator.js';
@@ -454,27 +452,16 @@ async function processMessage(conversationId, messageId, sessionId, content, age
 
       console.log(`[processMessage] ACP returned: stopReason=${result?.stopReason}, streamUpdates=${streamHandler.getUpdateCount()}`);
 
-      // Use full text if available, otherwise use result
-      let responseText = fullText || result?.result || (result?.stopReason ? `Completed: ${result.stopReason}` : 'No response.');
-
-      // Only wrap plain text in HTML - don't wrap if already HTML
-      const isHTML = responseText.trim().startsWith('<');
-      if (!isHTML) {
-        responseText = HTMLWrapper.wrapResponse(responseText);
-      }
-
-      // Segment and format
-      const segments = ResponseFormatter.segmentResponse(responseText);
-      const metadata = ResponseFormatter.extractMetadata(responseText);
-      const blocks = streamHandler.getBlocks();
+      // Agent sends HTML directly - no conversion needed
+      // Extract HTML code block from response
+      const responseText = fullText || result?.result || 'No response.';
+      const htmlMatch = responseText.match(/```html\n([\s\S]*?)\n```/);
+      const htmlContent = htmlMatch ? htmlMatch[1] : responseText;
 
       const messageContent = {
-        text: responseText,
-        blocks: blocks.length > 0 ? blocks : undefined,
-        segments,
-        metadata,
-        streamUpdatesCount: streamHandler.getUpdateCount(),
-        isHTML: true
+        text: htmlContent,
+        html: true,
+        streamUpdatesCount: streamHandler.getUpdateCount()
       };
 
       // Save consolidated response to database
