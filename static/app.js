@@ -772,46 +772,67 @@ class GMGUIApp {
     el.className = `message ${msg.role}`;
     el.dataset.messageId = msg.id;
 
+    // CRITICAL: Always check for HTML content first - NEVER render HTML as plain text
     if (typeof msg.content === 'string') {
-      const parsed = this.parseAndRenderContent(msg.content);
-      if (parsed) {
-        parsed.forEach(elem => el.appendChild(elem));
+      // MANDATORY HTML RENDERING: Check if this is HTML before falling back to text
+      if (this.looksLikeHtml(msg.content)) {
+        console.log('[HTML] Agent response contains HTML - rendering as HTML');
+        el.appendChild(this.createSandboxedHtml(msg.content));
       } else {
-        const bubble = document.createElement('div');
-        bubble.className = 'message-bubble';
-        bubble.textContent = msg.content;
-        el.appendChild(bubble);
-      }
-    } else if (typeof msg.content === 'object' && msg.content !== null) {
-      // Display segmented content if available
-      if (msg.content.segments && Array.isArray(msg.content.segments)) {
-        msg.content.segments.forEach(segment => {
-          el.appendChild(this.renderSegment(segment));
-        });
-      } else if (msg.content.text) {
-        // Fallback to regular text rendering
-        const parsed = this.parseAndRenderContent(msg.content.text);
+        // Only use text rendering if it's not HTML
+        const parsed = this.parseAndRenderContent(msg.content);
         if (parsed) {
           parsed.forEach(elem => el.appendChild(elem));
         } else {
           const bubble = document.createElement('div');
           bubble.className = 'message-bubble';
-          bubble.textContent = msg.content.text;
+          bubble.textContent = msg.content;
           el.appendChild(bubble);
         }
       }
-
-      // Display blocks if available
+    } else if (typeof msg.content === 'object' && msg.content !== null) {
+      // CRITICAL: Check for HTML content in object
+      let hasHtmlContent = false;
+      
+      // Display blocks if available (HTML blocks MUST be rendered as HTML)
       if (msg.content.blocks && Array.isArray(msg.content.blocks)) {
         msg.content.blocks.forEach(block => {
           if (block.type === 'html') {
+            console.log('[HTML] Rendering HTML block from agent');
             const htmlEl = this.createHtmlBlock(block);
             el.appendChild(htmlEl);
+            hasHtmlContent = true;
           } else if (block.type === 'image') {
             const imgEl = this.createImageBlock(block);
             el.appendChild(imgEl);
+            hasHtmlContent = true;
           }
         });
+      }
+      
+      // Display segmented content if available
+      if (msg.content.segments && Array.isArray(msg.content.segments)) {
+        console.log('[HTML] Rendering segments from agent response');
+        msg.content.segments.forEach(segment => {
+          el.appendChild(this.renderSegment(segment));
+        });
+      } else if (msg.content.text && !hasHtmlContent) {
+        // Only use text rendering if no HTML blocks were rendered
+        // But ALWAYS check if text itself contains HTML
+        if (this.looksLikeHtml(msg.content.text)) {
+          console.log('[HTML] Agent text content contains HTML - rendering as HTML');
+          el.appendChild(this.createSandboxedHtml(msg.content.text));
+        } else {
+          const parsed = this.parseAndRenderContent(msg.content.text);
+          if (parsed) {
+            parsed.forEach(elem => el.appendChild(elem));
+          } else {
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.textContent = msg.content.text;
+            el.appendChild(bubble);
+          }
+        }
       }
 
       // Display metadata if available
@@ -820,6 +841,7 @@ class GMGUIApp {
         if (metadataEl) el.appendChild(metadataEl);
       }
     } else {
+      // Fallback for non-string, non-object content
       const bubble = document.createElement('div');
       bubble.className = 'message-bubble';
       bubble.textContent = JSON.stringify(msg.content);
