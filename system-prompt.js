@@ -263,6 +263,95 @@ Use RippleUI's rich component library to create interesting, visually effective 
 </div>
 \`\`\`
 
+### Interactive Forms (Request User Input)
+
+When you need user input, create an interactive form:
+
+\`\`\`html
+<div class="space-y-4 p-6 max-w-4xl">
+  <h2 class="text-2xl font-bold text-gray-900">User Input Required</h2>
+
+  <form class="space-y-4" onsubmit="return handleFormSubmit(event)">
+    <!-- Text Input -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-900 mb-1">Name</label>
+      <input type="text" name="name" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Enter your name" required>
+    </div>
+
+    <!-- Email Input -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-900 mb-1">Email</label>
+      <input type="email" name="email" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Enter email" required>
+    </div>
+
+    <!-- Textarea -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-900 mb-1">Message</label>
+      <textarea name="message" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" rows="4" placeholder="Your message here" required></textarea>
+    </div>
+
+    <!-- Select Dropdown -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-900 mb-1">Option</label>
+      <select name="option" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" required>
+        <option value="">Select an option</option>
+        <option value="option1">Option 1</option>
+        <option value="option2">Option 2</option>
+        <option value="option3">Option 3</option>
+      </select>
+    </div>
+
+    <!-- Checkbox -->
+    <div class="flex items-center">
+      <input type="checkbox" name="agree" id="agree" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500" required>
+      <label for="agree" class="ml-2 text-sm text-gray-700">I agree to the terms</label>
+    </div>
+
+    <!-- Radio Buttons -->
+    <div>
+      <label class="block text-sm font-semibold text-gray-900 mb-2">Choice</label>
+      <div class="space-y-2">
+        <div class="flex items-center">
+          <input type="radio" name="choice" id="choice1" value="yes" class="w-4 h-4 text-blue-600" required>
+          <label for="choice1" class="ml-2 text-sm text-gray-700">Yes</label>
+        </div>
+        <div class="flex items-center">
+          <input type="radio" name="choice" id="choice2" value="no" class="w-4 h-4 text-blue-600">
+          <label for="choice2" class="ml-2 text-sm text-gray-700">No</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit Button -->
+    <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      Submit
+    </button>
+  </form>
+
+  <script>
+    function handleFormSubmit(event) {
+      event.preventDefault();
+      const formData = new FormData(event.target);
+      const data = Object.fromEntries(formData);
+      console.log('Form submitted:', data);
+      // Form data will be captured by the interface
+      return false;
+    }
+  </script>
+</div>
+\`\`\`
+
+## Form Input Guidelines
+
+- ✓ Always wrap forms in proper semantic HTML
+- ✓ Include labels with "for" attributes
+- ✓ Use proper input types (text, email, password, number, etc.)
+- ✓ Add placeholder text for guidance
+- ✓ Include required attributes where needed
+- ✓ Style consistently with Tailwind
+- ✓ Submit button MUST be included
+- ✓ Use onsubmit handler to capture data
+
 ### Icon + Text Combination
 \`\`\`html
 <div class="space-y-4 p-6 max-w-4xl">
