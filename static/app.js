@@ -443,15 +443,78 @@ class GMGUIApp {
      });
    }
    
-   updateHtmlBlockThemes() {
-     // Update theme attribute and CSS for all existing HTML blocks
-     const currentTheme = document.documentElement.getAttribute('data-theme') || 
-                         (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-     
-     document.querySelectorAll('.html-content').forEach(content => {
-       content.setAttribute('data-theme', currentTheme);
-     });
-   }
+    updateHtmlBlockThemes() {
+      // Update theme attribute and CSS for all existing HTML blocks
+      const currentTheme = document.documentElement.getAttribute('data-theme') || 
+                          (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      
+      // CRITICAL: Remove old theme styles and inject new ones for all HTML blocks
+      document.querySelectorAll('.html-content').forEach(content => {
+        // Remove any existing theme style tags
+        const oldStyles = content.querySelectorAll('style');
+        oldStyles.forEach(style => {
+          if (style.textContent.includes('.html-content')) {
+            style.remove();
+          }
+        });
+        
+        // Inject new theme-aware CSS
+        const themeCSS = currentTheme === 'dark' 
+          ? `<style>
+               .html-content { 
+                 color: #f8fafc; 
+                 background: transparent;
+               }
+               .html-content p { color: #cbd5e1; }
+               .html-content h1, .html-content h2, .html-content h3, 
+               .html-content h4, .html-content h5, .html-content h6 { 
+                 color: #f8fafc; 
+               }
+               .html-content a { color: #6366f1; }
+               .html-content code { color: #c7d2fe; background: rgba(0,0,0,0.3); }
+               .html-content pre { background: rgba(0,0,0,0.5); color: #e0e7ff; }
+               .html-content table { border-color: #334155; }
+               .html-content th { background: #1a202c; color: #f8fafc; }
+               .html-content td { border-color: #334155; }
+               .html-content blockquote { border-color: #334155; color: #cbd5e1; }
+               .html-content ul, .html-content ol { color: #cbd5e1; }
+               .html-content li { color: #cbd5e1; }
+            </style>`
+          : `<style>
+               .html-content { 
+                 color: #1d2129; 
+                 background: transparent;
+               }
+               .html-content p { color: #475569; }
+               .html-content h1, .html-content h2, .html-content h3, 
+               .html-content h4, .html-content h5, .html-content h6 { 
+                 color: #1d2129; 
+               }
+               .html-content a { color: #4f46e5; }
+               .html-content code { color: #6366f1; background: rgba(99,102,241,0.1); }
+               .html-content pre { background: #f3f4f6; color: #1d2129; }
+               .html-content table { border-color: #e5e7eb; }
+               .html-content th { background: #f9fafb; color: #1d2129; }
+               .html-content td { border-color: #e5e7eb; }
+               .html-content blockquote { border-color: #e5e7eb; color: #475569; }
+               .html-content ul, .html-content ol { color: #475569; }
+               .html-content li { color: #475569; }
+            </style>`;
+        
+        // Create a temporary wrapper to parse and insert the style
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = themeCSS;
+        const styleEl = tempDiv.querySelector('style');
+        if (styleEl) {
+          content.insertBefore(styleEl.cloneNode(true), content.firstChild);
+        }
+        
+        // Update data-theme attribute
+        content.setAttribute('data-theme', currentTheme);
+      });
+      
+      console.log(`[THEME] Updated ${document.querySelectorAll('.html-content').length} HTML blocks to ${currentTheme} mode`);
+    }
 
   async fetchAgents() {
     try {
