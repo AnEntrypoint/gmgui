@@ -164,6 +164,9 @@ class AgentGUIClient {
     if (themeToggle) {
       themeToggle.addEventListener('click', () => this.toggleTheme());
     }
+
+    // Listen for new conversation creation
+    window.addEventListener('create-new-conversation', () => this.createNewConversation());
   }
 
   /**
@@ -473,6 +476,42 @@ class AgentGUIClient {
   toggleTheme() {
     const isDark = document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }
+
+  /**
+   * Create a new empty conversation
+   */
+  async createNewConversation() {
+    try {
+      const agentId = this.ui.agentSelector?.value || 'claude-code';
+      const response = await fetch(window.__BASE_URL + '/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId,
+          title: 'New Conversation'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to create conversation: ${response.status}`);
+      }
+
+      const { conversation } = await response.json();
+      this.state.currentConversation = conversation;
+
+      // Refresh conversation list
+      await this.loadConversations();
+
+      // Clear input for next execution
+      if (this.ui.messageInput) {
+        this.ui.messageInput.value = '';
+        this.ui.messageInput.focus();
+      }
+    } catch (error) {
+      console.error('Failed to create new conversation:', error);
+      this.showError(`Failed to create conversation: ${error.message}`);
+    }
   }
 
   /**
