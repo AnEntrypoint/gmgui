@@ -188,26 +188,3 @@ export function validateMessage(data: unknown) {
   }
 }
 
-export function validateConversationsList(data: unknown) {
-  try {
-    return { valid: true, data: ConversationsListSchema.parse(data) };
-  } catch (error) {
-    return { valid: false, error: String(error) };
-  }
-}
-
-export function validateMessagesList(data: unknown) {
-  try {
-    return { valid: true, data: MessagesListSchema.parse(data) };
-  } catch (error) {
-    return { valid: false, error: String(error) };
-  }
-}
-
-export function validatePaginationParams(data: unknown) {
-  try {
-    return { valid: true, data: PaginationParamsSchema.parse(data) };
-  } catch (error) {
-    return { valid: false, error: String(error) };
-  }
-}
