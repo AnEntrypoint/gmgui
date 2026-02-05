@@ -199,7 +199,7 @@ const server = http.createServer(async (req, res) => {
         const idempotencyKey = body.idempotencyKey || null;
         const message = queries.createMessage(conversationId, 'user', body.content, idempotencyKey);
         queries.createEvent('message.created', { role: 'user', messageId: message.id }, conversationId);
-        broadcastSync({ type: 'message_created', conversationId, message });
+        broadcastSync({ type: 'message_created', conversationId, message, timestamp: Date.now() });
         const session = queries.createSession(conversationId);
         queries.createEvent('session.created', { messageId: message.id, sessionId: session.id }, conversationId, session.id);
          res.writeHead(201, { 'Content-Type': 'application/json' });
@@ -475,12 +475,14 @@ async function processMessage(conversationId, messageId, sessionId, content, age
       });
       queries.createEvent('session.completed', { messageId: assistantMessage.id }, conversationId, sessionId);
 
-      // Broadcast final consolidated response
+      // Broadcast final consolidated response with full message content
       broadcastSync({
         type: 'session_updated',
         sessionId,
+        conversationId,
         status: 'completed',
-        message: assistantMessage
+        message: assistantMessage,
+        timestamp: Date.now()
       });
 
       // STATE: PROCESSING → COMPLETED
@@ -510,10 +512,10 @@ async function processMessage(conversationId, messageId, sessionId, content, age
 
       // Save error to database
       const errorMsg = `ACP Error: ${acpError.message}`;
-      queries.createMessage(conversationId, 'assistant', errorMsg);
+      const errorMessage = queries.createMessage(conversationId, 'assistant', errorMsg);
       queries.updateSession(sessionId, { status: 'error', error: acpError.message, completed_at: Date.now() });
       queries.createEvent('session.error', { error: acpError.message, stack: acpError.stack }, conversationId, sessionId);
-      broadcastSync({ type: 'session_updated', sessionId, status: 'error', error: acpError.message });
+      broadcastSync({ type: 'session_updated', sessionId, conversationId, status: 'error', error: acpError.message, message: errorMessage, timestamp: Date.now() });
 
       // Clean up ACP connection on error
       acpPool.delete(actualAgentId);

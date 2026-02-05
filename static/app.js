@@ -265,14 +265,14 @@ class GMGUIApp {
 
   handleSyncEvent(event, fromBroadcast = false) {
     // CRITICAL: Server is the authoritative source of truth
-    // On ANY event, fetch fresh state from server to ensure consistency
-    // Never rely on event data alone - always verify with server
-    
+    // Real-time WebSocket events for messages arrive immediately
+    // Subscribe to conversation to receive message updates
+
     console.log('[STATE SYNC] Event received:', event.type);
-    
+
     switch (event.type) {
       case 'sync_connected':
-        console.log('[STATE SYNC] Connected to sync bus - fetching full state');
+        console.log('[STATE SYNC] Connected to sync bus - subscribing to all active sessions');
         // On connection, always do a full state refresh
         this.fetchConversations().then(() => this.renderChatHistory());
         break;
@@ -325,32 +325,54 @@ class GMGUIApp {
         break;
 
       case 'message_created':
-        console.log('[STATE SYNC] Message created, fetching full state');
-        // A message was created - refresh everything to see updated timestamps
-        this.fetchConversations().then(() => {
-          this.renderChatHistory();
-          // If we're viewing this conversation, refresh it
-          if (this.currentConversation === event.conversationId) {
-            this.displayConversation(event.conversationId);
+        console.log('[STATE SYNC] Message created via WebSocket - real-time push');
+        // User message was created - add it immediately without polling
+        if (this.currentConversation === event.conversationId && event.message) {
+          console.log('[STATE SYNC] Adding user message to display immediately');
+          // Stop any existing polling for this conversation
+          this.stopPollingMessages();
+          // Add message directly to display
+          this.addMessageToDisplay(event.message);
+          // Update conversation metadata
+          this.fetchConversations().then(() => this.renderChatHistory());
+          // Auto-scroll to new message
+          if (this.settings.autoScroll) {
+            setTimeout(() => {
+              const div = document.getElementById('chatMessages');
+              if (div) div.scrollTop = div.scrollHeight;
+            }, 50);
           }
-        });
+        } else {
+          // Not viewing this conversation, just update timestamps
+          this.fetchConversations().then(() => this.renderChatHistory());
+        }
         if (!fromBroadcast && this.broadcastChannel) {
           this.broadcastChannel.postMessage(event);
         }
         break;
 
       case 'session_updated':
-        console.log('[STATE SYNC] Session updated:', event.status, '- fetching full state');
-        // Session completed with a message - ALWAYS fetch fresh state
-        // This ensures the conversation's updated_at timestamp is synced
-        this.fetchConversations().then(() => {
-          this.renderChatHistory(); // Update sidebar with new timestamps
-          
-          // If viewing this conversation, show the message
-          if (this.currentConversation === event.conversationId) {
-            this.displayConversation(event.conversationId);
+        console.log('[STATE SYNC] Session updated via WebSocket:', event.status, '- real-time push');
+        // Session completed - agent response arrived via WebSocket push (no polling!)
+        if (this.currentConversation === event.conversationId && event.message) {
+          console.log('[STATE SYNC] Adding assistant message to display immediately (real-time push)');
+          // Stop polling immediately
+          this.stopPollingMessages();
+          // Add message directly to display
+          this.addMessageToDisplay(event.message);
+          // Update conversation metadata
+          this.fetchConversations().then(() => this.renderChatHistory());
+          // Auto-scroll to new message
+          if (this.settings.autoScroll) {
+            setTimeout(() => {
+              const div = document.getElementById('chatMessages');
+              if (div) div.scrollTop = div.scrollHeight;
+            }, 50);
           }
-        });
+        } else {
+          // Not viewing this conversation, just update timestamps
+          this.fetchConversations().then(() => this.renderChatHistory());
+        }
         if (!fromBroadcast && this.broadcastChannel) {
           this.broadcastChannel.postMessage(event);
         }
@@ -1350,56 +1372,20 @@ class GMGUIApp {
     this.addMessageToDisplay({ role: 'system', content: text });
   }
 
+  stopPollingMessages() {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+      console.log('[POLLING] Polling stopped - using WebSocket push instead');
+    }
+  }
+
   startPollingMessages(conversationId) {
-    if (this.pollingInterval) clearInterval(this.pollingInterval);
-
-    let pollCount = 0;
-    const maxNoResponsePolls = 240;
-    let lastKnownIds = new Set(
-      Array.from(document.querySelectorAll('#chatMessages [data-message-id]'))
-        .map(el => el.dataset.messageId)
-        .filter(id => id && !id.startsWith('pending-'))
-    );
-
-    this.pollingInterval = setInterval(async () => {
-      try {
-        const res = await this.apiFetch(`${BASE_URL}/api/conversations/${conversationId}/messages`);
-        const data = await res.json();
-        const messages = data.messages || [];
-
-        let added = false;
-        messages.forEach(msg => {
-          if (msg.id && !lastKnownIds.has(msg.id)) {
-            const existingEl = document.querySelector(`[data-message-id="${msg.id}"]`);
-            if (!existingEl) {
-              this.addMessageToDisplay(msg);
-              added = true;
-            }
-            lastKnownIds.add(msg.id);
-          }
-        });
-        if (added) {
-          pollCount = 0;
-
-          if (this.settings.autoScroll) {
-            const div = document.getElementById('chatMessages');
-            if (div) div.scrollTop = div.scrollHeight;
-          }
-        } else {
-          pollCount++;
-        }
-
-        // Stop polling if no changes for a while
-        if (pollCount > maxNoResponsePolls) {
-          clearInterval(this.pollingInterval);
-          this.pollingInterval = null;
-        }
-      } catch (e) {
-        console.error('Polling error:', e);
-        clearInterval(this.pollingInterval);
-        this.pollingInterval = null;
-      }
-    }, 500); // Poll every 500ms
+    // DEPRECATED: Polling mechanism replaced with WebSocket push
+    // This method is kept for backwards compatibility but does nothing
+    // Messages now arrive via WebSocket in real-time via handleSyncEvent
+    console.log('[POLLING] Polling requested but disabled - WebSocket handles real-time updates');
+    this.stopPollingMessages();
   }
 
   createThoughtBlock() {
