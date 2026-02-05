@@ -298,33 +298,57 @@ async function processMessage(conversationId, messageId, content, agentId) {
     const outputs = await runClaudeWithStreaming(content, cwd, actualAgentId);
     debugLog(`[processMessage] Claude returned ${outputs.length} outputs`);
 
-    let textParts = [];
+    // Collect all message blocks to preserve full execution details
+    let allBlocks = [];
+    let lastAssistantMessage = null;
+
     for (const output of outputs) {
-      if (typeof output === 'string') {
-        textParts.push(output);
-      } else if (output.type === 'assistant' && output.message?.content) {
+      if (output.type === 'assistant' && output.message?.content) {
         debugLog(`[processMessage] Found assistant message with ${output.message.content.length} content blocks`);
-        for (const block of output.message.content) {
-          if (block.type === 'text' && block.text) {
-            textParts.push(block.text);
-          }
-        }
-      } else if (output.type === 'result' && output.result) {
-        debugLog(`[processMessage] Found result block with result: ${output.result}`);
-        textParts.push(String(output.result));
-      } else if (output.text) {
-        textParts.push(output.text);
-      } else if (output.content?.text) {
-        textParts.push(output.content.text);
+        lastAssistantMessage = output.message;
+        allBlocks.push(...(output.message.content || []));
+      } else if (output.type === 'tool_result' && output.result) {
+        debugLog(`[processMessage] Found tool result: ${typeof output.result}`);
+        allBlocks.push({
+          type: 'tool_result',
+          result: output.result,
+          tool_use_id: output.tool_use_id
+        });
       }
     }
 
-    const responseText = textParts.join('\n').trim();
-    debugLog(`[processMessage] Extracted response text: "${responseText.substring(0, 100)}..."`);
+    // Store full message structure if we have execution data, otherwise fallback to text
+    let messageContent = null;
 
-    if (responseText) {
+    if (allBlocks.length > 0) {
+      // Store full message structure as JSON for proper rendering
+      messageContent = JSON.stringify({
+        type: 'claude_execution',
+        blocks: allBlocks,
+        timestamp: Date.now()
+      });
+      debugLog(`[processMessage] Storing full execution with ${allBlocks.length} blocks`);
+    } else {
+      // Fallback: extract text for simple responses
+      let textParts = [];
+      for (const output of outputs) {
+        if (typeof output === 'string') {
+          textParts.push(output);
+        } else if (output.text) {
+          textParts.push(output.text);
+        } else if (output.content?.text) {
+          textParts.push(output.content.text);
+        } else if (output.result) {
+          textParts.push(String(output.result));
+        }
+      }
+      messageContent = textParts.join('\n').trim();
+      debugLog(`[processMessage] Storing text response: "${messageContent.substring(0, 100)}..."`);
+    }
+
+    if (messageContent) {
       debugLog(`[processMessage] Creating assistant message`);
-      const assistantMessage = queries.createMessage(conversationId, 'assistant', responseText);
+      const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
       debugLog(`[processMessage] Created message with id: ${assistantMessage.id}`);
       broadcastSync({
         type: 'message_created',
@@ -333,7 +357,7 @@ async function processMessage(conversationId, messageId, content, agentId) {
         timestamp: Date.now()
       });
     } else {
-      debugLog(`[processMessage] No response text extracted!`);
+      debugLog(`[processMessage] No response content extracted!`);
     }
 
     debugLog(`[processMessage] ✅ Completed: ${outputs.length} outputs received`);

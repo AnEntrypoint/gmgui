@@ -187,12 +187,74 @@ class GMGUIApp {
 
       const msgEl = document.createElement('div');
       msgEl.className = `message ${message.role}`;
-      msgEl.innerHTML = `<div class="message-content">${this.escapeHtml(
-        typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
-      )}</div>`;
+
+      // Try to parse content as JSON for structured display
+      let contentHtml = '';
+      try {
+        const parsed = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
+        if (parsed && parsed.type === 'claude_execution' && parsed.blocks) {
+          // Render each block with appropriate formatting
+          contentHtml = '<div class="execution-blocks">';
+          for (const block of parsed.blocks) {
+            contentHtml += this.renderMessageBlock(block);
+          }
+          contentHtml += '</div>';
+        } else {
+          throw new Error('Not a claude_execution message');
+        }
+      } catch (e) {
+        // Fallback: render as plain text
+        const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+        contentHtml = `<div class="message-content">${this.escapeHtml(text)}</div>`;
+      }
+
+      msgEl.innerHTML = contentHtml;
       chatDiv.appendChild(msgEl);
       chatDiv.scrollTop = chatDiv.scrollHeight;
     }
+  }
+
+  renderMessageBlock(block) {
+    if (!block) return '';
+
+    let html = '<div class="message-block">';
+
+    switch (block.type) {
+      case 'text':
+        html += `<div class="block-text">${this.escapeHtml(block.text || '')}</div>`;
+        break;
+
+      case 'tool_use':
+        html += `<div class="block-tool-use">`;
+        html += `<strong class="tool-name">${this.escapeHtml(block.name || 'Tool')}</strong>`;
+        html += `<div class="tool-input"><pre>${this.escapeHtml(JSON.stringify(block.input || {}, null, 2))}</pre></div>`;
+        html += `</div>`;
+        break;
+
+      case 'tool_result':
+        html += `<div class="block-tool-result">`;
+        html += `<strong>Result:</strong>`;
+        const resultText = typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2);
+        html += `<div class="tool-result"><pre>${this.escapeHtml(resultText)}</pre></div>`;
+        html += `</div>`;
+        break;
+
+      case 'file_operation':
+        html += `<div class="block-file-op">`;
+        html += `<strong class="file-action">${this.escapeHtml(block.action || 'File Operation')}</strong>`;
+        html += `<div class="file-path">${this.escapeHtml(block.path || '')}</div>`;
+        if (block.content) {
+          html += `<div class="file-content"><pre>${this.escapeHtml(block.content.substring(0, 500))}</pre></div>`;
+        }
+        html += `</div>`;
+        break;
+
+      default:
+        html += `<div class="block-unknown">${this.escapeHtml(JSON.stringify(block, null, 2))}</div>`;
+    }
+
+    html += '</div>';
+    return html;
   }
 
   handleMessageReceived(message) {
@@ -262,9 +324,28 @@ class GMGUIApp {
     for (const msg of messages) {
       const msgEl = document.createElement('div');
       msgEl.className = `message ${msg.role}`;
-      msgEl.innerHTML = `<div class="message-content">${this.escapeHtml(
-        typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-      )}</div>`;
+
+      // Try to parse content as JSON for structured display
+      let contentHtml = '';
+      try {
+        const parsed = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+        if (parsed && parsed.type === 'claude_execution' && parsed.blocks) {
+          // Render each block with appropriate formatting
+          contentHtml = '<div class="execution-blocks">';
+          for (const block of parsed.blocks) {
+            contentHtml += this.renderMessageBlock(block);
+          }
+          contentHtml += '</div>';
+        } else {
+          throw new Error('Not a claude_execution message');
+        }
+      } catch (e) {
+        // Fallback: render as plain text
+        const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        contentHtml = `<div class="message-content">${this.escapeHtml(text)}</div>`;
+      }
+
+      msgEl.innerHTML = contentHtml;
       chatDiv.appendChild(msgEl);
     }
   }
