@@ -595,9 +595,21 @@ class StreamingRenderer {
     const code = event.code || event.content || '';
     const language = event.language || 'plaintext';
 
-    div.innerHTML = `
-      <pre class="bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto"><code class="language-${this.escapeHtml(language)}">${this.escapeHtml(code)}</code></pre>
-    `;
+    // Render HTML code blocks as actual HTML elements
+    if (language === 'html') {
+      div.innerHTML = `
+        <div class="html-rendered-container mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+          Rendered HTML
+        </div>
+        <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+          ${code}
+        </div>
+      `;
+    } else {
+      div.innerHTML = `
+        <pre class="bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto"><code class="language-${this.escapeHtml(language)}">${this.escapeHtml(code)}</code></pre>
+      `;
+    }
     return div;
   }
 

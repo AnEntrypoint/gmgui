@@ -376,7 +376,21 @@ class AgentGUIClient {
           if (block.type === 'text') {
             html += `<div class="message-text">${this.escapeHtml(block.text)}</div>`;
           } else if (block.type === 'code_block') {
-            html += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+            // Render HTML code blocks as actual HTML elements
+            if (block.language === 'html') {
+              html += `
+                <div class="message-code">
+                  <div class="html-rendered-label mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+                    Rendered HTML
+                  </div>
+                  <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+                    ${block.code}
+                  </div>
+                </div>
+              `;
+            } else {
+              html += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+            }
           } else if (block.type === 'tool_use') {
             html += `<div class="message-tool">[Tool: ${this.escapeHtml(block.name)}]</div>`;
           }
@@ -643,7 +657,21 @@ class AgentGUIClient {
             if (block.type === 'text') {
               contentHtml += `<div class="message-text">${this.escapeHtml(block.text)}</div>`;
             } else if (block.type === 'code_block') {
-              contentHtml += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+              // Render HTML code blocks as actual HTML elements
+              if (block.language === 'html') {
+                contentHtml += `
+                  <div class="message-code">
+                    <div class="html-rendered-label mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+                      Rendered HTML
+                    </div>
+                    <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+                      ${block.code}
+                    </div>
+                  </div>
+                `;
+              } else {
+                contentHtml += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+              }
             } else if (block.type === 'tool_use') {
               contentHtml += `<div class="message-tool">[Tool: ${this.escapeHtml(block.name)}]</div>`;
             }
