@@ -134,3 +134,40 @@ IMPLEMENTATION DETAILS:
 - Error handling: Try/catch with logging via debugLog()
 
 STATUS: Production ready, all tests passing
+
+---
+
+## PHASE 6: FULL EXECUTION DISPLAY (2026-02-05)
+===================================================
+
+ENHANCEMENT: Display full Claude message structure (tool calls, file operations, results)
+instead of just text content to match CLI behavior.
+
+IMPLEMENTATION:
+- server.js: Modified processMessage() to capture all message blocks (text, tool_use, tool_result, file_operation)
+- app.js: Added renderMessageBlock() to render each block type appropriately
+- styles.css: Added 100+ lines of CSS for execution block styling with dark mode support
+
+FEATURES:
+✓ Text blocks - conversational responses
+✓ Tool use blocks - tool calls with input parameters
+✓ Tool result blocks - tool execution results
+✓ File operation blocks - file modifications and creations
+✓ Structured JSON storage in message content field
+✓ Backward compatible with text-only messages
+✓ Full dark mode support with CSS variables
+✓ Responsive layout with proper overflow handling
+
+VERIFICATION:
+✓ Server syntax valid (node -c server.js)
+✓ Client syntax valid (node -c app.js)
+✓ CSS compilation valid
+✓ Git commit: da6b6ca
+
+BROWSER NOW DISPLAYS:
+- Actual Claude Code execution (not just responses)
+- Tool calls and their parameters
+- Tool execution results
+- File modifications
+- Complete visibility into what the agent is doing
+- Matches CLI behavior and user expectations
