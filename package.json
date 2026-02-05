@@ -25,7 +25,5 @@
     "better-sqlite3": "^12.6.2",
     "ws": "^8.14.2"
   },
-  "devDependencies": {
-    "playwright": "^1.58.1"
-  }
+  "devDependencies": {}
 }
