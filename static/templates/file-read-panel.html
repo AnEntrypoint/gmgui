@@ -1,0 +1,66 @@
+<!-- File Read Operation Display -->
+<div class="file-read-panel card" role="region" aria-label="File read operation: {{ filePath }}">
+  <div class="card-header flex items-start justify-between gap-3 mb-3 pb-3 border-b">
+    <div class="flex items-center gap-2 flex-1 min-w-0">
+      <svg class="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M5.5 13a3 3 0 01.369-1.618l1.83-1.83a3 3 0 015.604 0l.83 1.83A3 3 0 0113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z"/>
+      </svg>
+      <div class="flex-1 min-w-0">
+        <h4 class="font-semibold text-sm truncate">{{ fileName }}</h4>
+        <p class="text-xs text-secondary truncate" title="{{ filePath }}">{{ filePath }}</p>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <span class="badge badge-sm">Read</span>
+      <span class="badge badge-sm" aria-label="File size: {{ fileSize }}">{{ fileSizeFormatted }}</span>
+    </div>
+  </div>
+
+  <!-- File Metadata -->
+  <div class="text-xs text-secondary mb-3 pb-3 border-b space-y-1">
+    <p><span class="font-mono">{{ fileEncoding }}</span> • {{ lastModified }}</p>
+  </div>
+
+  <!-- Code Block with Syntax Highlighting -->
+  <pre class="code-block" role="region" aria-label="File content"><code class="language-{{ languageClass }}" data-line-count="{{ lineCount }}">{{ fileContent }}</code></pre>
+
+  <!-- Action Buttons -->
+  <div class="flex gap-2 mt-3 pt-3 border-t">
+    <button class="btn btn-sm btn-tertiary" data-action="copy" aria-label="Copy file content">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M7 3a1 1 0 000 2h6a1 1 0 000-2H7zM4 7a1 1 0 011-1h10a1 1 0 011 1v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/>
+      </svg>
+      Copy
+    </button>
+    <button class="btn btn-sm btn-tertiary" data-action="download" aria-label="Download file">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm14 1a1 1 0 11-2 0 1 1 0 012 0z"/>
+      </svg>
+      Download
+    </button>
+  </div>
+</div>
+
+<style scoped>
+.file-read-panel {
+  padding: 16px;
+  background: var(--color-bg-primary);
+}
+
+.code-block {
+  background-color: var(--color-bg-code);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+</style>

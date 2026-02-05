@@ -1,0 +1,153 @@
+<!-- Git Log Visualization Timeline -->
+<div class="git-log-visualization card" role="region" aria-label="Git commit history">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold">{{ commitCount }} Recent Commits</h4>
+  </div>
+
+  <!-- Timeline -->
+  <div class="commit-timeline" role="list">
+    {{ for commit in commits }}
+    <div class="commit-item" role="listitem">
+      <!-- Timeline Connector -->
+      <div class="commit-connector" aria-hidden="true"></div>
+
+      <!-- Commit Dot -->
+      <div class="commit-dot" aria-hidden="true">
+        <div class="dot-inner"></div>
+      </div>
+
+      <!-- Commit Card -->
+      <div class="commit-card">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex-1">
+            <h5 class="font-semibold text-sm">{{ commit.message }}</h5>
+            <p class="text-xs text-secondary">by {{ commit.author }}</p>
+          </div>
+          <code class="font-mono text-xs bg-code px-2 py-1 rounded">
+            {{ commit.hash }}
+          </code>
+        </div>
+
+        <!-- Commit Details -->
+        <div class="text-xs mt-2 space-y-1">
+          <p class="text-secondary" title="{{ commit.timestampFull }}">
+            {{ commit.timestamp }}
+          </p>
+
+          <!-- Changed Files -->
+          {{ if commit.files }}
+          <div class="mt-2">
+            <span class="text-secondary">{{ commit.filesCount }} files</span>
+            <span class="text-green-600">+{{ commit.additions }}</span>
+            <span class="text-red-600">-{{ commit.deletions }}</span>
+          </div>
+          {{ end }}
+
+          <!-- Tags -->
+          {{ if commit.tags }}
+          <div class="flex gap-1 flex-wrap mt-2">
+            {{ for tag in commit.tags }}
+            <span class="badge badge-tag">{{ tag }}</span>
+            {{ end }}
+          </div>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+    {{ end }}
+  </div>
+</div>
+
+<style scoped>
+.git-log-visualization {
+  padding: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.commit-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.commit-timeline::before {
+  content: '';
+  position: absolute;
+  left: 19px;
+  top: 12px;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--color-primary), transparent);
+}
+
+.commit-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding-bottom: 16px;
+}
+
+.commit-item:last-child {
+  padding-bottom: 0;
+}
+
+.commit-dot {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: var(--color-bg-secondary);
+  border: 2px solid var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dot-inner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+}
+
+.commit-card {
+  flex: 1;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 2px;
+}
+
+.commit-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.bg-code {
+  background-color: var(--color-bg-code);
+  border-radius: 2px;
+}
+
+.badge {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.badge-tag {
+  background-color: var(--color-secondary);
+}
+</style>

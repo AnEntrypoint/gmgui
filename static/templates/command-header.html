@@ -1,0 +1,77 @@
+<!-- Command Execution Header -->
+<div class="command-header" role="region" aria-label="Command information">
+  <div class="flex items-start justify-between gap-3 mb-3">
+    <!-- Command Info -->
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 mb-2">
+        <svg class="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z"/>
+        </svg>
+        <h4 class="font-semibold truncate">{{ commandName }}</h4>
+      </div>
+      <code class="text-xs font-mono text-secondary truncate block" title="{{ fullCommand }}">
+        $ {{ fullCommand }}
+      </code>
+    </div>
+
+    <!-- Status Badge -->
+    <div class="flex-shrink-0">
+      <div class="badge badge-lg" data-status="{{ status }}" role="status" aria-label="Command status: {{ statusLabel }}">
+        <span class="badge-dot"></span>
+        {{ statusLabel }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Details Row -->
+  <div class="grid grid-cols-4 gap-3 text-sm">
+    <div class="border-r pr-3">
+      <span class="text-secondary">Exit Code</span>
+      <p class="font-mono font-semibold" data-exit-code="{{ exitCode }}">{{ exitCode }}</p>
+    </div>
+    <div class="border-r pr-3">
+      <span class="text-secondary">Duration</span>
+      <p class="font-mono font-semibold">{{ duration }}</p>
+    </div>
+    <div class="border-r pr-3">
+      <span class="text-secondary">Memory</span>
+      <p class="font-mono font-semibold">{{ memoryUsed }}</p>
+    </div>
+    <div>
+      <span class="text-secondary">PID</span>
+      <p class="font-mono font-semibold">{{ pid }}</p>
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.command-header {
+  padding: 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+  border-left: 3px solid var(--color-primary);
+}
+
+.badge-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  margin-right: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+[data-exit-code="0"] {
+  color: #10b981;
+}
+
+[data-exit-code]:not([data-exit-code="0"]) {
+  color: #ef4444;
+}
+</style>

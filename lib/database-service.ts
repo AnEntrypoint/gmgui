@@ -15,6 +15,8 @@ import {
   ValidationResult,
   ValidationError,
   SyncError,
+  ExecutionMetadata,
+  StreamingEvent,
 } from './types';
 import {
   validateConversation,
@@ -367,6 +369,256 @@ export class DatabaseService {
     }
 
     return { valid: errors.length === 0, errors };
+  }
+
+  // =========================================================================
+  // STREAMING EXECUTION OPERATIONS
+  // =========================================================================
+
+  storeExecutionEvent(sessionId: string, event: StreamingEvent): void {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare(
+        'INSERT INTO execution_events (sessionId, eventType, eventData, timestamp) VALUES (?, ?, ?, ?)'
+      );
+      stmt.run(sessionId, event.type, JSON.stringify(event), event.timestamp || Date.now());
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to store execution event: ${(err as Error).message}`,
+        true,
+        { sessionId, eventType: event.type }
+      );
+    }
+  }
+
+  storeExecutionMetadata(sessionId: string, metadata: ExecutionMetadata): void {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare(
+        'INSERT OR REPLACE INTO execution_metadata (sessionId, metadata, updated_at) VALUES (?, ?, ?)'
+      );
+      stmt.run(sessionId, JSON.stringify(metadata), Date.now());
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to store execution metadata: ${(err as Error).message}`,
+        true,
+        { sessionId }
+      );
+    }
+  }
+
+  getSessionExecutionHistory(sessionId: string, limit = 1000, offset = 0): StreamingEvent[] {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare(
+        'SELECT eventData FROM execution_events WHERE sessionId = ? ORDER BY timestamp ASC LIMIT ? OFFSET ?'
+      );
+      const rows = stmt.all(sessionId, limit, offset);
+
+      return rows.map((row) => {
+        try {
+          return JSON.parse(row.eventData);
+        } catch (e) {
+          console.warn('[DatabaseService] Invalid execution event JSON:', row.eventData);
+          return null;
+        }
+      }).filter((e): e is StreamingEvent => e !== null);
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to get execution history: ${(err as Error).message}`,
+        true,
+        { sessionId, limit, offset }
+      );
+    }
+  }
+
+  getExecutionMetadata(sessionId: string): ExecutionMetadata | null {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare('SELECT metadata FROM execution_metadata WHERE sessionId = ?');
+      const row = stmt.get(sessionId);
+
+      if (!row) return null;
+
+      try {
+        return JSON.parse(row.metadata);
+      } catch (e) {
+        throw new SyncError('VALIDATION_ERROR', `Invalid metadata JSON for session ${sessionId}`, false);
+      }
+    } catch (err) {
+      if (err instanceof SyncError) throw err;
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to get execution metadata: ${(err as Error).message}`,
+        true,
+        { sessionId }
+      );
+    }
+  }
+
+  batchStoreExecutionEvents(sessionId: string, events: StreamingEvent[]): { count: number; latencyMs: number } {
+    this.checkClosed();
+
+    const startTime = Date.now();
+    try {
+      const transaction = this.db.transaction(() => {
+        const stmt = this.db.prepare(
+          'INSERT INTO execution_events (sessionId, eventType, eventData, timestamp) VALUES (?, ?, ?, ?)'
+        );
+
+        for (const event of events) {
+          stmt.run(sessionId, event.type, JSON.stringify(event), event.timestamp || Date.now());
+        }
+      });
+
+      transaction();
+      const latencyMs = Date.now() - startTime;
+
+      if (latencyMs > 100) {
+        console.warn(`[DatabaseService] Batch write latency ${latencyMs}ms for ${events.length} events`);
+      }
+
+      return { count: events.length, latencyMs };
+    } catch (err) {
+      if (err instanceof SyncError) throw err;
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to batch store execution events: ${(err as Error).message}`,
+        true,
+        { sessionId, count: events.length }
+      );
+    }
+  }
+
+  batchStoreExecutionEventsOptimized(
+    sessionId: string,
+    events: StreamingEvent[],
+    commitInterval = 100
+  ): { count: number; batches: number; totalLatencyMs: number } {
+    this.checkClosed();
+
+    const startTime = Date.now();
+    let processedCount = 0;
+    let batchCount = 0;
+
+    try {
+      const stmt = this.db.prepare(
+        'INSERT INTO execution_events (sessionId, eventType, eventData, timestamp) VALUES (?, ?, ?, ?)'
+      );
+
+      // Process in batches with commit points
+      for (let i = 0; i < events.length; i += commitInterval) {
+        const batch = events.slice(i, i + commitInterval);
+        const transaction = this.db.transaction(() => {
+          for (const event of batch) {
+            stmt.run(sessionId, event.type, JSON.stringify(event), event.timestamp || Date.now());
+            processedCount++;
+          }
+        });
+
+        transaction();
+        batchCount++;
+
+        const elapsed = Date.now() - startTime;
+        if (elapsed > 5000) {
+          console.warn(`[DatabaseService] Long batch write: ${elapsed}ms for ${processedCount}/${events.length} events`);
+        }
+      }
+
+      const totalLatencyMs = Date.now() - startTime;
+      return { count: events.length, batches: batchCount, totalLatencyMs };
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to batch store execution events (processed ${processedCount}/${events.length}): ${(err as Error).message}`,
+        true,
+        { sessionId, count: events.length, processed: processedCount }
+      );
+    }
+  }
+
+  markSessionIncomplete(sessionId: string, reason: string): void {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare(
+        'UPDATE sessions SET status = ?, error = ?, completed_at = ? WHERE id = ?'
+      );
+      stmt.run('incomplete', reason, Date.now(), sessionId);
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to mark session incomplete: ${(err as Error).message}`,
+        true,
+        { sessionId, reason }
+      );
+    }
+  }
+
+  getIncompleteSessionsOlderThan(ageMinutes = 30): Array<{ id: string; started_at: number }> {
+    this.checkClosed();
+
+    try {
+      const cutoffTime = Date.now() - (ageMinutes * 60 * 1000);
+      const stmt = this.db.prepare(
+        'SELECT id, started_at FROM sessions WHERE status = ? AND started_at < ?'
+      );
+      return stmt.all('incomplete', cutoffTime);
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to get incomplete sessions: ${(err as Error).message}`,
+        true,
+        { ageMinutes }
+      );
+    }
+  }
+
+  markSessionComplete(sessionId: string, status: 'completed' | 'error' | 'timeout'): void {
+    this.checkClosed();
+
+    try {
+      const stmt = this.db.prepare(
+        'UPDATE sessions SET status = ?, completed_at = ? WHERE id = ?'
+      );
+      stmt.run(status, Date.now(), sessionId);
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to mark session complete: ${(err as Error).message}`,
+        true,
+        { sessionId, status }
+      );
+    }
+  }
+
+  cleanupOrphanedSessions(maxAgeDays = 7): number {
+    this.checkClosed();
+
+    try {
+      const maxAgeMs = maxAgeDays * 24 * 60 * 60 * 1000;
+      const cutoffTime = Date.now() - maxAgeMs;
+
+      const stmt = this.db.prepare(
+        'DELETE FROM sessions WHERE status NOT IN (?, ?, ?) AND started_at < ?'
+      );
+      const result = stmt.run('processing', 'pending', 'incomplete', cutoffTime);
+      return (result.changes || 0);
+    } catch (err) {
+      throw new SyncError(
+        'DATABASE_ERROR',
+        `Failed to cleanup orphaned sessions: ${(err as Error).message}`,
+        true,
+        { maxAgeDays }
+      );
+    }
   }
 
   // =========================================================================

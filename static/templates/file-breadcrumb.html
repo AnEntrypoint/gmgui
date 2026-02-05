@@ -1,0 +1,118 @@
+<!-- File Path Breadcrumb Navigation -->
+<nav class="file-breadcrumb" role="navigation" aria-label="File path">
+  <ol class="breadcrumb-list" role="list">
+    <!-- Home -->
+    <li role="listitem">
+      <a href="/" class="breadcrumb-link" title="Home directory">
+        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
+        </svg>
+        <span class="sr-only">Home</span>
+      </a>
+    </li>
+
+    <!-- Path segments -->
+    <li role="listitem" class="breadcrumb-separator">/</li>
+
+    {{ for segment in pathSegments }}
+    <li role="listitem">
+      <a href="{{ segmentPath }}" class="breadcrumb-link" title="{{ segmentPath }}">
+        {{ segment }}
+      </a>
+    </li>
+    <li role="listitem" class="breadcrumb-separator">/</li>
+    {{ end }}
+
+    <!-- Current file -->
+    <li role="listitem" aria-current="page" class="breadcrumb-current">
+      <span class="breadcrumb-link" title="{{ currentFile }}">{{ currentFile }}</span>
+    </li>
+  </ol>
+
+  <!-- Copy path button -->
+  <button class="copy-path-btn" data-action="copy-path" aria-label="Copy file path" title="Copy full path to clipboard">
+    <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M7 3a1 1 0 000 2h6a1 1 0 000-2H7zM4 7a1 1 0 011-1h10a1 1 0 011 1v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/>
+    </svg>
+  </button>
+</nav>
+
+<style scoped>
+.file-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.breadcrumb-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.breadcrumb-link {
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.breadcrumb-link:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.breadcrumb-current .breadcrumb-link {
+  color: var(--color-text-primary);
+  cursor: default;
+}
+
+.breadcrumb-current .breadcrumb-link:hover {
+  background-color: transparent;
+}
+
+.breadcrumb-separator {
+  color: var(--color-text-secondary);
+  margin: 0 -2px;
+}
+
+.copy-path-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.copy-path-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+</style>

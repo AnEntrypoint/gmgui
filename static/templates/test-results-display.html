@@ -1,0 +1,144 @@
+<!-- Test Results Display -->
+<div class="test-results-display card" role="region" aria-label="Test execution results">
+  <div class="card-header flex items-center justify-between mb-3 pb-3 border-b">
+    <h4 class="font-semibold">Test Results</h4>
+    <div class="test-summary flex gap-2">
+      <span class="badge-result passed" aria-label="Passed tests">{{ passedCount }}</span>
+      <span class="badge-result failed" aria-label="Failed tests">{{ failedCount }}</span>
+      <span class="badge-result skipped" aria-label="Skipped tests">{{ skippedCount }}</span>
+    </div>
+  </div>
+
+  <!-- Summary Stats -->
+  <div class="summary-stats grid grid-cols-4 gap-3 mb-4 pb-4 border-b text-center">
+    <div>
+      <p class="text-2xl font-bold text-green-600">{{ passedCount }}</p>
+      <p class="text-xs text-secondary">Passed</p>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-red-600">{{ failedCount }}</p>
+      <p class="text-xs text-secondary">Failed</p>
+    </div>
+    <div>
+      <p class="text-2xl font-bold text-yellow-600">{{ skippedCount }}</p>
+      <p class="text-xs text-secondary">Skipped</p>
+    </div>
+    <div>
+      <p class="text-2xl font-bold font-mono">{{ passPercentage }}%</p>
+      <p class="text-xs text-secondary">Pass Rate</p>
+    </div>
+  </div>
+
+  <!-- Test Tree/List -->
+  <div class="test-list space-y-1">
+    {{ for suite in testSuites }}
+    <details class="test-suite">
+      <summary class="cursor-pointer py-2 px-3 rounded hover:bg-hover-bg flex items-center gap-2">
+        <svg class="w-4 h-4 chevron" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
+        </svg>
+        <span class="font-semibold text-sm">{{ suite.name }}</span>
+        <span class="ml-auto text-xs space-x-1">
+          <span class="text-green-600">{{ suite.passed }}</span>
+          <span class="text-red-600">{{ suite.failed }}</span>
+        </span>
+      </summary>
+
+      <div class="test-cases mt-2 ml-4 space-y-1 border-l pl-3">
+        {{ for test in suite.tests }}
+        <div class="test-case flex items-center gap-2 py-1 text-sm">
+          {{ if test.status == 'passed' }}
+          <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+          </svg>
+          {{ else if test.status == 'failed' }}
+          <svg class="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/>
+          </svg>
+          {{ else }}
+          <svg class="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12z"/>
+          </svg>
+          {{ end }}
+          <span class="flex-1">{{ test.name }}</span>
+          <span class="text-secondary text-xs">{{ test.duration }}ms</span>
+        </div>
+        {{ end }}
+      </div>
+    </details>
+    {{ end }}
+  </div>
+
+  <!-- Execution Metadata -->
+  <div class="mt-4 pt-4 border-t text-xs text-secondary space-y-1">
+    <p>Total Duration: <code class="font-mono">{{ totalDuration }}</code></p>
+    <p>Framework: <code class="font-mono">{{ framework }}</code></p>
+  </div>
+</div>
+
+<style scoped>
+.test-results-display {
+  padding: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.badge-result {
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+}
+
+.badge-result.passed {
+  background-color: #10b981;
+}
+
+.badge-result.failed {
+  background-color: #ef4444;
+}
+
+.badge-result.skipped {
+  background-color: #6b7280;
+}
+
+.test-suite {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.test-suite[open] summary {
+  background-color: var(--color-bg-hover);
+  border-bottom: 1px solid var(--color-border);
+}
+
+summary {
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  transition: transform 0.2s;
+}
+
+details[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.test-case {
+  padding: 4px 0;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background-color: var(--color-bg-code);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+</style>

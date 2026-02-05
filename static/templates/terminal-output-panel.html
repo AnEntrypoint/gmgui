@@ -1,0 +1,87 @@
+<!-- Terminal-like Output Panel with ANSI Color Support -->
+<div class="terminal-output-panel card" role="region" aria-label="Terminal output">
+  <div class="card-header flex items-center justify-between mb-3 pb-3 border-b">
+    <div>
+      <h4 class="font-semibold text-sm">{{ commandName }}</h4>
+      <p class="text-xs text-secondary font-mono">$ {{ command }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="badge" data-exit-code="{{ exitCode }}">
+        Exit {{ exitCode }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Output Container (Virtual Scrolling) -->
+  <div class="terminal-content" data-scrollable="true" role="region" aria-label="Command output" aria-live="polite">
+    <pre class="terminal-output" data-line-count="{{ lineCount }}"><code>{{ output }}</code></pre>
+  </div>
+
+  <!-- Output Statistics -->
+  <div class="text-xs text-secondary mt-3 pt-3 border-t space-y-1">
+    <p><span class="font-mono">{{ stdoutLines }}</span> stdout lines • <span class="font-mono">{{ stderrLines }}</span> stderr lines</p>
+    <p>Duration: <span class="font-mono">{{ duration }}</span> • Memory: <span class="font-mono">{{ memoryUsed }}</span></p>
+  </div>
+</div>
+
+<style scoped>
+.terminal-output-panel {
+  padding: 16px;
+  background: var(--color-bg-primary);
+}
+
+.terminal-content {
+  background-color: var(--color-bg-terminal);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.terminal-output {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  color: var(--color-text-terminal);
+}
+
+/* ANSI Color Classes */
+.ansi-bold { font-weight: bold; }
+.ansi-dim { opacity: 0.5; }
+.ansi-italic { font-style: italic; }
+.ansi-underline { text-decoration: underline; }
+
+/* Text Colors */
+.ansi-black { color: #000000; }
+.ansi-red { color: #ff0000; }
+.ansi-green { color: #00ff00; }
+.ansi-yellow { color: #ffff00; }
+.ansi-blue { color: #0000ff; }
+.ansi-magenta { color: #ff00ff; }
+.ansi-cyan { color: #00ffff; }
+.ansi-white { color: #ffffff; }
+
+/* Background Colors */
+.ansi-bg-black { background-color: #000000; }
+.ansi-bg-red { background-color: #ff0000; }
+.ansi-bg-green { background-color: #00ff00; }
+.ansi-bg-yellow { background-color: #ffff00; }
+.ansi-bg-blue { background-color: #0000ff; }
+.ansi-bg-magenta { background-color: #ff00ff; }
+.ansi-bg-cyan { background-color: #00ffff; }
+.ansi-bg-white { background-color: #ffffff; }
+
+.badge[data-exit-code="0"] {
+  background-color: #10b981;
+  color: white;
+}
+
+.badge[data-exit-code]:not([data-exit-code="0"]) {
+  background-color: #ef4444;
+  color: white;
+}
+</style>

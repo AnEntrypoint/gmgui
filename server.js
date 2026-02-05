@@ -141,6 +141,45 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    const streamMatch = routePath.match(/^\/api\/conversations\/([^/]+)\/stream$/);
+    if (streamMatch && req.method === 'POST') {
+      const conversationId = streamMatch[1];
+      const body = await parseBody(req);
+      const conv = queries.getConversation(conversationId);
+      if (!conv) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Conversation not found' })); return; }
+
+      const prompt = body.content || '';
+      const agentId = body.agentId || 'claude-code';
+      const skipPermissions = body.skipPermissions || false;
+
+      debugLog(`[stream] Starting stream: conversationId=${conversationId}, agentId=${agentId}, skipPermissions=${skipPermissions}`);
+
+      // Create user message and session immediately
+      const userMessage = queries.createMessage(conversationId, 'user', prompt);
+      const session = queries.createSession(conversationId);
+      queries.createEvent('message.created', { role: 'user', messageId: userMessage.id }, conversationId);
+      queries.createEvent('session.created', { messageId: userMessage.id, sessionId: session.id }, conversationId, session.id);
+
+      // Send immediate response with session info
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: userMessage, session, streamId: session.id }));
+
+      // Emit streaming start event
+      broadcastSync({
+        type: 'streaming_start',
+        sessionId: session.id,
+        conversationId,
+        messageId: userMessage.id,
+        agentId,
+        timestamp: Date.now()
+      });
+
+      // Fire-and-forget streaming with error handling
+      processMessageWithStreaming(conversationId, userMessage.id, session.id, prompt, agentId, skipPermissions)
+        .catch(err => debugLog(`[stream] Uncaught error: ${err.message}`));
+      return;
+    }
+
     const messageMatch = routePath.match(/^\/api\/conversations\/([^/]+)\/messages\/([^/]+)$/);
     if (messageMatch && req.method === 'GET') {
       const msg = queries.getMessage(messageMatch[2]);
@@ -171,6 +210,46 @@ const server = http.createServer(async (req, res) => {
       const events = queries.getSessionEvents(latestSession.id);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ session: latestSession, events }));
+      return;
+    }
+
+    const executionMatch = routePath.match(/^\/api\/sessions\/([^/]+)\/execution$/);
+    if (executionMatch && req.method === 'GET') {
+      const sessionId = executionMatch[1];
+      const url = new URL(req.url, 'http://localhost');
+      const limit = Math.min(parseInt(url.searchParams.get('limit') || '1000'), 5000);
+      const offset = Math.max(parseInt(url.searchParams.get('offset') || '0'), 0);
+      const filterType = url.searchParams.get('filterType');
+
+      try {
+        // Retrieve execution history from database
+        // This would normally query execution_events table
+        // For now, return proper response structure
+        const executionData = {
+          sessionId,
+          events: [],
+          total: 0,
+          limit,
+          offset,
+          hasMore: false,
+          metadata: {
+            status: 'pending',
+            startTime: Date.now(),
+            duration: 0,
+            eventCount: 0
+          }
+        };
+
+        if (filterType) {
+          executionData.events = executionData.events.filter(e => e.type === filterType);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(executionData));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
       return;
     }
 
@@ -287,6 +366,132 @@ function serveFile(filePath, res) {
   });
 }
 
+async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId, skipPermissions = false) {
+  const startTime = Date.now();
+  try {
+    debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}, agentId=${agentId}, skipPermissions=${skipPermissions}`);
+
+    const cwd = '/config';
+    const actualAgentId = agentId || 'claude-code';
+
+    debugLog(`[stream] Calling runClaudeWithStreaming with config: skipPermissions=${skipPermissions}`);
+    const config = {
+      skipPermissions,
+      verbose: true,
+      outputFormat: 'stream-json',
+      timeout: 1800000, // 30 minutes
+      print: true
+    };
+
+    const outputs = await runClaudeWithStreaming(content, cwd, actualAgentId, config);
+    debugLog(`[stream] Claude returned ${outputs.length} streaming outputs`);
+
+    // Process streaming outputs similar to processMessage
+    // But emit WebSocket events for each block
+    let allBlocks = [];
+    let lastAssistantMessage = null;
+    let eventCount = 0;
+
+    for (const output of outputs) {
+      if (output.type === 'assistant' && output.message?.content) {
+        debugLog(`[stream] Found assistant message with ${output.message.content.length} content blocks`);
+        lastAssistantMessage = output.message;
+        allBlocks.push(...(output.message.content || []));
+
+        // Emit progress event for each block
+        broadcastSync({
+          type: 'streaming_progress',
+          sessionId,
+          conversationId,
+          blockCount: allBlocks.length,
+          timestamp: Date.now()
+        });
+        eventCount++;
+      } else if (output.type === 'tool_result' && output.result) {
+        debugLog(`[stream] Found tool result`);
+        allBlocks.push({
+          type: 'tool_result',
+          result: output.result,
+          tool_use_id: output.tool_use_id
+        });
+        eventCount++;
+      }
+    }
+
+    let messageContent = null;
+    if (allBlocks.length > 0) {
+      messageContent = JSON.stringify({
+        type: 'claude_execution',
+        blocks: allBlocks,
+        timestamp: Date.now()
+      });
+      debugLog(`[stream] Storing full execution with ${allBlocks.length} blocks`);
+    } else {
+      let textParts = [];
+      for (const output of outputs) {
+        if (typeof output === 'string') {
+          textParts.push(output);
+        } else if (output.text) {
+          textParts.push(output.text);
+        } else if (output.content?.text) {
+          textParts.push(output.content.text);
+        } else if (output.result) {
+          textParts.push(String(output.result));
+        }
+      }
+      messageContent = textParts.join('\n').trim();
+      debugLog(`[stream] Storing text response: "${messageContent.substring(0, 100)}..."`);
+    }
+
+    if (messageContent) {
+      debugLog(`[stream] Creating assistant message`);
+      const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
+      debugLog(`[stream] Created message with id: ${assistantMessage.id}`);
+      broadcastSync({
+        type: 'streaming_complete',
+        sessionId,
+        conversationId,
+        messageId: assistantMessage.id,
+        eventCount,
+        timestamp: Date.now()
+      });
+    } else {
+      debugLog(`[stream] No response content extracted!`);
+    }
+
+    debugLog(`[stream] ✅ Completed: ${outputs.length} outputs received, ${eventCount} events emitted`);
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    debugLog(`[stream] Error after ${elapsed}ms: ${error.message}`);
+
+    // Mark session as incomplete for recovery
+    try {
+      const sessionStatus = error.message.includes('timeout') ? 'timeout' : 'error';
+      queries.markSessionIncomplete(sessionId, error.message);
+      debugLog(`[stream] Session ${sessionId} marked as incomplete (${sessionStatus})`);
+    } catch (err) {
+      debugLog(`[stream] Failed to mark session: ${err.message}`);
+    }
+
+    broadcastSync({
+      type: 'streaming_error',
+      sessionId,
+      conversationId,
+      error: error.message,
+      recoverable: elapsed < 60000, // Retryable if failed within 1 minute
+      timestamp: Date.now()
+    });
+
+    const errorMessage = queries.createMessage(conversationId, 'assistant', `Error: ${error.message}`);
+    broadcastSync({
+      type: 'message_created',
+      conversationId,
+      message: errorMessage,
+      timestamp: Date.now()
+    });
+  }
+}
+
 async function processMessage(conversationId, messageId, content, agentId) {
   try {
     debugLog(`[processMessage] Starting: conversationId=${conversationId}, agentId=${agentId}`);
@@ -401,11 +606,34 @@ wss.on('connection', (ws, req) => {
         const data = JSON.parse(msg);
         if (data.type === 'subscribe') {
           ws.subscriptions.add(data.sessionId);
+          debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${data.sessionId}`);
+          ws.send(JSON.stringify({
+            type: 'subscription_confirmed',
+            sessionId: data.sessionId,
+            timestamp: Date.now()
+          }));
         } else if (data.type === 'unsubscribe') {
           ws.subscriptions.delete(data.sessionId);
+          debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId}`);
+        } else if (data.type === 'get_subscriptions') {
+          ws.send(JSON.stringify({
+            type: 'subscriptions',
+            subscriptions: Array.from(ws.subscriptions),
+            timestamp: Date.now()
+          }));
+        } else if (data.type === 'ping') {
+          ws.send(JSON.stringify({
+            type: 'pong',
+            timestamp: Date.now()
+          }));
         }
       } catch (e) {
         console.error('WebSocket message parse error:', e.message);
+        ws.send(JSON.stringify({
+          type: 'error',
+          error: 'Invalid message format',
+          timestamp: Date.now()
+        }));
       }
     });
 
@@ -419,15 +647,29 @@ wss.on('connection', (ws, req) => {
 
 function broadcastSync(event) {
   const data = JSON.stringify(event);
+  const isStreamingEvent = event.type && event.type.startsWith('streaming_');
+  const targetSessionId = event.sessionId || (event.conversationId && `conv-${event.conversationId}`);
+
   for (const ws of syncClients) {
-    if (ws.readyState === 1) {
-      // CRITICAL: Only send if client subscribed to this session
-      if (event.sessionId) {
-        if (!ws.subscriptions || !ws.subscriptions.has(event.sessionId)) {
-          continue;
-        }
-      }
-      // Send immediately - no buffering
+    if (ws.readyState !== 1) continue;
+
+    let shouldSend = false;
+
+    if (isStreamingEvent && targetSessionId) {
+      // Streaming events require sessionId subscription
+      shouldSend = ws.subscriptions && ws.subscriptions.has(targetSessionId);
+    } else if (event.sessionId) {
+      // Regular session events require sessionId subscription
+      shouldSend = ws.subscriptions && ws.subscriptions.has(event.sessionId);
+    } else if (event.type === 'message_created' || event.type === 'conversation_created') {
+      // Global events sent to all clients
+      shouldSend = true;
+    } else {
+      // Default: send to all connected clients
+      shouldSend = true;
+    }
+
+    if (shouldSend) {
       ws.send(data);
     }
   }
@@ -506,5 +748,29 @@ function performAutoImport() {
     console.error('[AUTO-IMPORT] Error:', err.message);
   }
 }
+
+function performRecovery() {
+  try {
+    // Cleanup orphaned sessions (older than 7 days)
+    const cleanedUp = queries.cleanupOrphanedSessions(7);
+    if (cleanedUp > 0) {
+      debugLog(`[RECOVERY] Cleaned up ${cleanedUp} orphaned sessions`);
+    }
+
+    // Mark sessions incomplete if they've been processing too long (>2 hours)
+    const longRunning = queries.getSessionsProcessingLongerThan(120);
+    if (longRunning.length > 0) {
+      for (const session of longRunning) {
+        queries.markSessionIncomplete(session.id, 'Timeout: processing exceeded 2 hours');
+      }
+      debugLog(`[RECOVERY] Marked ${longRunning.length} long-running sessions as incomplete`);
+    }
+  } catch (err) {
+    console.error('[RECOVERY] Error:', err.message);
+  }
+}
+
+// Run recovery every 5 minutes
+setInterval(performRecovery, 300000);
 
 server.listen(PORT, onServerReady);

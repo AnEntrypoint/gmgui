@@ -1,211 +1,518 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GMGUI - Chat with CLI Agents</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rippleui@1.12.1/dist/css/styles.css" />
-  <link rel="stylesheet" href="styles.css">
+  <meta name="description" content="AgentGUI - Real-time Claude Code Execution Visualization">
+  <title>AgentGUI - Agent Execution Visualizer</title>
+
+  <!-- RippleUI CSS -->
+  <link href="https://unpkg.com/rippleui@0.14.0/dist/ripple.css" rel="stylesheet">
+
+  <!-- Syntax Highlighting -->
+  <link href="https://unpkg.com/prism@1.29.0/themes/prism-dark.css" rel="stylesheet">
+
+  <!-- Custom Styles -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --color-primary: #3b82f6;
+      --color-primary-dark: #1e40af;
+      --color-bg-primary: #ffffff;
+      --color-bg-secondary: #f9fafb;
+      --color-bg-code: #1f2937;
+      --color-text-primary: #111827;
+      --color-text-secondary: #6b7280;
+      --color-border: #e5e7eb;
+      --color-success: #10b981;
+      --color-error: #ef4444;
+      --color-warning: #f59e0b;
+    }
+
+    html.dark {
+      --color-bg-primary: #111827;
+      --color-bg-secondary: #1f2937;
+      --color-text-primary: #f9fafb;
+      --color-text-secondary: #d1d5db;
+      --color-border: #374151;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    /* Layout */
+    .app-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+      gap: 0;
+    }
+
+    header {
+      background-color: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .header-title {
+      font-size: 1.5rem;
+      font-weight: bold;
+      margin: 0;
+      flex: 1;
+    }
+
+    .header-controls {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 0.25rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+    }
+
+    .status-indicator {
+      width: 0.75rem;
+      height: 0.75rem;
+      border-radius: 50%;
+      background-color: var(--color-error);
+      animation: pulse 2s infinite;
+    }
+
+    .status-indicator[data-status="connected"] {
+      background-color: var(--color-success);
+    }
+
+    .status-indicator[data-status="reconnecting"],
+    .status-indicator[data-status="connecting"] {
+      background-color: var(--color-warning);
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    /* Main content */
+    main {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+      gap: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .execution-panel {
+      background-color: var(--color-bg-secondary);
+      border-bottom: 1px solid var(--color-border);
+      padding: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+      align-items: end;
+    }
+
+    .execution-input-group {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: end;
+    }
+
+    .execution-input-group > * {
+      min-width: 0;
+    }
+
+    .execution-textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid var(--color-border);
+      border-radius: 0.375rem;
+      background-color: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      font-family: inherit;
+      resize: none;
+      min-height: 3rem;
+      max-height: 8rem;
+    }
+
+    .btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 0.375rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.875rem;
+    }
+
+    .btn-primary {
+      background-color: var(--color-primary);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--color-primary-dark);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .agent-selector {
+      padding: 0.5rem;
+      border: 1px solid var(--color-border);
+      border-radius: 0.375rem;
+      background-color: var(--color-bg-primary);
+      color: var(--color-text-primary);
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    /* Output area */
+    #output-scroll {
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #output {
+      flex: 1;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    /* Event cards */
+    .card {
+      background-color: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 0.375rem;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-header {
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text-secondary);
+    }
+
+    .badge-sm {
+      padding: 0.125rem 0.5rem;
+      font-size: 0.7rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .execution-panel {
+        grid-template-columns: 1fr;
+      }
+
+      .header-controls {
+        flex-wrap: wrap;
+      }
+
+      .execution-input-group {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Utilities */
+    .flex {
+      display: flex;
+    }
+
+    .items-center {
+      align-items: center;
+    }
+
+    .justify-between {
+      justify-content: space-between;
+    }
+
+    .gap-2 {
+      gap: 0.5rem;
+    }
+
+    .gap-3 {
+      gap: 0.75rem;
+    }
+
+    .text-xs {
+      font-size: 0.75rem;
+    }
+
+    .text-sm {
+      font-size: 0.875rem;
+    }
+
+    .text-secondary {
+      color: var(--color-text-secondary);
+    }
+
+    .font-mono {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    }
+
+    .truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mb-2 {
+      margin-bottom: 0.5rem;
+    }
+
+    .mb-3 {
+      margin-bottom: 0.75rem;
+    }
+
+    .mt-2 {
+      margin-top: 0.5rem;
+    }
+
+    .mt-3 {
+      margin-top: 0.75rem;
+    }
+
+    .p-2 {
+      padding: 0.5rem;
+    }
+
+    .p-3 {
+      padding: 0.75rem;
+    }
+
+    .p-4 {
+      padding: 1rem;
+    }
+
+    .rounded {
+      border-radius: 0.375rem;
+    }
+
+    .bg-gray-50 {
+      background-color: #f9fafb;
+    }
+
+    .bg-gray-900 {
+      background-color: #111827;
+    }
+
+    .dark .bg-gray-50 {
+      background-color: #1f2937;
+    }
+
+    .dark .bg-gray-900 {
+      background-color: #111827;
+    }
+
+    .text-green-400 {
+      color: #4ade80;
+    }
+
+    /* Loading animation */
+    .animate-spin {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* Syntax highlighting adjustments */
+    pre {
+      margin: 0;
+      overflow-x: auto;
+    }
+
+    code {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 0.875rem;
+    }
+
+    /* Details/summary styling */
+    details {
+      margin: 0.5rem 0;
+    }
+
+    summary {
+      cursor: pointer;
+      user-select: none;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+      transition: background-color 0.2s;
+    }
+
+    summary:hover {
+      background-color: var(--color-bg-secondary);
+    }
+
+    /* Grid helpers */
+    .grid {
+      display: grid;
+    }
+
+    .grid-cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .gap-1 {
+      gap: 0.25rem;
+    }
+
+    .min-w-0 {
+      min-width: 0;
+    }
+
+    .flex-1 {
+      flex: 1;
+    }
+
+    .flex-shrink-0 {
+      flex-shrink: 0;
+    }
+  </style>
 </head>
 <body>
-  <div id="app" class="app">
-    <!-- Left Sidebar -->
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-header">
-        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
-          <span class="toggle-icon">×</span>
+  <div class="app-container">
+    <!-- Header -->
+    <header>
+      <h1 class="header-title">AgentGUI</h1>
+
+      <div class="header-controls">
+        <div class="status-badge">
+          <div class="status-indicator" data-status="disconnected"></div>
+          <span data-status-indicator>Disconnected</span>
+        </div>
+
+        <button class="btn btn-primary" data-theme-toggle title="Toggle dark mode">
+          🌓 Theme
         </button>
       </div>
-
-      <button class="new-chat-btn" onclick="showNewChatModal()">
-        <span class="icon">+</span> New Chat
-      </button>
-
-      <div class="chat-history-section">
-        <h3 class="history-title">Today</h3>
-        <div class="chat-list" id="chatList"></div>
-      </div>
-
-      <div class="sidebar-footer">
-        <button class="settings-btn" onclick="switchTab('settings')">
-          <span class="icon">⚙️</span> Settings
-        </button>
-      </div>
-    </aside>
+    </header>
 
     <!-- Main Content -->
-    <main class="main-content">
-      <!-- Connection Status Indicator -->
-      <div class="connection-status connected" id="connectionStatus">
-        <span class="status-dot"></span>
-        <span class="status-text">Connected</span>
-      </div>
-
-      <div class="chat-container">
-        <!-- Chat messages area -->
-        <div class="chat-messages" id="chatMessages">
-          <div class="welcome-section">
-            <h2>Hi, what's your plan for today?</h2>
-            <div class="agent-selection">
-              <div id="agentCards" class="agent-cards"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Chat input area -->
-        <div class="chat-input-section">
-          <div class="input-wrapper">
-            <textarea 
-              id="messageInput" 
-              class="chat-input" 
-              placeholder="Send message, upload files (📎)..."
-              rows="1"
-            ></textarea>
-            <div class="input-actions">
-              <button class="action-btn" onclick="triggerFileUpload()" title="Upload files">
-                <span class="icon">📎</span>
-              </button>
-              <button class="action-btn send-btn" id="sendBtn" onclick="sendMessage()" title="Send message">
-                <span class="icon">→</span>
-              </button>
-              <input type="file" id="fileInput" style="display: none;" onchange="handleFileUpload()" multiple />
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </main>
-
-    <!-- Settings Panel (hidden by default) -->
-    <div id="settingsPanel" class="settings-panel" style="display: none;">
-      <div class="settings-content">
-        <div class="settings-header">
-          <h2>Settings</h2>
-          <button class="close-btn" onclick="switchTab('chat')">&times;</button>
-        </div>
-
-        <div class="setting-group">
-          <label>
-            <input type="checkbox" id="autoScroll" checked />
-            Auto-scroll Chat
-          </label>
-        </div>
-
-        <div class="setting-group">
-          <label for="connectTimeout">Connection Timeout (seconds)</label>
-          <input type="number" id="connectTimeout" value="30" class="gm-input" />
-        </div>
-
-        <div class="setting-group">
-          <label for="screenshotFormat">Screenshot Format</label>
-          <select id="screenshotFormat" class="gm-input">
-            <option value="png">PNG</option>
-            <option value="jpg">JPEG</option>
+    <main>
+      <!-- Execution Panel -->
+      <div class="execution-panel">
+        <div class="execution-input-group">
+          <select class="agent-selector" data-agent-selector title="Select agent">
+            <option value="claude-code">Claude Code</option>
+            <option value="opencode">OpenCode</option>
           </select>
+
+          <textarea
+            class="execution-textarea"
+            data-message-input
+            placeholder="Enter command or prompt... (Ctrl+Enter to submit)"
+            aria-label="Execution prompt input"
+          ></textarea>
         </div>
 
-        <div class="setting-group">
-          <label>
-            <button id="themeToggle" style="background: var(--color-primary); color: white; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 1rem; font-family: inherit; display: flex; align-items: center; gap: 0.5rem;">
-              <span class="theme-icon">🌙</span>
-              <span>Toggle Theme</span>
-            </button>
-          </label>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Modal for new chat options -->
-  <div id="newChatModal" class="gm-modal">
-    <div class="gm-modal-content" style="max-width: 400px;">
-      <div class="gm-modal-header">
-        <h3>New Chat</h3>
-        <button onclick="closeNewChatModal()" class="gm-btn-close">&times;</button>
-      </div>
-      <div class="gm-modal-body" style="gap: 1rem; flex-direction: column; padding: 2rem;">
-        <button class="chat-option-btn" onclick="createChatInWorkspace()">
-          <span class="chat-option-icon">💬</span>
-          <div class="chat-option-content">
-            <div class="chat-option-title">Chat in this workspace</div>
-            <div class="chat-option-desc">Default chat mode</div>
-          </div>
-        </button>
-        <button class="chat-option-btn" onclick="createChatInFolder()">
-          <span class="chat-option-icon">📁</span>
-          <div class="chat-option-content">
-            <div class="chat-option-title">Chat in folder</div>
-            <div class="chat-option-desc">Contextualize chat to a specific folder</div>
-          </div>
+        <button class="btn btn-primary" data-send-button title="Start execution (Ctrl+Enter)">
+          Execute
         </button>
       </div>
-    </div>
+
+      <!-- Output Container -->
+      <div id="output-scroll" role="region" aria-label="Execution output" aria-live="polite" aria-atomic="false">
+        <div id="output" class="output"></div>
+      </div>
+    </main>
   </div>
 
-  <!-- Modal for folder browser -->
-  <div id="folderBrowserModal" class="gm-modal">
-    <div class="gm-modal-content" style="max-width: 600px; height: 500px;">
-      <div class="gm-modal-header">
-        <h3>Select a Folder</h3>
-        <button class="gm-btn-close" onclick="closeFolderBrowser()">&times;</button>
-      </div>
-      <div class="gm-modal-body" style="flex-direction: column; gap: 0; padding: 0;">
-        <div style="padding: 1rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; gap: 0.5rem; align-items: center;">
-          <input type="text" id="folderPath" class="gm-input" placeholder="/home or ~" style="flex: 1; margin: 0;" />
-          <button onclick="browseFolders()" class="gm-btn gm-btn-primary" style="margin: 0;">Browse</button>
-        </div>
-        <div id="folderBrowserList" style="flex: 1; overflow-y: auto; padding: 0; border: none;"></div>
-      </div>
-      <div class="gm-modal-footer">
-        <button onclick="confirmFolderSelection()" class="gm-btn gm-btn-primary">Select</button>
-        <button onclick="closeFolderBrowser()" class="gm-btn gm-btn-secondary">Cancel</button>
-      </div>
-    </div>
-  </div>
+  <!-- Scripts - Order matters! -->
+  <!-- 1. Event Processor (no dependencies) -->
+  <script src="/gm/js/event-processor.js"></script>
 
-  <!-- Modal for delete confirmation -->
-  <div id="deleteConfirmModal" class="gm-modal">
-    <div class="gm-modal-content" style="max-width: 400px;">
-      <div class="gm-modal-header">
-        <h3>Delete Chat</h3>
-        <button class="gm-btn-close" onclick="app.closeDeleteConfirmDialog()">&times;</button>
-      </div>
-      <div class="gm-modal-body" style="flex-direction: column; gap: 1rem; text-align: center;">
-        <p style="margin: 0; color: var(--text-primary);">Are you sure you want to delete this chat?</p>
-        <p style="margin: 0; font-size: 0.875rem; color: var(--text-tertiary);">This action cannot be undone.</p>
-      </div>
-      <div class="gm-modal-footer">
-        <button class="gm-btn-confirm gm-btn gm-btn-danger">Delete</button>
-        <button class="gm-btn-cancel gm-btn gm-btn-secondary">Cancel</button>
-      </div>
-    </div>
-  </div>
+  <!-- 2. Streaming Renderer (no dependencies) -->
+  <script src="/gm/js/streaming-renderer.js"></script>
 
-  <!-- Modal for screenshot preview -->
-  <div id="screenshotModal" class="gm-modal">
-    <div class="gm-modal-content">
-      <div class="gm-modal-header">
-        <h3>Screenshot Captured</h3>
-        <button onclick="closeScreenshotModal()" class="gm-btn-close">&times;</button>
-      </div>
-      <div class="gm-modal-body">
-        <img id="screenshotImage" src="" alt="Screenshot" style="max-width: 100%; max-height: 60vh; border-radius: 0.5rem;" />
-      </div>
-      <div class="gm-modal-footer">
-        <button onclick="sendScreenshot()" class="gm-btn gm-btn-success">Send to Agent</button>
-        <button onclick="downloadScreenshot()" class="gm-btn gm-btn-secondary">Download</button>
-        <button onclick="closeScreenshotModal()" class="gm-btn gm-btn-secondary">Close</button>
-      </div>
-    </div>
-  </div>
+  <!-- 3. WebSocket Manager (no dependencies) -->
+  <script src="/gm/js/websocket-manager.js"></script>
 
-  <!-- Loading overlay -->
-  <div id="loadingOverlay" class="loading-overlay">
-    <div class="gm-spinner"></div>
-  </div>
+  <!-- 4. Event Filter (depends on Streaming Renderer) -->
+  <script src="/gm/js/event-filter.js"></script>
 
-  <script src="theme.js"></script>
-  <script src="app.js"></script>
+  <!-- 5. Syntax Highlighter (no dependencies) -->
+  <script src="/gm/js/syntax-highlighter.js"></script>
+
+  <!-- 6. UI Components (no dependencies) -->
+  <script src="/gm/js/ui-components.js"></script>
+
+  <!-- 7. Main Client (depends on all above) -->
+  <script src="/gm/js/client.js"></script>
+
+  <!-- Inline initialization -->
+  <script>
+    // Set initial theme based on preference
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+
+    // Fallback error handler
+    window.addEventListener('error', (event) => {
+      console.error('Uncaught error:', event.error);
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+      console.error('Unhandled rejection:', event.reason);
+    });
+
+    // Log client readiness
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM loaded, waiting for client initialization');
+    });
+  </script>
 </body>
 </html>

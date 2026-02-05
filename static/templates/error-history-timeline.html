@@ -1,0 +1,160 @@
+<!-- Error History Timeline -->
+<div class="error-history-timeline card" role="region" aria-label="Error history timeline">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold text-sm">Error History</h4>
+    <p class="text-xs text-secondary mt-1">{{ totalErrors }} errors occurred</p>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline" role="list">
+    {{ for error in errorHistory }}
+    <div class="timeline-item" data-severity="{{ error.severity }}" role="listitem">
+      <!-- Timeline Dot -->
+      <div class="timeline-dot" aria-hidden="true"></div>
+
+      <!-- Error Card -->
+      <div class="timeline-content">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <h5 class="font-semibold text-sm">{{ error.type }}</h5>
+            <p class="text-xs text-secondary">{{ error.time }} ({{ error.relativeTime }})</p>
+          </div>
+          <span class="badge badge-sm" data-severity="{{ error.severity }}">
+            {{ error.severityLabel }}
+          </span>
+        </div>
+
+        <p class="text-sm mt-2">{{ error.message }}</p>
+
+        {{ if error.recovery }}
+        <p class="text-xs text-green-600 mt-2">
+          <svg class="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+          </svg>
+          Recovered: {{ error.recovery }}
+        </p>
+        {{ end }}
+      </div>
+    </div>
+    {{ end }}
+  </div>
+
+  <!-- Clear History Button -->
+  <div class="mt-3 pt-3 border-t">
+    <button class="btn btn-sm btn-tertiary" data-action="clear-history" aria-label="Clear error history">
+      Clear History
+    </button>
+  </div>
+</div>
+
+<style scoped>
+.error-history-timeline {
+  padding: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--color-border);
+}
+
+.timeline-item {
+  position: relative;
+  padding-left: 32px;
+  padding-bottom: 16px;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--color-bg-primary);
+  border: 3px solid var(--color-border);
+}
+
+.timeline-item[data-severity="critical"] .timeline-dot,
+.timeline-item[data-severity="error"] .timeline-dot {
+  border-color: var(--color-error);
+  background-color: #fee2e2;
+}
+
+.timeline-item[data-severity="warning"] .timeline-dot {
+  border-color: var(--color-warning);
+  background-color: #fef3c7;
+}
+
+.timeline-item[data-severity="info"] .timeline-dot {
+  border-color: var(--color-primary);
+  background-color: #dbeafe;
+}
+
+.timeline-content {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.badge-sm {
+  padding: 2px 6px;
+  font-size: 10px;
+}
+
+.badge[data-severity="error"] {
+  background-color: #ef4444;
+  color: white;
+}
+
+.badge[data-severity="critical"] {
+  background-color: #dc2626;
+  color: white;
+}
+
+.badge[data-severity="warning"] {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.badge[data-severity="info"] {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.btn-tertiary {
+  padding: 6px 10px;
+  font-size: 12px;
+  background: none;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.2s;
+}
+
+.btn-tertiary:hover {
+  background-color: var(--color-primary-alpha);
+}
+</style>

@@ -1,0 +1,109 @@
+<!-- Error Recovery Options Panel -->
+<div class="error-recovery card" role="region" aria-label="Error recovery options">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold text-sm">Recovery Options</h4>
+  </div>
+
+  <!-- Recovery Actions -->
+  <div class="recovery-actions space-y-2">
+    <!-- Retry Button -->
+    <button class="recovery-action-btn" data-action="retry" aria-label="Retry the failed operation">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7 7 0 0110.956 1.745l1.414-1.414A9 9 0 006.001 2H4a1 1 0 01-1-1zm12 12a1 1 0 100 2h2.101a7 7 0 01-10.956 1.745l-1.414 1.414A9 9 0 0018 18h2a1 1 0 001-1v-2.101a7 7 0 00-1.745-10.956l1.414-1.414A9 9 0 0120 14.001V16a1 1 0 01-1 1h-2z"/>
+      </svg>
+      <span>Retry</span>
+    </button>
+
+    <!-- Skip Button -->
+    <button class="recovery-action-btn" data-action="skip" aria-label="Skip this operation and continue">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
+      </svg>
+      <span>Skip</span>
+    </button>
+
+    <!-- Cancel Button -->
+    <button class="recovery-action-btn danger" data-action="cancel" aria-label="Cancel execution">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/>
+      </svg>
+      <span>Cancel</span>
+    </button>
+
+    <!-- Rollback Button -->
+    <button class="recovery-action-btn" data-action="rollback" aria-label="Rollback to previous state">
+      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path fill-rule="evenodd" d="M2 5a2 2 0 012-2 1 1 0 010-2C3.169.222 5.427-.034 7.168 1.025c.47.26.913.642 1.282 1.114A1 1 0 0109 2v1a1 1 0 001-1v-1a1 1 0 011-1h1a1 1 0 011 1v1a2 2 0 01-2 2h-1a1 1 0 010-2h1V5a1 1 0 01-1 1v1a1 1 0 01-1-1V5H9a1 1 0 01-1-1V3H7v1a1 1 0 001 1h1v1a1 1 0 001 1h1v1a1 1 0 01-1 1h-1a2 2 0 01-1-2v-1a1 1 0 01-2 0V5a1 1 0 01-1-1V3a1 1 0 01-1-1v-2zm0 10a1 1 0 110 2 1 1 0 110-2zm14 0a1 1 0 110 2 1 1 0 110-2zM4 8a1 1 0 110 2 1 1 0 110-2zm10 0a1 1 0 110 2 1 1 0 110-2z"/>
+      </svg>
+      <span>Rollback</span>
+    </button>
+  </div>
+
+  <!-- Recovery Info -->
+  <div class="recovery-info text-xs text-secondary mt-3 pt-3 border-t space-y-1">
+    <p><strong>Error ID:</strong> <code class="font-mono">{{ errorId }}</code></p>
+    <p><strong>Last Checkpoint:</strong> {{ checkpointTime }}</p>
+    {{ if suggestedAction }}
+    <p><strong>Suggestion:</strong> {{ suggestedAction }}</p>
+    {{ end }}
+  </div>
+</div>
+
+<style scoped>
+.error-recovery {
+  padding: 16px;
+  background: var(--color-bg-primary);
+}
+
+.recovery-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recovery-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.recovery-action-btn:hover {
+  background-color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.recovery-action-btn:active {
+  transform: translateY(0);
+}
+
+.recovery-action-btn.danger {
+  background-color: var(--color-error);
+}
+
+.recovery-action-btn.danger:hover {
+  background-color: var(--color-error-dark);
+}
+
+.recovery-info {
+  padding: 8px;
+  background-color: var(--color-bg-secondary);
+  border-radius: 3px;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background-color: var(--color-bg-code);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+</style>

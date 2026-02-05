@@ -1,0 +1,44 @@
+<!-- Agent Metadata Panel with Status Badge -->
+<div class="agent-metadata-card card" role="region" aria-label="Agent Status and Metadata">
+  <div class="card-header flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold text-lg" aria-hidden="true">
+        {{ agentIcon }}
+      </div>
+      <div>
+        <h3 class="font-semibold text-base">{{ agentName }}</h3>
+        <p class="text-sm text-secondary">ID: {{ agentId }}</p>
+      </div>
+    </div>
+    <div class="badge" data-status="{{ status }}" role="status" aria-live="polite">
+      <span class="badge-dot"></span>
+      {{ statusLabel }}
+    </div>
+  </div>
+
+  <details class="mt-4 border-t pt-4" open>
+    <summary class="cursor-pointer font-medium hover:text-primary">Metadata & Capabilities</summary>
+    <div class="mt-3 space-y-3">
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <span class="text-secondary">Version:</span>
+          <p class="font-mono">{{ agentVersion }}</p>
+        </div>
+        <div>
+          <span class="text-secondary">Uptime:</span>
+          <p class="font-mono">{{ agentUptime }}</p>
+        </div>
+      </div>
+
+      <div>
+        <span class="text-secondary text-sm">Capabilities:</span>
+        <div class="flex flex-wrap gap-2 mt-2">
+          <span class="badge badge-sm" aria-label="File read capability">Read</span>
+          <span class="badge badge-sm" aria-label="File write capability">Write</span>
+          <span class="badge badge-sm" aria-label="Git operations capability">Git</span>
+          <span class="badge badge-sm" aria-label="Command execution capability">Exec</span>
+        </div>
+      </div>
+    </div>
+  </details>
+</div>

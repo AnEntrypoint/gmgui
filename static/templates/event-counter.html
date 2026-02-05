@@ -1,0 +1,48 @@
+<!-- Real-time Event Counter -->
+<div class="event-counter card" role="region" aria-live="polite" aria-label="Event statistics">
+  <div class="flex justify-between items-center">
+    <div class="text-center">
+      <p class="text-sm text-secondary">Total Events</p>
+      <p class="text-2xl font-bold font-mono" data-metric="total">{{ totalEvents }}</p>
+    </div>
+
+    <div class="flex-1 border-l ml-3 pl-3">
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <div>
+          <span class="text-secondary">File Ops:</span>
+          <p class="font-mono font-semibold" data-metric="file-ops">{{ fileOpsCount }}</p>
+        </div>
+        <div>
+          <span class="text-secondary">Commands:</span>
+          <p class="font-mono font-semibold" data-metric="commands">{{ commandsCount }}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 text-sm mt-2">
+        <div>
+          <span class="text-secondary">Git Ops:</span>
+          <p class="font-mono font-semibold" data-metric="git-ops">{{ gitOpsCount }}</p>
+        </div>
+        <div>
+          <span class="text-secondary">Errors:</span>
+          <p class="font-mono font-semibold text-error" data-metric="errors">{{ errorCount }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.event-counter {
+  padding: 16px;
+  background: var(--color-bg-secondary);
+}
+
+[data-metric="errors"] {
+  color: var(--color-error);
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+</style>

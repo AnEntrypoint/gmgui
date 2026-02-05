@@ -1,0 +1,170 @@
+<!-- Code Quality Metrics Display -->
+<div class="quality-metrics-display card" role="region" aria-label="Code quality metrics">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold">Quality Metrics</h4>
+  </div>
+
+  <!-- Primary Metrics Grid -->
+  <div class="metrics-grid mb-4">
+    <!-- Complexity -->
+    <div class="metric-item">
+      <div class="metric-label">Cyclomatic Complexity</div>
+      <div class="metric-value" data-score="{{ complexityScore }}" data-level="{{ complexityLevel }}">
+        {{ complexityScore }}
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width: {{ complexityPercent }}%"></div>
+      </div>
+      <p class="text-xs text-secondary mt-1">{{ complexityDescription }}</p>
+    </div>
+
+    <!-- Duplication -->
+    <div class="metric-item">
+      <div class="metric-label">Code Duplication</div>
+      <div class="metric-value" data-score="{{ duplicationPercent }}%" data-level="{{ duplicationLevel }}">
+        {{ duplicationPercent }}%
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width: {{ duplicationPercent }}%"></div>
+      </div>
+      <p class="text-xs text-secondary mt-1">{{ duplicationCount }} duplicated lines</p>
+    </div>
+
+    <!-- Coverage -->
+    <div class="metric-item">
+      <div class="metric-label">Test Coverage</div>
+      <div class="metric-value" data-score="{{ coveragePercent }}%" data-level="{{ coverageLevel }}">
+        {{ coveragePercent }}%
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width: {{ coveragePercent }}%"></div>
+      </div>
+      <p class="text-xs text-secondary mt-1">{{ coveredLines }}/{{ totalLines }} lines</p>
+    </div>
+
+    <!-- Maintainability -->
+    <div class="metric-item">
+      <div class="metric-label">Maintainability Index</div>
+      <div class="metric-value" data-score="{{ maintainabilityScore }}" data-level="{{ maintainabilityLevel }}">
+        {{ maintainabilityScore }}
+      </div>
+      <div class="metric-bar">
+        <div class="metric-bar-fill" style="width: {{ maintainabilityPercent }}%"></div>
+      </div>
+      <p class="text-xs text-secondary mt-1">{{ maintainabilityDescription }}</p>
+    </div>
+  </div>
+
+  <!-- Detailed Metrics -->
+  <div class="detailed-metrics">
+    <details class="metric-details" open>
+      <summary class="cursor-pointer font-semibold mb-2">File Statistics</summary>
+      <div class="mt-2 space-y-1 text-sm">
+        <p><span class="text-secondary">Lines of Code:</span> <code class="font-mono">{{ linesOfCode }}</code></p>
+        <p><span class="text-secondary">Functions:</span> <code class="font-mono">{{ functionCount }}</code></p>
+        <p><span class="text-secondary">Comments:</span> <code class="font-mono">{{ commentRatio }}%</code></p>
+        <p><span class="text-secondary">Blank Lines:</span> <code class="font-mono">{{ blankLinePercent }}%</code></p>
+      </div>
+    </details>
+
+    <details class="metric-details">
+      <summary class="cursor-pointer font-semibold mb-2">Issues Found</summary>
+      <div class="mt-2 space-y-1 text-sm">
+        <p class="text-red-600"><span class="font-semibold">{{ criticalIssues }}</span> Critical</p>
+        <p class="text-orange-600"><span class="font-semibold">{{ majorIssues }}</span> Major</p>
+        <p class="text-yellow-600"><span class="font-semibold">{{ minorIssues }}</span> Minor</p>
+        <p class="text-blue-600"><span class="font-semibold">{{ infoIssues }}</span> Info</p>
+      </div>
+    </details>
+  </div>
+</div>
+
+<style scoped>
+.quality-metrics-display {
+  padding: 16px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.metric-item {
+  padding: 12px;
+  background-color: var(--color-bg-secondary);
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+}
+
+.metric-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: bold;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.metric-value[data-level="good"] {
+  color: #10b981;
+}
+
+.metric-value[data-level="fair"] {
+  color: #f59e0b;
+}
+
+.metric-value[data-level="poor"] {
+  color: #ef4444;
+}
+
+.metric-bar {
+  height: 4px;
+  background-color: var(--color-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #f59e0b 50%, #ef4444 100%);
+  transition: width 0.3s ease;
+}
+
+.detailed-metrics {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.metric-details {
+  margin-bottom: 12px;
+}
+
+.metric-details[open] summary {
+  color: var(--color-primary);
+}
+
+summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  background-color: var(--color-bg-code);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+</style>

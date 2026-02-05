@@ -1,0 +1,133 @@
+<!-- File Metadata Display -->
+<div class="file-metadata" role="region" aria-label="File metadata">
+  <div class="metadata-grid">
+    <!-- Permissions -->
+    <div class="metadata-item">
+      <span class="metadata-label">Permissions</span>
+      <code class="metadata-value font-mono">{{ permissions }}</code>
+    </div>
+
+    <!-- Size -->
+    <div class="metadata-item">
+      <span class="metadata-label">Size</span>
+      <span class="metadata-value">{{ fileSize }} bytes</span>
+    </div>
+
+    <!-- Modified Date -->
+    <div class="metadata-item">
+      <span class="metadata-label">Modified</span>
+      <span class="metadata-value" title="{{ modifiedISO }}">{{ modifiedHuman }}</span>
+    </div>
+
+    <!-- Created Date -->
+    <div class="metadata-item">
+      <span class="metadata-label">Created</span>
+      <span class="metadata-value" title="{{ createdISO }}">{{ createdHuman }}</span>
+    </div>
+
+    <!-- Encoding -->
+    <div class="metadata-item">
+      <span class="metadata-label">Encoding</span>
+      <span class="metadata-value">{{ encoding }}</span>
+    </div>
+
+    <!-- Language -->
+    <div class="metadata-item">
+      <span class="metadata-label">Language</span>
+      <span class="metadata-value">{{ language }}</span>
+    </div>
+
+    <!-- Lines of Code -->
+    <div class="metadata-item">
+      <span class="metadata-label">Lines</span>
+      <span class="metadata-value">{{ lineCount }}</span>
+    </div>
+
+    <!-- Owner -->
+    <div class="metadata-item">
+      <span class="metadata-label">Owner</span>
+      <span class="metadata-value">{{ owner }}:{{ group }}</span>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="metadata-actions mt-3 pt-3 border-t space-y-2">
+    <button class="metadata-action-btn" data-action="reveal-path" aria-label="Reveal in file explorer">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm4 2a1 1 0 100 2 1 1 0 000-2z"/>
+      </svg>
+      Show in Explorer
+    </button>
+    <button class="metadata-action-btn" data-action="copy-path" aria-label="Copy file path">
+      <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M7 3a1 1 0 000 2h6a1 1 0 000-2H7zM4 7a1 1 0 011-1h10a1 1 0 011 1v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/>
+      </svg>
+      Copy Path
+    </button>
+  </div>
+</div>
+
+<style scoped>
+.file-metadata {
+  padding: 12px;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.metadata-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metadata-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.metadata-value {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.metadata-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metadata-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.metadata-action-btn:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+</style>

@@ -1,0 +1,95 @@
+<!-- Error Stack Trace Display (Collapsible) -->
+<div class="error-stack-trace">
+  <details class="stack-trace-accordion card">
+    <summary class="cursor-pointer font-semibold py-3 px-4 border-b flex items-center gap-2 hover:bg-hover-bg">
+      <svg class="w-4 h-4 chevron" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
+      </svg>
+      <span>Stack Trace</span>
+      <span class="text-secondary text-sm">{{ frameCount }} frames</span>
+    </summary>
+
+    <div class="stack-content p-4">
+      <ol class="space-y-3" role="list">
+        {{ for frame in stackFrames }}
+        <li role="listitem" class="stack-frame">
+          <div class="stack-frame-header">
+            <code class="font-mono font-semibold">{{ frame.function }}</code>
+            <span class="text-secondary text-xs">at {{ frame.file }}:{{ frame.line }}:{{ frame.column }}</span>
+          </div>
+          <pre class="stack-frame-code"><code class="language-{{ frame.language }}">{{ frame.sourceCode }}</code></pre>
+        </li>
+        {{ end }}
+      </ol>
+    </div>
+  </details>
+</div>
+
+<style scoped>
+.error-stack-trace {
+  margin-top: 12px;
+}
+
+.stack-trace-accordion {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stack-trace-accordion[open] summary {
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+summary {
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  transition: transform 0.2s;
+}
+
+details[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.stack-content {
+  background-color: var(--color-bg-code);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.stack-frame {
+  border-left: 3px solid var(--color-border);
+  padding-left: 12px;
+  margin-left: 0;
+}
+
+.stack-frame-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.stack-frame-code {
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+</style>

@@ -1,0 +1,155 @@
+<!-- Code Annotation Display with Inline Comments -->
+<div class="code-annotation-panel card" role="region" aria-label="Code annotations">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold">{{ annotationCount }} Annotations</h4>
+  </div>
+
+  <!-- Annotated Code -->
+  <div class="annotated-code" role="region" aria-label="Code with inline annotations">
+    {{ for line in codeLines }}
+    <div class="code-line" data-line-number="{{ line.number }}">
+      <span class="line-number" aria-hidden="true">{{ line.number }}</span>
+      <code class="line-content">{{ line.content }}</code>
+
+      <!-- Annotation Indicator -->
+      {{ if line.annotation }}
+      <button class="annotation-indicator" data-annotation-id="{{ line.annotation.id }}" aria-label="Show annotation">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+        </svg>
+      </button>
+      {{ end }}
+    </div>
+
+    <!-- Annotation Details -->
+    {{ if line.annotation }}
+    <div class="annotation-detail" data-annotation-id="{{ line.annotation.id }}">
+      <div class="annotation-content">
+        <div class="annotation-header">
+          <span class="annotation-type badge">{{ line.annotation.type }}</span>
+          <span class="annotation-author text-xs text-secondary">{{ line.annotation.author }}</span>
+        </div>
+        <p class="annotation-text text-sm mt-1">{{ line.annotation.comment }}</p>
+        <div class="annotation-actions flex gap-1 mt-2">
+          <button class="btn-micro" data-action="resolve">Resolve</button>
+          <button class="btn-micro" data-action="reply">Reply</button>
+        </div>
+      </div>
+    </div>
+    {{ end }}
+    {{ end }}
+  </div>
+</div>
+
+<style scoped>
+.code-annotation-panel {
+  padding: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.annotated-code {
+  background-color: var(--color-bg-code);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.code-line {
+  display: flex;
+  gap: 12px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+  align-items: center;
+  background-color: var(--color-bg-primary);
+  transition: background-color 0.2s;
+}
+
+.code-line:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.code-line[data-has-annotation] {
+  background-color: rgba(59, 130, 246, 0.05);
+}
+
+.line-number {
+  color: var(--color-text-secondary);
+  text-align: right;
+  min-width: 40px;
+  user-select: none;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.line-content {
+  color: var(--color-text-terminal);
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  flex: 1;
+  white-space: pre-wrap;
+}
+
+.annotation-indicator {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.annotation-indicator:hover {
+  background-color: var(--color-primary-alpha);
+}
+
+.annotation-detail {
+  padding: 8px 12px;
+  background-color: rgba(59, 130, 246, 0.08);
+  border-left: 3px solid var(--color-primary);
+  border-top: 1px solid var(--color-border);
+}
+
+.annotation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.annotation-text {
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.annotation-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-micro {
+  background: none;
+  border: 1px solid var(--color-primary);
+  color: var(--color-primary);
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-micro:hover {
+  background-color: var(--color-primary-alpha);
+}
+</style>

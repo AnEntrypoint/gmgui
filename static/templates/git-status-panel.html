@@ -1,0 +1,115 @@
+<!-- Git Status Panel -->
+<div class="git-status-panel card" role="region" aria-label="Git repository status">
+  <div class="card-header flex items-center justify-between mb-3 pb-3 border-b">
+    <div>
+      <h4 class="font-semibold">{{ repoName }}</h4>
+      <p class="text-xs text-secondary">{{ currentBranch }} @ {{ commitHash }}</p>
+    </div>
+    <div class="badge" data-status="{{ repoStatus }}">
+      {{ repoStatusLabel }}
+    </div>
+  </div>
+
+  <!-- File Changes Summary -->
+  <div class="changes-summary grid grid-cols-3 gap-2 mb-3 pb-3 border-b">
+    <div class="text-center">
+      <p class="text-2xl font-bold text-green-600">{{ modifiedCount }}</p>
+      <p class="text-xs text-secondary">Modified</p>
+    </div>
+    <div class="text-center border-l border-r pl-2 pr-2">
+      <p class="text-2xl font-bold text-blue-600">{{ addedCount }}</p>
+      <p class="text-xs text-secondary">Added</p>
+    </div>
+    <div class="text-center">
+      <p class="text-2xl font-bold text-red-600">{{ deletedCount }}</p>
+      <p class="text-xs text-secondary">Deleted</p>
+    </div>
+  </div>
+
+  <!-- File List -->
+  <div class="file-list space-y-1">
+    <div class="text-xs font-semibold text-secondary mb-2">Changed Files</div>
+    {{ for file in changedFiles }}
+    <div class="file-item flex items-center gap-2 text-sm py-1">
+      <span class="status-icon" data-status="{{ file.status }}" aria-hidden="true">
+        {{ if file.status == 'modified' }}M{{ else if file.status == 'added' }}A{{ else if file.status == 'deleted' }}D{{ end }}
+      </span>
+      <span class="file-path flex-1 truncate" title="{{ file.path }}">{{ file.path }}</span>
+    </div>
+    {{ end }}
+  </div>
+
+  <!-- Actions -->
+  <div class="flex gap-2 mt-3 pt-3 border-t">
+    <button class="btn btn-sm" data-action="commit" aria-label="Open commit dialog">
+      Commit
+    </button>
+    <button class="btn btn-sm" data-action="push" aria-label="Push changes">
+      Push
+    </button>
+    <button class="btn btn-sm" data-action="pull" aria-label="Pull changes">
+      Pull
+    </button>
+  </div>
+</div>
+
+<style scoped>
+.git-status-panel {
+  padding: 16px;
+}
+
+.status-icon {
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.status-icon[data-status="modified"] {
+  color: #16a34a;
+  background-color: #dcfce7;
+}
+
+.status-icon[data-status="added"] {
+  color: #2563eb;
+  background-color: #dbeafe;
+}
+
+.status-icon[data-status="deleted"] {
+  color: #dc2626;
+  background-color: #fee2e2;
+}
+
+.file-item:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.file-path {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+}
+
+.btn {
+  padding: 6px 10px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+</style>

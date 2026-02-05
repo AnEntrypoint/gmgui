@@ -1,0 +1,101 @@
+<!-- Git Diff List for Multiple Files -->
+<div class="git-diff-list card" role="region" aria-label="Git diffs for changed files">
+  <div class="card-header border-b pb-3 mb-3">
+    <h4 class="font-semibold">{{ fileCount }} Files Changed</h4>
+  </div>
+
+  <!-- Diff Items -->
+  <div class="diff-items space-y-3">
+    {{ for file in diffs }}
+    <details class="diff-item">
+      <summary class="cursor-pointer font-medium py-2 px-3 bg-secondary hover:bg-hover-bg rounded flex items-center justify-between">
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <svg class="w-4 h-4 chevron" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/>
+          </svg>
+          <span class="truncate">{{ file.name }}</span>
+        </div>
+        <div class="flex gap-1 flex-shrink-0">
+          <span class="text-green-600 text-xs">+{{ file.additions }}</span>
+          <span class="text-red-600 text-xs">-{{ file.deletions }}</span>
+        </div>
+      </summary>
+
+      <!-- Diff Content -->
+      <div class="diff-content p-3 mt-2 bg-code rounded text-xs">
+        <pre><code class="language-diff">{{ file.diff }}</code></pre>
+      </div>
+    </details>
+    {{ end }}
+  </div>
+</div>
+
+<style scoped>
+.git-diff-list {
+  padding: 16px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.diff-item {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.diff-item[open] summary {
+  background-color: var(--color-bg-hover);
+  border-bottom: 1px solid var(--color-border);
+}
+
+summary {
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+details[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.diff-content {
+  background-color: var(--color-bg-code);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  max-height: 300px;
+  overflow: auto;
+  margin-top: 8px;
+}
+
+.diff-content pre {
+  margin: 0;
+  padding: 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  line-height: 1.5;
+}
+
+/* Diff syntax highlighting */
+.diff-content code {
+  color: var(--color-text-terminal);
+}
+
+.diff-added {
+  color: #10b981;
+}
+
+.diff-removed {
+  color: #ef4444;
+}
+
+.diff-header {
+  color: #3b82f6;
+  font-weight: 600;
+}
+</style>

@@ -1,0 +1,97 @@
+<!-- Execution Control Buttons -->
+<div class="execution-actions flex gap-2" role="group" aria-label="Execution controls">
+  <!-- Cancel Button -->
+  <button class="btn btn-secondary"
+          data-action="cancel"
+          aria-label="Cancel execution"
+          title="Stop the current execution">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/>
+    </svg>
+    <span>Cancel</span>
+  </button>
+
+  <!-- Pause Button -->
+  <button class="btn btn-secondary"
+          data-action="pause"
+          aria-label="Pause execution"
+          title="Pause the current execution">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M5 3a2 2 0 012 2v10a2 2 0 01-2 2H3a2 2 0 01-2-2V5a2 2 0 012-2h2zm10 0a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2V5a2 2 0 012-2h2z"/>
+    </svg>
+    <span>Pause</span>
+  </button>
+
+  <!-- Resume Button (hidden by default) -->
+  <button class="btn btn-secondary hidden"
+          data-action="resume"
+          aria-label="Resume execution"
+          title="Resume the paused execution">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+    </svg>
+    <span>Resume</span>
+  </button>
+
+  <!-- Export Button -->
+  <button class="btn btn-tertiary"
+          data-action="export"
+          aria-label="Export execution results"
+          title="Download results as JSON">
+    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M3 17a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zm4-6a1 1 0 011-1h2V4a1 1 0 112 0v6h2a1 1 0 110 2h-6a1 1 0 01-1-1z"/>
+    </svg>
+    <span>Export</span>
+  </button>
+</div>
+
+<style scoped>
+.execution-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-primary);
+}
+
+.btn-tertiary {
+  background-color: transparent;
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+}
+
+.btn-tertiary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.hidden {
+  display: none;
+}
+</style>

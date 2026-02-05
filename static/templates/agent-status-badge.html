@@ -1,0 +1,30 @@
+<!-- Agent Status Badge Component -->
+<div class="badge badge-lg" data-status="{{ status }}" role="status" aria-label="Agent status: {{ statusLabel }}">
+  <span class="badge-dot animate-pulse"></span>
+  <span class="badge-text">{{ statusLabel }}</span>
+</div>
+
+<!-- Status variants (for reference):
+  - running: green dot + "Running"
+  - idle: gray dot + "Idle"
+  - error: red dot + "Error"
+  - offline: orange dot + "Offline"
+  - loading: blue dot + "Loading..."
+-->
+
+<style scoped>
+.badge[data-status="running"] { --badge-color: #10b981; }
+.badge[data-status="idle"] { --badge-color: #6b7280; }
+.badge[data-status="error"] { --badge-color: #ef4444; }
+.badge[data-status="offline"] { --badge-color: #f97316; }
+.badge[data-status="loading"] { --badge-color: #3b82f6; }
+
+.badge-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--badge-color, currentColor);
+  margin-right: 8px;
+}
+</style>

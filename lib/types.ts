@@ -243,3 +243,171 @@ export interface RecoveryState {
   readonly pendingOperations: readonly unknown[];
   readonly offline: boolean;
 }
+
+// ============================================================================
+// STREAMING & EXECUTION TYPES
+// ============================================================================
+
+export type ContentBlockType = 'text' | 'image' | 'tool_use' | 'tool_result' | 'document';
+
+export interface TextBlock {
+  readonly type: 'text';
+  readonly text: string;
+}
+
+export interface ImageBlock {
+  readonly type: 'image';
+  readonly source: {
+    readonly type: 'url' | 'base64';
+    readonly url?: string;
+    readonly media_type?: string;
+    readonly data?: string;
+  };
+}
+
+export interface ToolUseBlock {
+  readonly type: 'tool_use';
+  readonly id: string;
+  readonly name: string;
+  readonly input: Record<string, unknown>;
+}
+
+export interface ToolResultBlock {
+  readonly type: 'tool_result';
+  readonly tool_use_id: string;
+  readonly content: string;
+  readonly is_error?: boolean;
+}
+
+export interface DocumentBlock {
+  readonly type: 'document';
+  readonly source: {
+    readonly type: 'url' | 'base64' | 'file';
+    readonly url?: string;
+    readonly media_type?: string;
+    readonly data?: string;
+  };
+}
+
+export type ContentBlock = TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock | DocumentBlock;
+
+export interface ClaudeMessage {
+  readonly id: string;
+  readonly type: 'message';
+  readonly role: 'user' | 'assistant';
+  readonly content: readonly ContentBlock[];
+  readonly model?: string;
+  readonly stop_reason?: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence';
+  readonly stop_sequence?: string;
+  readonly usage?: {
+    readonly input_tokens: number;
+    readonly output_tokens: number;
+  };
+}
+
+export interface ExecutionMetadata {
+  readonly sessionId: string;
+  readonly conversationId: string;
+  readonly agentId: string;
+  readonly startTime: number;
+  readonly endTime?: number;
+  readonly duration?: number;
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+  readonly toolCalls: number;
+  readonly toolResults: number;
+  readonly errorCount: number;
+  readonly status: 'running' | 'completed' | 'error' | 'timeout' | 'interrupted';
+  readonly errorMessage?: string;
+}
+
+export type StreamingEventType =
+  | 'streaming_start'
+  | 'content_block_start'
+  | 'content_block_delta'
+  | 'content_block_stop'
+  | 'message_start'
+  | 'message_delta'
+  | 'message_stop'
+  | 'streaming_error'
+  | 'streaming_complete';
+
+export interface StreamingEvent {
+  readonly type: StreamingEventType;
+  readonly timestamp: number;
+  readonly sessionId: string;
+  readonly conversationId: string;
+  readonly data: Record<string, unknown>;
+  readonly eventId?: string;
+  readonly retryable?: boolean;
+}
+
+export interface StreamingStartEvent extends StreamingEvent {
+  readonly type: 'streaming_start';
+  readonly data: {
+    readonly sessionId: string;
+    readonly messageId: string;
+    readonly agentId: string;
+  };
+}
+
+export interface ContentBlockStartEvent extends StreamingEvent {
+  readonly type: 'content_block_start';
+  readonly data: {
+    readonly index: number;
+    readonly blockType: ContentBlockType;
+  };
+}
+
+export interface ContentBlockDeltaEvent extends StreamingEvent {
+  readonly type: 'content_block_delta';
+  readonly data: {
+    readonly index: number;
+    readonly delta: {
+      readonly type: 'text_delta' | 'input_json_delta';
+      readonly text?: string;
+      readonly partial_json?: string;
+    };
+  };
+}
+
+export interface ContentBlockStopEvent extends StreamingEvent {
+  readonly type: 'content_block_stop';
+  readonly data: {
+    readonly index: number;
+  };
+}
+
+export interface MessageStopEvent extends StreamingEvent {
+  readonly type: 'message_stop';
+  readonly data: {
+    readonly messageId: string;
+    readonly stopReason: string;
+    readonly usage: {
+      readonly inputTokens: number;
+      readonly outputTokens: number;
+    };
+  };
+}
+
+export interface StreamingCompleteEvent extends StreamingEvent {
+  readonly type: 'streaming_complete';
+  readonly data: {
+    readonly sessionId: string;
+    readonly messageId: string;
+    readonly eventCount: number;
+    readonly totalDuration: number;
+    readonly metadata: ExecutionMetadata;
+  };
+}
+
+export interface StreamingErrorEvent extends StreamingEvent {
+  readonly type: 'streaming_error';
+  readonly data: {
+    readonly sessionId: string;
+    readonly error: string;
+    readonly code?: string;
+    readonly recoverable: boolean;
+  };
+}

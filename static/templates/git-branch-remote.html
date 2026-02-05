@@ -1,0 +1,107 @@
+<!-- Git Branch and Remote Display -->
+<div class="git-branch-remote card" role="region" aria-label="Git branch and remote information">
+  <!-- Current Branch -->
+  <div class="mb-3 pb-3 border-b">
+    <h5 class="font-semibold text-sm mb-2">Current Branch</h5>
+    <div class="flex items-center gap-2">
+      <svg class="w-4 h-4 text-primary" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+      </svg>
+      <div>
+        <p class="font-mono font-semibold">{{ currentBranch }}</p>
+        <p class="text-xs text-secondary">{{ branchDescription }}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote Branches -->
+  <div class="mb-3 pb-3 border-b">
+    <h5 class="font-semibold text-sm mb-2">Remotes</h5>
+    <div class="space-y-2">
+      {{ for remote in remotes }}
+      <div class="flex items-center justify-between text-sm">
+        <div class="flex items-center gap-2">
+          <span class="badge badge-sm">{{ remote.name }}</span>
+          <code class="font-mono text-xs">{{ remote.url }}</code>
+        </div>
+        <span class="text-secondary text-xs">{{ remote.status }}</span>
+      </div>
+      {{ end }}
+    </div>
+  </div>
+
+  <!-- Tracking Status -->
+  <div class="mb-3 pb-3 border-b">
+    <h5 class="font-semibold text-sm mb-2">Tracking Status</h5>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M12 2a1 1 0 011 1v6.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L11 9.586V3a1 1 0 011-1z"/>
+        </svg>
+        <span><span class="font-semibold">{{ aheadCount }}</span> ahead</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M8 18a1 1 0 001-1v-6.586l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 101.414 1.414L7 10.414V17a1 1 0 001 1z"/>
+        </svg>
+        <span><span class="font-semibold">{{ behindCount }}</span> behind</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <div class="flex gap-2">
+    <button class="btn btn-sm" data-action="checkout-branch" aria-label="Switch branch">
+      Checkout
+    </button>
+    <button class="btn btn-sm" data-action="merge" aria-label="Merge branch">
+      Merge
+    </button>
+    <button class="btn btn-sm" data-action="rebase" aria-label="Rebase branch">
+      Rebase
+    </button>
+  </div>
+</div>
+
+<style scoped>
+.git-branch-remote {
+  padding: 16px;
+}
+
+.badge {
+  background-color: var(--color-primary);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.badge-sm {
+  padding: 2px 6px;
+}
+
+.font-mono {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.btn {
+  padding: 6px 10px;
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn:hover {
+  background-color: var(--color-primary-dark);
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+</style>

@@ -1,0 +1,80 @@
+<!-- Execution Progress Visualization -->
+<div class="execution-progress card" role="region" aria-label="Execution progress">
+  <div class="card-header flex items-center justify-between mb-4">
+    <div>
+      <h3 class="font-semibold">Execution Progress</h3>
+      <p class="text-sm text-secondary">{{ executionStatus }}</p>
+    </div>
+    <span class="badge" role="status" aria-live="polite">{{ percentage }}%</span>
+  </div>
+
+  <!-- Progress Bar -->
+  <div class="progress-container mb-4" role="progressbar" aria-valuenow="{{ percentage }}" aria-valuemin="0" aria-valuemax="100" aria-label="Progress: {{ percentage }}%">
+    <div class="progress-bar" style="width: {{ percentage }}%">
+      <span class="progress-text" aria-hidden="true">{{ percentage }}%</span>
+    </div>
+  </div>
+
+  <!-- Progress Details Grid -->
+  <div class="grid grid-cols-3 gap-3 text-sm">
+    <div class="border-r pr-3">
+      <span class="text-secondary">Events</span>
+      <p class="font-semibold text-lg">{{ eventCount }}</p>
+    </div>
+    <div class="border-r pr-3">
+      <span class="text-secondary">Elapsed</span>
+      <p class="font-mono text-lg">{{ elapsedTime }}</p>
+    </div>
+    <div>
+      <span class="text-secondary">Remaining</span>
+      <p class="font-mono text-lg">{{ estimatedRemaining }}</p>
+    </div>
+  </div>
+
+  <!-- Status Timeline -->
+  <div class="mt-4 pt-4 border-t">
+    <div class="flex justify-between text-xs">
+      <span class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-primary" aria-hidden="true"></span>
+        Queued
+      </span>
+      <span class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-primary" aria-hidden="true"></span>
+        Running
+      </span>
+      <span class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-primary" aria-hidden="true"></span>
+        Processing
+      </span>
+      <span class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-secondary" aria-hidden="true"></span>
+        Complete
+      </span>
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.progress-container {
+  position: relative;
+  height: 24px;
+  background-color: var(--color-bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background-color: var(--color-primary);
+  transition: width 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+</style>

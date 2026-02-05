@@ -1,0 +1,118 @@
+<!-- Scrollable Command Output with Virtual Rendering -->
+<div class="command-output-scrollable" role="region" aria-label="Scrollable command output" aria-live="polite">
+  <!-- Virtual Scroll Container -->
+  <div class="scroll-viewport" data-total-lines="{{ totalLines }}" data-visible-lines="20">
+    <div class="scroll-content" role="list">
+      <!-- Lines rendered dynamically by JavaScript -->
+      {{ for line in visibleLines }}
+      <div class="output-line" data-line-number="{{ lineNumber }}" role="listitem">
+        <span class="line-number" aria-hidden="true">{{ lineNumber }}</span>
+        <code class="line-content ansi-colored" data-has-stderr="{{ hasStderr }}">{{ line }}</code>
+      </div>
+      {{ end }}
+    </div>
+
+    <!-- Scrollbar -->
+    <div class="scroll-thumb" role="scrollbar" aria-orientation="vertical"></div>
+  </div>
+
+  <!-- Search Bar -->
+  <div class="output-search mt-3 pt-3 border-t">
+    <input type="text"
+           class="search-input"
+           placeholder="Search output..."
+           aria-label="Search in command output"
+           data-search-index="true" />
+    <div class="search-results text-xs text-secondary mt-1" aria-live="polite">
+      {{ matchCount }} matches
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.command-output-scrollable {
+  background: var(--color-bg-terminal);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  max-height: 500px;
+  display: flex;
+  flex-direction: column;
+}
+
+.scroll-viewport {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  position: relative;
+  background-color: var(--color-bg-code);
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  line-height: 1.5;
+}
+
+.scroll-content {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+.output-line {
+  display: flex;
+  gap: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 0 4px;
+}
+
+.line-number {
+  color: var(--color-text-secondary);
+  text-align: right;
+  min-width: 40px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-content {
+  color: var(--color-text-terminal);
+  flex: 1;
+}
+
+.line-content[data-has-stderr="true"] {
+  color: var(--color-error);
+}
+
+.scroll-thumb {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  background-color: var(--color-scrollbar);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.output-search {
+  padding: 8px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-alpha);
+}
+</style>

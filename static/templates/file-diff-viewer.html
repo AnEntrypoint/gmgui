@@ -1,0 +1,121 @@
+<!-- File Diff Visualization Panel -->
+<div class="file-diff-viewer card" role="region" aria-label="Code diff viewer">
+  <div class="card-header flex items-center justify-between mb-3 pb-3 border-b">
+    <h4 class="font-semibold">Changes in {{ fileName }}</h4>
+    <div class="flex gap-2">
+      <button class="btn-icon" data-view="unified" title="Unified diff view" aria-label="Show unified diff">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M7 3a1 1 0 000 2h6a1 1 0 000-2H7zM4 7a1 1 0 011-1h10a1 1 0 011 1v6a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/>
+        </svg>
+      </button>
+      <button class="btn-icon" data-view="split" title="Side-by-side view" aria-label="Show side-by-side diff">
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M2 3a1 1 0 011-1h6a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3zm10-1a1 1 0 011 1v8a1 1 0 01-1 1h-6a1 1 0 01-1-1v2a1 1 0 01-2 0V3a1 1 0 011-1h6z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Diff Statistics -->
+  <div class="diff-stats text-sm mb-3 pb-3 border-b flex gap-4">
+    <span class="text-green-600" aria-label="Lines added">
+      <span class="font-mono">+{{ linesAdded }}</span> added
+    </span>
+    <span class="text-red-600" aria-label="Lines removed">
+      <span class="font-mono">-{{ linesRemoved }}</span> removed
+    </span>
+    <span class="text-blue-600" aria-label="Total changes">
+      <span class="font-mono">{{ totalChanges }}</span> total
+    </span>
+  </div>
+
+  <!-- Unified Diff View -->
+  <pre class="diff-content" data-view="unified"><code>{{ unifiedDiff }}</code></pre>
+
+  <!-- Split Diff View (hidden) -->
+  <div class="split-view hidden" data-view="split" role="region" aria-label="Side-by-side diff view">
+    <div class="flex gap-2">
+      <div class="flex-1">
+        <div class="bg-red-50 border-b p-2 text-xs font-semibold">Original</div>
+        <pre class="diff-side left"><code>{{ diffLeft }}</code></pre>
+      </div>
+      <div class="flex-1">
+        <div class="bg-green-50 border-b p-2 text-xs font-semibold">Modified</div>
+        <pre class="diff-side right"><code>{{ diffRight }}</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff Legend -->
+  <div class="diff-legend text-xs mt-3 pt-3 border-t space-y-1">
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-green-500"></span>
+      <span>Added or modified</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="w-2 h-2 rounded-full bg-red-500"></span>
+      <span>Removed or replaced</span>
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.file-diff-viewer {
+  padding: 16px;
+  max-height: 600px;
+  overflow: auto;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  background-color: var(--color-bg-hover);
+  color: var(--color-primary);
+}
+
+.diff-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.diff-content,
+.diff-side {
+  background-color: var(--color-bg-code);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+}
+
+.split-view {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.diff-side {
+  flex: 1;
+  background-color: transparent;
+  border: none;
+  padding: 0;
+}
+
+.diff-legend {
+  padding-top: 12px;
+}
+
+.hidden {
+  display: none;
+}
+</style>

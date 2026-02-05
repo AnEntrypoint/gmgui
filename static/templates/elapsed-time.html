@@ -1,0 +1,54 @@
+<!-- Execution Time Display with Elapsed and Estimated Remaining -->
+<div class="time-display card" role="region" aria-label="Execution timing">
+  <div class="grid grid-cols-2 gap-4">
+    <!-- Elapsed Time -->
+    <div class="text-center">
+      <p class="text-sm text-secondary mb-2">Elapsed Time</p>
+      <div class="time-value font-mono">
+        <span data-unit="hours">{{ hours }}</span>:<span data-unit="minutes">{{ minutes }}</span>:<span data-unit="seconds">{{ seconds }}</span>
+      </div>
+      <p class="text-xs text-secondary mt-1">from start</p>
+    </div>
+
+    <!-- Estimated Remaining -->
+    <div class="text-center border-l pl-4">
+      <p class="text-sm text-secondary mb-2">Est. Remaining</p>
+      <div class="time-value font-mono" data-estimated="true">
+        <span data-unit="hours">{{ remHours }}</span>:<span data-unit="minutes">{{ remMinutes }}</span>:<span data-unit="seconds">{{ remSeconds }}</span>
+      </div>
+      <p class="text-xs text-secondary mt-1">estimated to complete</p>
+    </div>
+  </div>
+
+  <!-- Timeline Bar -->
+  <div class="mt-4 pt-4 border-t">
+    <div class="flex items-center gap-2 text-xs">
+      <span class="text-secondary">0%</span>
+      <div class="flex-1 h-1 bg-primary rounded-full" style="width: {{ progressPercent }}%;"></div>
+      <span class="text-secondary">100%</span>
+    </div>
+  </div>
+</div>
+
+<style scoped>
+.time-display {
+  padding: 16px;
+}
+
+.time-value {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--color-primary);
+}
+
+.time-value[data-estimated="true"] {
+  color: var(--color-secondary);
+}
+
+[data-unit] {
+  min-width: 32px;
+  text-align: center;
+  display: inline-block;
+}
+</style>
