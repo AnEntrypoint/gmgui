@@ -156,5 +156,3 @@ if (document.readyState === 'loading') {
 } else {
   window.conversationManager = new ConversationManager();
 }
-
-export { ConversationManager };
