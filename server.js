@@ -7,6 +7,9 @@ import { execSync } from 'child_process';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 
+// System prompt for Claude to format responses as HTML
+const SYSTEM_PROMPT = `Always write your responses in ripple-ui enhanced HTML. Avoid overriding light/dark mode CSS variables. Use all the benefits of HTML to express technical details with proper semantic markup, tables, code blocks, headings, and lists. Write clean, well-structured HTML that respects the existing design system.`;
+
 // Debug logging to file
 const debugLog = (msg) => {
   const timestamp = new Date().toISOString();
@@ -386,7 +389,10 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       print: true
     };
 
-    const outputs = await runClaudeWithStreaming(content, cwd, actualAgentId, config);
+    // Prepend system prompt to user content
+    const promptWithSystem = `${SYSTEM_PROMPT}\n\n${content}`;
+
+    const outputs = await runClaudeWithStreaming(promptWithSystem, cwd, actualAgentId, config);
     debugLog(`[stream] Claude returned ${outputs.length} streaming outputs`);
 
     // Process streaming outputs similar to processMessage
@@ -503,7 +509,9 @@ async function processMessage(conversationId, messageId, content, agentId) {
     const actualAgentId = agentId || 'claude-code';
 
     debugLog(`[processMessage] Calling runClaudeWithStreaming with prompt: "${content.substring(0, 50)}..."`);
-    const outputs = await runClaudeWithStreaming(content, cwd, actualAgentId);
+    // Prepend system prompt to user content
+    const promptWithSystem = `${SYSTEM_PROMPT}\n\n${content}`;
+    const outputs = await runClaudeWithStreaming(promptWithSystem, cwd, actualAgentId);
     debugLog(`[processMessage] Claude returned ${outputs.length} outputs`);
 
     // Collect all message blocks to preserve full execution details

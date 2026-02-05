@@ -271,8 +271,25 @@ class AgentGUIClient {
       agentId: data.agentId,
       startTime: Date.now()
     };
+    this.state.currentConversation = { id: data.conversationId };
     this.state.sessionEvents = [];
-    this.renderer.clear();
+
+    // Auto-select the streaming conversation in the sidebar
+    if (window.conversationManager) {
+      window.conversationManager.select(data.conversationId);
+    }
+
+    // Load the conversation to display it in real-time
+    this.loadConversationMessages(data.conversationId).then(() => {
+      // Clear output and prepare for streaming
+      const outputEl = document.getElementById('output');
+      if (outputEl) {
+        outputEl.innerHTML = '';
+      }
+    }).catch(err => {
+      console.error('Failed to load conversation during streaming:', err);
+      this.renderer.clear();
+    });
 
     this.renderer.queueEvent({
       type: 'streaming_start',
@@ -324,7 +341,52 @@ class AgentGUIClient {
    * Handle message created
    */
   handleMessageCreated(data) {
+    // If the message is for the currently displayed conversation, append it to the output
+    if (data.conversationId === this.state.currentConversation?.id && data.message) {
+      const outputEl = document.querySelector('.conversation-messages');
+      if (outputEl) {
+        const messageHtml = `
+          <div class="message message-${data.message.role}">
+            <div class="message-role">${data.message.role.charAt(0).toUpperCase() + data.message.role.slice(1)}</div>
+            ${this.renderMessageContent(data.message.content)}
+            <div class="message-timestamp">${new Date(data.message.created_at).toLocaleString()}</div>
+          </div>
+        `;
+        outputEl.insertAdjacentHTML('beforeend', messageHtml);
+        // Scroll to bottom
+        const scrollContainer = document.getElementById('output-scroll');
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+      }
+    }
     this.emit('message:created', data);
+  }
+
+  /**
+   * Render message content based on type
+   */
+  renderMessageContent(content) {
+    if (typeof content === 'string') {
+      return `<div class="message-text">${this.escapeHtml(content)}</div>`;
+    } else if (content && typeof content === 'object' && content.type === 'claude_execution') {
+      let html = '<div class="message-blocks">';
+      if (content.blocks && Array.isArray(content.blocks)) {
+        content.blocks.forEach(block => {
+          if (block.type === 'text') {
+            html += `<div class="message-text">${this.escapeHtml(block.text)}</div>`;
+          } else if (block.type === 'code_block') {
+            html += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+          } else if (block.type === 'tool_use') {
+            html += `<div class="message-tool">[Tool: ${this.escapeHtml(block.name)}]</div>`;
+          }
+        });
+      }
+      html += '</div>';
+      return html;
+    } else {
+      return `<div class="message-text">${this.escapeHtml(JSON.stringify(content))}</div>`;
+    }
   }
 
   /**
