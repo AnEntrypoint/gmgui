@@ -63,6 +63,9 @@ class AgentGUIClient {
       // Setup UI elements
       this.setupUI();
 
+      // Enable controls for initial interaction
+      this.enableControls();
+
       // Connect WebSocket
       if (this.config.autoConnect) {
         await this.connectWebSocket();
