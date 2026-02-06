@@ -160,6 +160,12 @@ class AgentGUIClient {
           this.startExecution();
         }
       });
+
+      this.ui.messageInput.addEventListener('input', () => {
+        const el = this.ui.messageInput;
+        el.style.height = 'auto';
+        el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+      });
     }
 
     // Setup theme toggle
@@ -344,7 +350,9 @@ class AgentGUIClient {
   scrollToBottom() {
     const scrollContainer = document.getElementById('output-scroll');
     if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      requestAnimationFrame(() => {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      });
     }
   }
 
@@ -567,7 +575,10 @@ class AgentGUIClient {
       return;
     }
 
-    if (this.ui.messageInput) this.ui.messageInput.value = '';
+    if (this.ui.messageInput) {
+      this.ui.messageInput.value = '';
+      this.ui.messageInput.style.height = 'auto';
+    }
 
     try {
       if (this.state.currentConversation?.id) {

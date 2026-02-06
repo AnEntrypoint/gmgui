@@ -10,36 +10,39 @@
   let dragCounter = 0;
 
   function init() {
-    setupHamburgerMenu();
+    setupSidebarToggle();
     setupDragAndDrop();
     setupViewToggle();
     setupConversationListener();
   }
 
-  // --- Hamburger Menu & Mobile Sidebar ---
-  function setupHamburgerMenu() {
-    const hamburger = document.querySelector('[data-hamburger]');
-    const sidebar = document.querySelector('[data-sidebar]');
-    const overlay = document.querySelector('[data-sidebar-overlay]');
+  function setupSidebarToggle() {
+    var toggleBtn = document.querySelector('[data-sidebar-toggle]');
+    var sidebar = document.querySelector('[data-sidebar]');
+    var overlay = document.querySelector('[data-sidebar-overlay]');
 
-    if (!hamburger || !sidebar) return;
+    if (!sidebar) return;
 
-    hamburger.addEventListener('click', function(e) {
-      e.stopPropagation();
-      const isOpen = sidebar.classList.contains('mobile-visible');
-      if (isOpen) {
-        closeSidebar();
+    var savedState = localStorage.getItem('sidebar-collapsed');
+    if (savedState === 'true' && window.innerWidth > 768) {
+      sidebar.classList.add('collapsed');
+    }
+
+    function isMobile() { return window.innerWidth <= 768; }
+
+    function toggleSidebar() {
+      if (isMobile()) {
+        var isOpen = sidebar.classList.contains('mobile-visible');
+        if (isOpen) { closeSidebar(); } else { openSidebar(); }
       } else {
-        openSidebar();
+        sidebar.classList.toggle('collapsed');
+        localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
       }
-    });
-
-    if (overlay) {
-      overlay.addEventListener('click', closeSidebar);
     }
 
     function openSidebar() {
       sidebar.classList.add('mobile-visible');
+      sidebar.classList.remove('collapsed');
       if (overlay) overlay.classList.add('visible');
     }
 
@@ -48,17 +51,32 @@
       if (overlay) overlay.classList.remove('visible');
     }
 
-    // Close sidebar when conversation is selected (mobile)
-    window.addEventListener('conversation-selected', function() {
-      if (window.innerWidth <= 768) {
-        closeSidebar();
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        toggleSidebar();
+      });
+    }
+
+    if (overlay) {
+      overlay.addEventListener('click', closeSidebar);
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        toggleSidebar();
       }
     });
 
-    // Close sidebar on window resize to desktop
+    window.addEventListener('conversation-selected', function() {
+      if (isMobile()) closeSidebar();
+    });
+
     window.addEventListener('resize', function() {
-      if (window.innerWidth > 768) {
-        closeSidebar();
+      if (!isMobile()) {
+        sidebar.classList.remove('mobile-visible');
+        if (overlay) overlay.classList.remove('visible');
       }
     });
   }
@@ -175,7 +193,7 @@
     currentView = view;
     var bar = document.getElementById('viewToggleBar');
     var chatArea = document.getElementById('output-scroll');
-    var execPanel = document.querySelector('.execution-panel');
+    var execPanel = document.querySelector('.input-section');
     var fileBrowser = document.getElementById('fileBrowserContainer');
     var iframe = document.getElementById('fileBrowserIframe');
 
