@@ -377,10 +377,21 @@ class AgentGUIClient {
   renderBlockContent(block) {
     if (block.type === 'text' && block.text) {
       const text = block.text;
-      if (text.includes('<') && (text.includes('</') || text.includes('/>'))) {
-        return text;
+      if (this.isHtmlContent(text)) {
+        return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${text}</div>`;
       }
-      return this.escapeHtml(text);
+      const parts = this.parseMarkdownCodeBlocks(text);
+      if (parts.length === 1 && parts[0].type === 'text') {
+        return this.escapeHtml(text);
+      }
+      return parts.map(part => {
+        if (part.type === 'html') {
+          return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div>`;
+        } else if (part.type === 'code') {
+          return this.renderCodeBlock(part.language, part.code);
+        }
+        return this.escapeHtml(part.content);
+      }).join('');
     }
     return this.escapeHtml(JSON.stringify(block));
   }
@@ -493,10 +504,12 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Parse markdown code blocks from text
-   * Returns array of parts with type ('text' or 'code') and content/language/code
-   */
+  isHtmlContent(text) {
+    const openTag = /<(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])\b[^>]*>/i;
+    const closeTag = /<\/(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])>/i;
+    return openTag.test(text) && closeTag.test(text);
+  }
+
   parseMarkdownCodeBlocks(text) {
     const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
     const parts = [];
@@ -504,14 +517,13 @@ class AgentGUIClient {
     let match;
 
     while ((match = codeBlockRegex.exec(text)) !== null) {
-      // Add text before the code block
       if (match.index > lastIndex) {
+        const segment = text.substring(lastIndex, match.index);
         parts.push({
-          type: 'text',
-          content: text.substring(lastIndex, match.index)
+          type: this.isHtmlContent(segment) ? 'html' : 'text',
+          content: segment
         });
       }
-      // Add the code block
       parts.push({
         type: 'code',
         language: match[1] || 'plain',
@@ -520,17 +532,16 @@ class AgentGUIClient {
       lastIndex = codeBlockRegex.lastIndex;
     }
 
-    // Add remaining text after last code block
     if (lastIndex < text.length) {
+      const segment = text.substring(lastIndex);
       parts.push({
-        type: 'text',
-        content: text.substring(lastIndex)
+        type: this.isHtmlContent(segment) ? 'html' : 'text',
+        content: segment
       });
     }
 
-    // If no code blocks found, return the text as-is
     if (parts.length === 0) {
-      return [{ type: 'text', content: text }];
+      return [{ type: this.isHtmlContent(text) ? 'html' : 'text', content: text }];
     }
 
     return parts;
@@ -561,16 +572,20 @@ class AgentGUIClient {
    */
   renderMessageContent(content) {
     if (typeof content === 'string') {
+      if (this.isHtmlContent(content)) {
+        return `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${content}</div></div>`;
+      }
       return `<div class="message-text">${this.escapeHtml(content)}</div>`;
     } else if (content && typeof content === 'object' && content.type === 'claude_execution') {
       let html = '<div class="message-blocks">';
       if (content.blocks && Array.isArray(content.blocks)) {
         content.blocks.forEach(block => {
           if (block.type === 'text') {
-            // Parse markdown code blocks from text
             const parts = this.parseMarkdownCodeBlocks(block.text);
             parts.forEach(part => {
-              if (part.type === 'text') {
+              if (part.type === 'html') {
+                html += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div></div>`;
+              } else if (part.type === 'text') {
                 html += `<div class="message-text">${this.escapeHtml(part.content)}</div>`;
               } else if (part.type === 'code') {
                 html += this.renderCodeBlock(part.language, part.code);
@@ -856,18 +871,22 @@ class AgentGUIClient {
     return messages.map(msg => {
       let contentHtml = '';
 
-      // Handle different content types
       if (typeof msg.content === 'string') {
-        contentHtml = `<div class="message-text">${this.escapeHtml(msg.content)}</div>`;
+        if (this.isHtmlContent(msg.content)) {
+          contentHtml = `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${msg.content}</div></div>`;
+        } else {
+          contentHtml = `<div class="message-text">${this.escapeHtml(msg.content)}</div>`;
+        }
       } else if (msg.content && typeof msg.content === 'object' && msg.content.type === 'claude_execution') {
-        // Handle Claude execution blocks
         contentHtml = '<div class="message-blocks">';
         if (msg.content.blocks && Array.isArray(msg.content.blocks)) {
           msg.content.blocks.forEach(block => {
             if (block.type === 'text') {
               const parts = this.parseMarkdownCodeBlocks(block.text);
               parts.forEach(part => {
-                if (part.type === 'text') {
+                if (part.type === 'html') {
+                  contentHtml += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div></div>`;
+                } else if (part.type === 'text') {
                   contentHtml += `<div class="message-text">${this.escapeHtml(part.content)}</div>`;
                 } else if (part.type === 'code') {
                   contentHtml += this.renderCodeBlock(part.language, part.code);

@@ -569,9 +569,12 @@ class StreamingRenderer {
     return div;
   }
 
-  /**
-   * Parse markdown code blocks from text
-   */
+  isHtmlContent(text) {
+    const openTag = /<(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])\b[^>]*>/i;
+    const closeTag = /<\/(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])>/i;
+    return openTag.test(text) && closeTag.test(text);
+  }
+
   parseMarkdownCodeBlocks(text) {
     const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
     const parts = [];
@@ -580,18 +583,20 @@ class StreamingRenderer {
 
     while ((match = codeBlockRegex.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'text', content: text.substring(lastIndex, match.index) });
+        const segment = text.substring(lastIndex, match.index);
+        parts.push({ type: this.isHtmlContent(segment) ? 'html' : 'text', content: segment });
       }
       parts.push({ type: 'code', language: match[1] || 'plain', code: match[2] });
       lastIndex = codeBlockRegex.lastIndex;
     }
 
     if (lastIndex < text.length) {
-      parts.push({ type: 'text', content: text.substring(lastIndex) });
+      const segment = text.substring(lastIndex);
+      parts.push({ type: this.isHtmlContent(segment) ? 'html' : 'text', content: segment });
     }
 
     if (parts.length === 0) {
-      return [{ type: 'text', content: text }];
+      return [{ type: this.isHtmlContent(text) ? 'html' : 'text', content: text }];
     }
 
     return parts;
@@ -610,7 +615,9 @@ class StreamingRenderer {
     const parts = this.parseMarkdownCodeBlocks(text);
     let html = '';
     parts.forEach(part => {
-      if (part.type === 'text') {
+      if (part.type === 'html') {
+        html += `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div>`;
+      } else if (part.type === 'text') {
         html += `<p class="text-sm leading-relaxed">${this.escapeHtml(part.content)}</p>`;
       } else if (part.type === 'code') {
         if (part.language.toLowerCase() === 'html') {
