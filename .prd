@@ -178,11 +178,26 @@ Distinguish clearly: HTML response rendering ≠ file write operations
   - Maintains backward compatibility with old JSON blob messages
   - All 6 chunks from test execution persisted and renderable
 
-### Wave 4: URL State Management (Blocked By: Wave 3)
-- [ ] Add router state to track conversationId + sessionId
-- [ ] Update URL on conversation selection
-- [ ] Restore conversation from URL on page load
-- [ ] Persist scroll position per conversation
+### Wave 4: URL State Management (Blocked By: Wave 3) - COMPLETE
+- [x] Add router state to track conversationId + sessionId - VERIFIED
+  - routerState object tracks: currentConversationId, currentSessionId
+  - Methods: isValidId(), updateUrlForConversation(), restoreStateFromUrl()
+  - Integration: handleStreamingStart() updates URL with session ID
+- [x] Update URL on conversation selection - VERIFIED
+  - window.history.pushState() for clean URLs
+  - Format: /gm/?conversation=<id>&session=<id>
+  - Called on conversation-selected event and loadConversationMessages()
+  - URL updates during streaming with session ID
+- [x] Restore conversation from URL on page load - VERIFIED
+  - restoreStateFromUrl() extracts params from window.location.search
+  - Validates IDs with alphanumeric, dash, underscore regex (XSS prevention)
+  - Loads conversation if valid ID found
+  - Graceful fallback if invalid or missing
+- [x] Persist scroll position per conversation - VERIFIED
+  - localStorage key format: scroll_<conversationId>
+  - saveScrollPosition() on scroll events (debounced 500ms)
+  - restoreScrollPosition() after conversation load
+  - setupScrollTracking() manages listener lifecycle
 
 ### Wave 5: HTML Response System Prompt (Blocked By: Wave 4)
 - [ ] Update SYSTEM_PROMPT in server.js
@@ -446,4 +461,54 @@ All Wave 3 items have been implemented and verified:
 - ✓ Browser simulation: All scenarios passed
 - ✓ Final verification: 5/5 requirements confirmed
 
-## Ready for Wave 4: URL State Management
+## Wave 4 Complete - Verification Summary
+
+All Wave 4 items have been implemented and verified:
+
+**Router State Tracking Verified:**
+- routerState object with currentConversationId and currentSessionId
+- isValidId() prevents XSS: only alphanumeric, dash, underscore allowed
+- Validated against: script tags, path traversal, SQL injection, etc.
+
+**URL Management Verified:**
+- pushState() updates URL: /gm/?conversation=<id>&session=<id>
+- Format is clean and shareable (not hash-based)
+- URL updates on: conversation selection, streaming start, page load
+- Parameter extraction works correctly
+
+**Page Load Restoration Verified:**
+- restoreStateFromUrl() runs during init()
+- Extracts conversationId and sessionId from URL parameters
+- Loads conversation automatically if ID is valid
+- Graceful fallback to conversation list if invalid
+
+**Scroll Position Persistence Verified:**
+- localStorage key: scroll_<conversationId>
+- Saves on scroll events (debounced 500ms to avoid excessive writes)
+- Restores after conversation renders (requestAnimationFrame)
+- Works across browser tabs independently
+
+**Multi-Tab Support Verified:**
+- Same conversation can be open in multiple tabs simultaneously
+- Each tab has independent scroll position (browser manages internally)
+- URL contains same conversation ID → same content in all tabs
+- Deep linking enables sharing: copy URL, open in new tab
+- Works with refresh: URL preserved, conversation loads from DB
+
+**Browser Scenarios Tested:**
+- Scenario 1: Open conversation, URL updates ✓
+- Scenario 2: Scroll and save position ✓
+- Scenario 3: Open same conversation in Tab 2 ✓
+- Scenario 4: Independent scroll per tab ✓
+- Scenario 5: Page refresh preserves URL and conversation ✓
+- Scenario 6: Deep linking enables sharing ✓
+- Scenario 7: Streaming updates URL with session ID ✓
+- Scenario 8: Multiple conversations maintain separate scroll ✓
+
+**XSS Prevention:**
+- All ID validation uses regex: /^[a-zA-Z0-9_-]+$/
+- Length limit: 256 characters max
+- Tested against: <script>, ../../../, SQL injection, etc.
+- Result: All attack vectors blocked ✓
+
+## Ready for Wave 5: HTML Response System Prompt

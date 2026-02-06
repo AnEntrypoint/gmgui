@@ -81,6 +81,15 @@ class AgentGUIClient {
         abortController: null
       };
 
+      // Initialize router state
+      this.routerState = {
+        currentConversationId: null,
+        currentSessionId: null
+      };
+
+      // Restore state from URL on page load
+      this.restoreStateFromUrl();
+
       this.state.isInitialized = true;
       this.emit('initialized');
 
@@ -145,6 +154,118 @@ class AgentGUIClient {
   }
 
   /**
+   * Router state management: restore conversation from URL
+   * Format: ?conversation=<id>&session=<id>
+   */
+  restoreStateFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const conversationId = params.get('conversation');
+    const sessionId = params.get('session');
+
+    if (conversationId && this.isValidId(conversationId)) {
+      this.routerState.currentConversationId = conversationId;
+      if (sessionId && this.isValidId(sessionId)) {
+        this.routerState.currentSessionId = sessionId;
+      }
+      console.log('Restoring conversation from URL:', conversationId);
+      this.loadConversationMessages(conversationId);
+    }
+  }
+
+  /**
+   * Validate ID format to prevent XSS
+   * Alphanumeric, dash, underscore only
+   */
+  isValidId(id) {
+    if (!id || typeof id !== 'string') return false;
+    return /^[a-zA-Z0-9_-]+$/.test(id) && id.length < 256;
+  }
+
+  /**
+   * Update URL when conversation is selected
+   * Uses History API (pushState) for clean URLs
+   */
+  updateUrlForConversation(conversationId, sessionId) {
+    if (!this.isValidId(conversationId)) return;
+
+    this.routerState.currentConversationId = conversationId;
+    if (sessionId && this.isValidId(sessionId)) {
+      this.routerState.currentSessionId = sessionId;
+    }
+
+    const params = new URLSearchParams();
+    params.set('conversation', conversationId);
+    if (sessionId && this.isValidId(sessionId)) {
+      params.set('session', sessionId);
+    }
+
+    const url = `${window.location.pathname}?${params.toString()}`;
+    window.history.pushState({ conversationId, sessionId }, '', url);
+  }
+
+  /**
+   * Save scroll position to localStorage
+   * Key format: scroll_<conversationId>
+   */
+  saveScrollPosition(conversationId) {
+    if (!this.isValidId(conversationId)) return;
+
+    const scrollContainer = document.getElementById(this.config.scrollContainerId);
+    if (scrollContainer) {
+      const position = scrollContainer.scrollTop;
+      try {
+        localStorage.setItem(`scroll_${conversationId}`, position.toString());
+        console.log(`Saved scroll position for ${conversationId}: ${position}`);
+      } catch (e) {
+        console.warn('Failed to save scroll position:', e);
+      }
+    }
+  }
+
+  /**
+   * Restore scroll position from localStorage
+   * Restores after conversation loads
+   */
+  restoreScrollPosition(conversationId) {
+    if (!this.isValidId(conversationId)) return;
+
+    try {
+      const position = localStorage.getItem(`scroll_${conversationId}`);
+      if (position !== null) {
+        const scrollTop = parseInt(position, 10);
+        const scrollContainer = document.getElementById(this.config.scrollContainerId);
+        if (scrollContainer && !isNaN(scrollTop)) {
+          requestAnimationFrame(() => {
+            scrollContainer.scrollTop = scrollTop;
+            console.log(`Restored scroll position for ${conversationId}: ${scrollTop}`);
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore scroll position:', e);
+    }
+  }
+
+  /**
+   * Setup scroll position tracking
+   * Debounced to avoid excessive localStorage writes
+   */
+  setupScrollTracking() {
+    const scrollContainer = document.getElementById(this.config.scrollContainerId);
+    if (!scrollContainer) return;
+
+    let scrollTimer = null;
+    scrollContainer.addEventListener('scroll', () => {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(() => {
+        if (this.state.currentConversation?.id) {
+          this.saveScrollPosition(this.state.currentConversation.id);
+        }
+      }, 500); // Debounce 500ms
+    });
+  }
+
+  /**
    * Setup UI elements
    */
   setupUI() {
@@ -184,6 +305,9 @@ class AgentGUIClient {
       themeToggle.addEventListener('click', () => this.toggleTheme());
     }
 
+    // Setup scroll position tracking for current conversation
+    this.setupScrollTracking();
+
     window.addEventListener('create-new-conversation', (event) => {
       const detail = event.detail || {};
       this.createNewConversation(detail.workingDirectory, detail.title);
@@ -191,7 +315,9 @@ class AgentGUIClient {
 
     // Listen for conversation selection
     window.addEventListener('conversation-selected', (event) => {
-      this.loadConversationMessages(event.detail.conversationId);
+      const conversationId = event.detail.conversationId;
+      this.updateUrlForConversation(conversationId);
+      this.loadConversationMessages(conversationId);
     });
   }
 
@@ -264,6 +390,9 @@ class AgentGUIClient {
     };
     this.state.sessionEvents = [];
     this.state.streamingBlocks = [];
+
+    // Update URL with session ID during streaming
+    this.updateUrlForConversation(data.conversationId, data.sessionId);
 
     if (this.wsManager.isConnected) {
       this.wsManager.subscribeToSession(data.sessionId);
@@ -381,6 +510,12 @@ class AgentGUIClient {
       ts.className = 'message-timestamp';
       ts.textContent = new Date().toLocaleString();
       streamingEl.appendChild(ts);
+    }
+
+    // Save scroll position after streaming completes
+    const conversationId = data.conversationId || this.state.currentSession?.conversationId;
+    if (conversationId) {
+      this.saveScrollPosition(conversationId);
     }
 
     this.enableControls();
@@ -916,6 +1051,9 @@ class AgentGUIClient {
       const { conversation } = await convResponse.json();
       this.state.currentConversation = conversation;
 
+      // Update URL with conversation ID
+      this.updateUrlForConversation(conversationId);
+
       if (this.wsManager.isConnected) {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
@@ -980,7 +1118,8 @@ class AgentGUIClient {
             }
           }
 
-          this.scrollToBottom();
+          // Restore scroll position after rendering
+          this.restoreScrollPosition(conversationId);
         }
       } catch (chunkError) {
         console.warn('Failed to fetch chunks, falling back to messages:', chunkError);
@@ -1002,7 +1141,9 @@ class AgentGUIClient {
               ${this.renderMessages(messagesData.messages || [])}
             </div>
           `;
-          this.scrollToBottom();
+
+          // Restore scroll position after rendering
+          this.restoreScrollPosition(conversationId);
         }
       }
     } catch (error) {
