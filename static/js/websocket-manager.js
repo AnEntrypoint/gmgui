@@ -50,7 +50,7 @@ class WebSocketManager {
   getWebSocketURL() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const baseURL = window.__BASE_URL || '/gm';
-    return `${protocol}//${window.location.host}${baseURL}/ws`;
+    return `${protocol}//${window.location.host}${baseURL}/sync`;
   }
 
   /**

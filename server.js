@@ -13,10 +13,11 @@ const express = require('express');
 const Busboy = require('busboy');
 const fsbrowse = require('fsbrowse');
 
-// System prompt for Claude to format responses as HTML
 const SYSTEM_PROMPT = `Always write your responses in ripple-ui enhanced HTML. Avoid overriding light/dark mode CSS variables. Use all the benefits of HTML to express technical details with proper semantic markup, tables, code blocks, headings, and lists. Write clean, well-structured HTML that respects the existing design system.`;
 
-// Debug logging to file
+const activeExecutions = new Map();
+const messageQueues = new Map();
+
 const debugLog = (msg) => {
   const timestamp = new Date().toISOString();
   console.error(`[${timestamp}] ${msg}`);
@@ -234,19 +235,30 @@ const server = http.createServer(async (req, res) => {
       const agentId = body.agentId || 'claude-code';
       const skipPermissions = body.skipPermissions || false;
 
-      debugLog(`[stream] Starting stream: conversationId=${conversationId}, agentId=${agentId}, skipPermissions=${skipPermissions}`);
-
-      // Create user message and session immediately
       const userMessage = queries.createMessage(conversationId, 'user', prompt);
-      const session = queries.createSession(conversationId);
       queries.createEvent('message.created', { role: 'user', messageId: userMessage.id }, conversationId);
+
+      broadcastSync({ type: 'message_created', conversationId, message: userMessage, timestamp: Date.now() });
+
+      if (activeExecutions.has(conversationId)) {
+        debugLog(`[stream] Conversation ${conversationId} is busy, queuing message`);
+        if (!messageQueues.has(conversationId)) messageQueues.set(conversationId, []);
+        messageQueues.get(conversationId).push({ content: prompt, agentId, skipPermissions, messageId: userMessage.id });
+
+        const queueLength = messageQueues.get(conversationId).length;
+        broadcastSync({ type: 'queue_status', conversationId, queueLength, messageId: userMessage.id, timestamp: Date.now() });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: userMessage, queued: true, queuePosition: queueLength }));
+        return;
+      }
+
+      const session = queries.createSession(conversationId);
       queries.createEvent('session.created', { messageId: userMessage.id, sessionId: session.id }, conversationId, session.id);
 
-      // Send immediate response with session info
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: userMessage, session, streamId: session.id }));
 
-      // Emit streaming start event
       broadcastSync({
         type: 'streaming_start',
         sessionId: session.id,
@@ -256,7 +268,6 @@ const server = http.createServer(async (req, res) => {
         timestamp: Date.now()
       });
 
-      // Fire-and-forget streaming with error handling
       processMessageWithStreaming(conversationId, userMessage.id, session.id, prompt, agentId, skipPermissions)
         .catch(err => debugLog(`[stream] Uncaught error: ${err.message}`));
       return;
@@ -450,58 +461,63 @@ function serveFile(filePath, res) {
 
 async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId, skipPermissions = false) {
   const startTime = Date.now();
+  activeExecutions.set(conversationId, true);
+  queries.setIsStreaming(conversationId, true);
+
   try {
-    debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}, agentId=${agentId}, skipPermissions=${skipPermissions}`);
+    debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}`);
 
     const conv = queries.getConversation(conversationId);
     const cwd = conv?.workingDirectory || '/config';
-    const actualAgentId = agentId || 'claude-code';
+    const resumeSessionId = conv?.claudeSessionId || null;
 
-    debugLog(`[stream] Calling runClaudeWithStreaming with config: skipPermissions=${skipPermissions}`);
-    const config = {
-      skipPermissions,
-      verbose: true,
-      outputFormat: 'stream-json',
-      timeout: 1800000, // 30 minutes
-      print: true
-    };
-
-    // Prepend system prompt to user content
-    const promptWithSystem = `${SYSTEM_PROMPT}\n\n${content}`;
-
-    const outputs = await runClaudeWithStreaming(promptWithSystem, cwd, actualAgentId, config);
-    debugLog(`[stream] Claude returned ${outputs.length} streaming outputs`);
-
-    // Process streaming outputs similar to processMessage
-    // But emit WebSocket events for each block
     let allBlocks = [];
-    let lastAssistantMessage = null;
     let eventCount = 0;
 
-    for (const output of outputs) {
-      if (output.type === 'assistant' && output.message?.content) {
-        debugLog(`[stream] Found assistant message with ${output.message.content.length} content blocks`);
-        lastAssistantMessage = output.message;
-        allBlocks.push(...(output.message.content || []));
-
-        // Emit progress event for each block
+    const onEvent = (parsed) => {
+      if (parsed.type === 'assistant' && parsed.message?.content) {
+        for (const block of parsed.message.content) {
+          allBlocks.push(block);
+          eventCount++;
+          broadcastSync({
+            type: 'streaming_progress',
+            sessionId,
+            conversationId,
+            block,
+            blockIndex: allBlocks.length - 1,
+            timestamp: Date.now()
+          });
+        }
+      } else if (parsed.type === 'result' && parsed.result && allBlocks.length === 0) {
         broadcastSync({
           type: 'streaming_progress',
           sessionId,
           conversationId,
-          blockCount: allBlocks.length,
+          block: { type: 'text', text: parsed.result },
+          blockIndex: 0,
+          isResult: true,
           timestamp: Date.now()
         });
-        eventCount++;
-      } else if (output.type === 'tool_result' && output.result) {
-        debugLog(`[stream] Found tool result`);
-        allBlocks.push({
-          type: 'tool_result',
-          result: output.result,
-          tool_use_id: output.tool_use_id
-        });
-        eventCount++;
       }
+    };
+
+    const config = {
+      skipPermissions,
+      verbose: true,
+      outputFormat: 'stream-json',
+      timeout: 1800000,
+      print: true,
+      resumeSessionId,
+      systemPrompt: SYSTEM_PROMPT,
+      onEvent
+    };
+
+    const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(content, cwd, agentId || 'claude-code', config);
+    debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
+
+    if (claudeSessionId && !conv?.claudeSessionId) {
+      queries.setClaudeSessionId(conversationId, claudeSessionId);
+      debugLog(`[stream] Stored claudeSessionId=${claudeSessionId}`);
     }
 
     let messageContent = null;
@@ -511,28 +527,20 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
         blocks: allBlocks,
         timestamp: Date.now()
       });
-      debugLog(`[stream] Storing full execution with ${allBlocks.length} blocks`);
     } else {
       let textParts = [];
       for (const output of outputs) {
-        if (typeof output === 'string') {
-          textParts.push(output);
-        } else if (output.text) {
-          textParts.push(output.text);
-        } else if (output.content?.text) {
-          textParts.push(output.content.text);
-        } else if (output.result) {
+        if (output.type === 'result' && output.result) {
           textParts.push(String(output.result));
+        } else if (typeof output === 'string') {
+          textParts.push(output);
         }
       }
       messageContent = textParts.join('\n').trim();
-      debugLog(`[stream] Storing text response: "${messageContent.substring(0, 100)}..."`);
     }
 
     if (messageContent) {
-      debugLog(`[stream] Creating assistant message`);
       const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
-      debugLog(`[stream] Created message with id: ${assistantMessage.id}`);
       broadcastSync({
         type: 'streaming_complete',
         sessionId,
@@ -541,30 +549,25 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
         eventCount,
         timestamp: Date.now()
       });
-    } else {
-      debugLog(`[stream] No response content extracted!`);
+      broadcastSync({
+        type: 'message_created',
+        conversationId,
+        message: assistantMessage,
+        timestamp: Date.now()
+      });
     }
 
-    debugLog(`[stream] ✅ Completed: ${outputs.length} outputs received, ${eventCount} events emitted`);
+    debugLog(`[stream] Completed: ${outputs.length} outputs, ${eventCount} events`);
   } catch (error) {
     const elapsed = Date.now() - startTime;
     debugLog(`[stream] Error after ${elapsed}ms: ${error.message}`);
-
-    // Mark session as incomplete for recovery
-    try {
-      const sessionStatus = error.message.includes('timeout') ? 'timeout' : 'error';
-      queries.markSessionIncomplete(sessionId, error.message);
-      debugLog(`[stream] Session ${sessionId} marked as incomplete (${sessionStatus})`);
-    } catch (err) {
-      debugLog(`[stream] Failed to mark session: ${err.message}`);
-    }
 
     broadcastSync({
       type: 'streaming_error',
       sessionId,
       conversationId,
       error: error.message,
-      recoverable: elapsed < 60000, // Retryable if failed within 1 minute
+      recoverable: elapsed < 60000,
       timestamp: Date.now()
     });
 
@@ -575,7 +578,43 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       message: errorMessage,
       timestamp: Date.now()
     });
+  } finally {
+    activeExecutions.delete(conversationId);
+    queries.setIsStreaming(conversationId, false);
+    drainMessageQueue(conversationId);
   }
+}
+
+function drainMessageQueue(conversationId) {
+  const queue = messageQueues.get(conversationId);
+  if (!queue || queue.length === 0) return;
+
+  const next = queue.shift();
+  if (queue.length === 0) messageQueues.delete(conversationId);
+
+  debugLog(`[queue] Draining next message for ${conversationId}`);
+
+  const session = queries.createSession(conversationId);
+  queries.createEvent('session.created', { messageId: next.messageId, sessionId: session.id }, conversationId, session.id);
+
+  broadcastSync({
+    type: 'streaming_start',
+    sessionId: session.id,
+    conversationId,
+    messageId: next.messageId,
+    agentId: next.agentId,
+    timestamp: Date.now()
+  });
+
+  broadcastSync({
+    type: 'queue_status',
+    conversationId,
+    queueLength: queue?.length || 0,
+    timestamp: Date.now()
+  });
+
+  processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.skipPermissions)
+    .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
 }
 
 async function processMessage(conversationId, messageId, content, agentId) {
@@ -584,93 +623,46 @@ async function processMessage(conversationId, messageId, content, agentId) {
 
     const conv = queries.getConversation(conversationId);
     const cwd = conv?.workingDirectory || '/config';
-    const actualAgentId = agentId || 'claude-code';
+    const resumeSessionId = conv?.claudeSessionId || null;
 
-    // Handle both string content and object content (for structured messages)
-    let contentStr = content;
-    if (typeof content === 'object') {
-      contentStr = JSON.stringify(content);
+    let contentStr = typeof content === 'object' ? JSON.stringify(content) : content;
+
+    const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(contentStr, cwd, agentId || 'claude-code', {
+      resumeSessionId,
+      systemPrompt: SYSTEM_PROMPT
+    });
+
+    if (claudeSessionId && !conv?.claudeSessionId) {
+      queries.setClaudeSessionId(conversationId, claudeSessionId);
     }
 
-    debugLog(`[processMessage] Calling runClaudeWithStreaming with prompt: "${contentStr.substring(0, 50)}..."`);
-    // Prepend system prompt to user content
-    const promptWithSystem = `${SYSTEM_PROMPT}\n\n${contentStr}`;
-    const outputs = await runClaudeWithStreaming(promptWithSystem, cwd, actualAgentId);
-    debugLog(`[processMessage] Claude returned ${outputs.length} outputs`);
-
-    // Collect all message blocks to preserve full execution details
     let allBlocks = [];
-    let lastAssistantMessage = null;
-
     for (const output of outputs) {
       if (output.type === 'assistant' && output.message?.content) {
-        debugLog(`[processMessage] Found assistant message with ${output.message.content.length} content blocks`);
-        lastAssistantMessage = output.message;
         allBlocks.push(...(output.message.content || []));
-      } else if (output.type === 'tool_result' && output.result) {
-        debugLog(`[processMessage] Found tool result: ${typeof output.result}`);
-        allBlocks.push({
-          type: 'tool_result',
-          result: output.result,
-          tool_use_id: output.tool_use_id
-        });
       }
     }
 
-    // Store full message structure if we have execution data, otherwise fallback to text
     let messageContent = null;
-
     if (allBlocks.length > 0) {
-      // Store full message structure as JSON for proper rendering
-      messageContent = JSON.stringify({
-        type: 'claude_execution',
-        blocks: allBlocks,
-        timestamp: Date.now()
-      });
-      debugLog(`[processMessage] Storing full execution with ${allBlocks.length} blocks`);
+      messageContent = JSON.stringify({ type: 'claude_execution', blocks: allBlocks, timestamp: Date.now() });
     } else {
-      // Fallback: extract text for simple responses
       let textParts = [];
       for (const output of outputs) {
-        if (typeof output === 'string') {
-          textParts.push(output);
-        } else if (output.text) {
-          textParts.push(output.text);
-        } else if (output.content?.text) {
-          textParts.push(output.content.text);
-        } else if (output.result) {
-          textParts.push(String(output.result));
-        }
+        if (output.type === 'result' && output.result) textParts.push(String(output.result));
+        else if (typeof output === 'string') textParts.push(output);
       }
       messageContent = textParts.join('\n').trim();
-      debugLog(`[processMessage] Storing text response: "${messageContent.substring(0, 100)}..."`);
     }
 
     if (messageContent) {
-      debugLog(`[processMessage] Creating assistant message`);
       const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
-      debugLog(`[processMessage] Created message with id: ${assistantMessage.id}`);
-      broadcastSync({
-        type: 'message_created',
-        conversationId,
-        message: assistantMessage,
-        timestamp: Date.now()
-      });
-    } else {
-      debugLog(`[processMessage] No response content extracted!`);
+      broadcastSync({ type: 'message_created', conversationId, message: assistantMessage, timestamp: Date.now() });
     }
-
-    debugLog(`[processMessage] ✅ Completed: ${outputs.length} outputs received`);
   } catch (error) {
     debugLog(`[processMessage] Error: ${error.message}`);
-    debugLog(`[processMessage] Stack: ${error.stack}`);
     const errorMessage = queries.createMessage(conversationId, 'assistant', `Error: ${error.message}`);
-    broadcastSync({
-      type: 'message_created',
-      conversationId,
-      message: errorMessage,
-      timestamp: Date.now()
-    });
+    broadcastSync({ type: 'message_created', conversationId, message: errorMessage, timestamp: Date.now() });
   }
 }
 
@@ -700,11 +692,14 @@ wss.on('connection', (ws, req) => {
       try {
         const data = JSON.parse(msg);
         if (data.type === 'subscribe') {
-          ws.subscriptions.add(data.sessionId);
-          debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${data.sessionId}`);
+          if (data.sessionId) ws.subscriptions.add(data.sessionId);
+          if (data.conversationId) ws.subscriptions.add(`conv-${data.conversationId}`);
+          const subTarget = data.sessionId || data.conversationId;
+          debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${subTarget}`);
           ws.send(JSON.stringify({
             type: 'subscription_confirmed',
             sessionId: data.sessionId,
+            conversationId: data.conversationId,
             timestamp: Date.now()
           }));
         } else if (data.type === 'unsubscribe') {
@@ -742,25 +737,17 @@ wss.on('connection', (ws, req) => {
 
 function broadcastSync(event) {
   const data = JSON.stringify(event);
-  const isStreamingEvent = event.type && event.type.startsWith('streaming_');
-  const targetSessionId = event.sessionId || (event.conversationId && `conv-${event.conversationId}`);
 
   for (const ws of syncClients) {
     if (ws.readyState !== 1) continue;
 
     let shouldSend = false;
 
-    if (isStreamingEvent && targetSessionId) {
-      // Streaming events require sessionId subscription
-      shouldSend = ws.subscriptions && ws.subscriptions.has(targetSessionId);
-    } else if (event.sessionId) {
-      // Regular session events require sessionId subscription
-      shouldSend = ws.subscriptions && ws.subscriptions.has(event.sessionId);
-    } else if (event.type === 'message_created' || event.type === 'conversation_created') {
-      // Global events sent to all clients
+    if (event.sessionId && ws.subscriptions?.has(event.sessionId)) {
       shouldSend = true;
-    } else {
-      // Default: send to all connected clients
+    } else if (event.conversationId && ws.subscriptions?.has(`conv-${event.conversationId}`)) {
+      shouldSend = true;
+    } else if (event.type === 'message_created' || event.type === 'conversation_created' || event.type === 'conversations_updated' || event.type === 'conversation_deleted' || event.type === 'queue_status') {
       shouldSend = true;
     }
 

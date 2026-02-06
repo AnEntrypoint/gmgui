@@ -198,7 +198,9 @@ try {
     gitBranch: 'TEXT',
     sourcePath: 'TEXT',
     lastSyncedAt: 'INTEGER',
-    workingDirectory: 'TEXT'
+    workingDirectory: 'TEXT',
+    claudeSessionId: 'TEXT',
+    isStreaming: 'INTEGER DEFAULT 0'
   };
 
   let addedColumns = false;
@@ -284,6 +286,46 @@ export const queries = {
       status,
       updated_at: now
     };
+  },
+
+  setClaudeSessionId(conversationId, claudeSessionId) {
+    const stmt = db.prepare('UPDATE conversations SET claudeSessionId = ?, updated_at = ? WHERE id = ?');
+    stmt.run(claudeSessionId, Date.now(), conversationId);
+  },
+
+  getClaudeSessionId(conversationId) {
+    const stmt = db.prepare('SELECT claudeSessionId FROM conversations WHERE id = ?');
+    const row = stmt.get(conversationId);
+    return row?.claudeSessionId || null;
+  },
+
+  setIsStreaming(conversationId, isStreaming) {
+    const stmt = db.prepare('UPDATE conversations SET isStreaming = ?, updated_at = ? WHERE id = ?');
+    stmt.run(isStreaming ? 1 : 0, Date.now(), conversationId);
+  },
+
+  getIsStreaming(conversationId) {
+    const stmt = db.prepare('SELECT isStreaming FROM conversations WHERE id = ?');
+    const row = stmt.get(conversationId);
+    return row?.isStreaming === 1;
+  },
+
+  markSessionIncomplete(sessionId, errorMsg) {
+    const stmt = db.prepare('UPDATE sessions SET status = ?, error = ?, completed_at = ? WHERE id = ?');
+    stmt.run('incomplete', errorMsg || 'unknown', Date.now(), sessionId);
+  },
+
+  getSessionsProcessingLongerThan(minutes) {
+    const cutoff = Date.now() - (minutes * 60 * 1000);
+    const stmt = db.prepare('SELECT * FROM sessions WHERE status = ? AND started_at < ?');
+    return stmt.all('pending', cutoff);
+  },
+
+  cleanupOrphanedSessions(days) {
+    const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const stmt = db.prepare('DELETE FROM sessions WHERE status = ? AND started_at < ?');
+    const result = stmt.run('pending', cutoff);
+    return result.changes || 0;
   },
 
   createMessage(conversationId, role, content, idempotencyKey = null) {

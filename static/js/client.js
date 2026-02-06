@@ -193,66 +193,42 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Handle incoming WebSocket message
-   */
   handleWebSocketMessage(data) {
     try {
-      // Route by message type
       switch (data.type) {
         case 'streaming_start':
           this.handleStreamingStart(data);
           break;
-
         case 'streaming_progress':
-          this.queueEvent(data);
+          this.handleStreamingProgress(data);
           break;
-
         case 'streaming_complete':
           this.handleStreamingComplete(data);
           break;
-
-        case 'file_read':
-        case 'file_write':
-        case 'command_execute':
-        case 'git_status':
-        case 'error':
-        case 'text_block':
-        case 'code_block':
-        case 'thinking_block':
-        case 'tool_use':
-          this.queueEvent(data);
+        case 'streaming_error':
+          this.handleStreamingError(data);
           break;
-
         case 'conversation_created':
           this.handleConversationCreated(data);
           break;
-
         case 'message_created':
           this.handleMessageCreated(data);
           break;
-
+        case 'queue_status':
+          this.handleQueueStatus(data);
+          break;
         default:
-          console.log('Unhandled message type:', data.type);
+          break;
       }
     } catch (error) {
       console.error('Message handling error:', error);
     }
   }
 
-  /**
-   * Queue event for rendering
-   */
   queueEvent(data) {
     try {
-      // Process event
       const processed = this.eventProcessor.processEvent(data);
       if (!processed) return;
-
-      // Queue for rendering
-      this.renderer.queueEvent(processed);
-
-      // Track session events
       if (data.sessionId && this.state.currentSession?.id === data.sessionId) {
         this.state.sessionEvents.push(processed);
       }
@@ -261,9 +237,6 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Handle streaming start
-   */
   handleStreamingStart(data) {
     console.log('Streaming started:', data);
     this.state.isStreaming = true;
@@ -273,60 +246,146 @@ class AgentGUIClient {
       agentId: data.agentId,
       startTime: Date.now()
     };
-    this.state.currentConversation = { id: data.conversationId };
     this.state.sessionEvents = [];
+    this.state.streamingBlocks = [];
 
-    // Auto-select the streaming conversation in the sidebar
-    if (window.conversationManager) {
-      window.conversationManager.select(data.conversationId);
+    if (this.wsManager.isConnected) {
+      this.wsManager.subscribeToSession(data.sessionId);
     }
 
-    // Load the conversation to display it in real-time
-    this.loadConversationMessages(data.conversationId).then(() => {
-      // Clear output and prepare for streaming
-      const outputEl = document.getElementById('output');
-      if (outputEl) {
-        outputEl.innerHTML = '';
+    const outputEl = document.getElementById('output');
+    if (outputEl) {
+      let messagesEl = outputEl.querySelector('.conversation-messages');
+      if (!messagesEl) {
+        outputEl.innerHTML = '<div class="conversation-messages"></div>';
+        messagesEl = outputEl.querySelector('.conversation-messages');
       }
-    }).catch(err => {
-      console.error('Failed to load conversation during streaming:', err);
-      this.renderer.clear();
-    });
-
-    this.renderer.queueEvent({
-      type: 'streaming_start',
-      sessionId: data.sessionId,
-      conversationId: data.conversationId,
-      agentId: data.agentId,
-      timestamp: data.timestamp || Date.now()
-    });
+      const streamingDiv = document.createElement('div');
+      streamingDiv.className = 'message message-assistant streaming-message';
+      streamingDiv.id = `streaming-${data.sessionId}`;
+      streamingDiv.innerHTML = `
+        <div class="message-role">Assistant</div>
+        <div class="message-blocks streaming-blocks"></div>
+        <div class="streaming-indicator" style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;color:var(--color-text-secondary);font-size:0.875rem;">
+          <span class="animate-spin" style="display:inline-block;width:1rem;height:1rem;border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;"></span>
+          Thinking...
+        </div>
+      `;
+      messagesEl.appendChild(streamingDiv);
+      this.scrollToBottom();
+    }
 
     this.disableControls();
     this.emit('streaming:start', data);
   }
 
-  /**
-   * Handle streaming complete
-   */
+  handleStreamingProgress(data) {
+    if (!data.block) return;
+
+    const block = data.block;
+    if (!this.state.streamingBlocks) this.state.streamingBlocks = [];
+    this.state.streamingBlocks.push(block);
+
+    const sessionId = data.sessionId || this.state.currentSession?.id;
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (!streamingEl) return;
+
+    const blocksEl = streamingEl.querySelector('.streaming-blocks');
+    if (!blocksEl) return;
+
+    const indicator = streamingEl.querySelector('.streaming-indicator');
+
+    if (block.type === 'text' && block.text) {
+      const existingTextEl = blocksEl.querySelector('.streaming-text-current');
+      if (existingTextEl && !data.isResult) {
+        existingTextEl.innerHTML = this.renderBlockContent(block);
+      } else {
+        const div = document.createElement('div');
+        div.className = 'message-text streaming-text-current';
+        div.innerHTML = this.renderBlockContent(block);
+        blocksEl.appendChild(div);
+      }
+    } else if (block.type === 'tool_use') {
+      const prevTextEl = blocksEl.querySelector('.streaming-text-current');
+      if (prevTextEl) prevTextEl.classList.remove('streaming-text-current');
+
+      const div = document.createElement('div');
+      div.className = 'message-tool';
+      div.textContent = `[Tool: ${block.name || 'unknown'}]`;
+      blocksEl.appendChild(div);
+    } else if (block.type === 'tool_result') {
+      const div = document.createElement('div');
+      div.className = 'message-text';
+      div.innerHTML = `<em style="color:var(--color-text-secondary)">${this.escapeHtml(String(block.result || '').substring(0, 500))}</em>`;
+      blocksEl.appendChild(div);
+    }
+
+    if (indicator) indicator.querySelector('span:last-child')?.remove();
+    if (indicator) {
+      const label = document.createElement('span');
+      label.textContent = block.type === 'tool_use' ? `Using ${block.name}...` : 'Responding...';
+      indicator.appendChild(label);
+    }
+
+    this.scrollToBottom();
+  }
+
+  renderBlockContent(block) {
+    if (block.type === 'text' && block.text) {
+      const text = block.text;
+      if (text.includes('<') && (text.includes('</') || text.includes('/>'))) {
+        return text;
+      }
+      return this.escapeHtml(text);
+    }
+    return this.escapeHtml(JSON.stringify(block));
+  }
+
+  scrollToBottom() {
+    const scrollContainer = document.getElementById('output-scroll');
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    }
+  }
+
+  handleStreamingError(data) {
+    console.error('Streaming error:', data);
+    this.state.isStreaming = false;
+
+    const sessionId = data.sessionId || this.state.currentSession?.id;
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (streamingEl) {
+      const indicator = streamingEl.querySelector('.streaming-indicator');
+      if (indicator) {
+        indicator.innerHTML = `<span style="color:var(--color-error);">Error: ${this.escapeHtml(data.error || 'Unknown error')}</span>`;
+      }
+    }
+
+    this.enableControls();
+    this.emit('streaming:error', data);
+  }
+
   handleStreamingComplete(data) {
     console.log('Streaming completed:', data);
     this.state.isStreaming = false;
 
-    const duration = data.duration || (Date.now() - (this.state.currentSession?.startTime || Date.now()));
+    const sessionId = data.sessionId || this.state.currentSession?.id;
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (streamingEl) {
+      const indicator = streamingEl.querySelector('.streaming-indicator');
+      if (indicator) indicator.remove();
+      streamingEl.classList.remove('streaming-message');
+      const prevTextEl = streamingEl.querySelector('.streaming-text-current');
+      if (prevTextEl) prevTextEl.classList.remove('streaming-text-current');
 
-    this.renderer.queueEvent({
-      type: 'streaming_complete',
-      sessionId: data.sessionId,
-      duration,
-      timestamp: data.timestamp || Date.now()
-    });
+      const ts = document.createElement('div');
+      ts.className = 'message-timestamp';
+      ts.textContent = new Date().toLocaleString();
+      streamingEl.appendChild(ts);
+    }
 
     this.enableControls();
-    this.emit('streaming:complete', {
-      ...data,
-      duration,
-      eventCount: this.state.sessionEvents.length
-    });
+    this.emit('streaming:complete', data);
   }
 
   /**
@@ -339,30 +398,53 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Handle message created
-   */
   handleMessageCreated(data) {
-    // If the message is for the currently displayed conversation, append it to the output
-    if (data.conversationId === this.state.currentConversation?.id && data.message) {
-      const outputEl = document.querySelector('.conversation-messages');
-      if (outputEl) {
-        const messageHtml = `
-          <div class="message message-${data.message.role}">
-            <div class="message-role">${data.message.role.charAt(0).toUpperCase() + data.message.role.slice(1)}</div>
-            ${this.renderMessageContent(data.message.content)}
-            <div class="message-timestamp">${new Date(data.message.created_at).toLocaleString()}</div>
-          </div>
-        `;
-        outputEl.insertAdjacentHTML('beforeend', messageHtml);
-        // Scroll to bottom
-        const scrollContainer = document.getElementById('output-scroll');
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        }
-      }
+    if (data.conversationId !== this.state.currentConversation?.id || !data.message) {
+      this.emit('message:created', data);
+      return;
     }
+
+    if (data.message.role === 'assistant' && this.state.isStreaming) {
+      this.emit('message:created', data);
+      return;
+    }
+
+    const outputEl = document.querySelector('.conversation-messages');
+    if (!outputEl) {
+      this.emit('message:created', data);
+      return;
+    }
+
+    const messageHtml = `
+      <div class="message message-${data.message.role}" data-msg-id="${data.message.id}">
+        <div class="message-role">${data.message.role.charAt(0).toUpperCase() + data.message.role.slice(1)}</div>
+        ${this.renderMessageContent(data.message.content)}
+        <div class="message-timestamp">${new Date(data.message.created_at).toLocaleString()}</div>
+      </div>
+    `;
+    outputEl.insertAdjacentHTML('beforeend', messageHtml);
+    this.scrollToBottom();
     this.emit('message:created', data);
+  }
+
+  handleQueueStatus(data) {
+    if (data.conversationId !== this.state.currentConversation?.id) return;
+
+    const outputEl = document.querySelector('.conversation-messages');
+    if (!outputEl) return;
+
+    let queueEl = outputEl.querySelector('.queue-indicator');
+    if (data.queueLength > 0) {
+      if (!queueEl) {
+        queueEl = document.createElement('div');
+        queueEl.className = 'queue-indicator';
+        queueEl.style.cssText = 'padding:0.5rem 1rem;margin:0.5rem 0;border-radius:0.375rem;background:var(--color-warning);color:#000;font-size:0.875rem;text-align:center;';
+        outputEl.appendChild(queueEl);
+      }
+      queueEl.textContent = `${data.queueLength} message${data.queueLength > 1 ? 's' : ''} queued`;
+    } else if (queueEl) {
+      queueEl.remove();
+    }
   }
 
   /**
@@ -476,15 +558,7 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Start execution
-   */
   async startExecution() {
-    if (this.state.isStreaming) {
-      this.showError('Streaming already in progress');
-      return;
-    }
-
     const prompt = this.ui.messageInput?.value || '';
     const agentId = this.ui.agentSelector?.value || 'claude-code';
 
@@ -493,23 +567,28 @@ class AgentGUIClient {
       return;
     }
 
+    if (this.ui.messageInput) this.ui.messageInput.value = '';
+
     try {
-      this.disableControls();
+      if (this.state.currentConversation?.id) {
+        await this.streamToConversation(this.state.currentConversation.id, prompt, agentId);
+      } else {
+        this.disableControls();
+        const response = await fetch(window.__BASE_URL + '/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId, title: prompt.substring(0, 50) })
+        });
+        const { conversation } = await response.json();
+        this.state.currentConversation = conversation;
 
-      const response = await fetch(window.__BASE_URL + '/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          title: prompt.substring(0, 50)
-        })
-      });
+        if (window.conversationManager) {
+          window.conversationManager.loadConversations();
+          window.conversationManager.select(conversation.id);
+        }
 
-      const { conversation } = await response.json();
-      this.state.currentConversation = conversation;
-
-      // Start streaming
-      await this.streamToConversation(conversation.id, prompt, agentId);
+        await this.streamToConversation(conversation.id, prompt, agentId);
+      }
     } catch (error) {
       console.error('Execution error:', error);
       this.showError('Failed to start execution: ' + error.message);
@@ -517,33 +596,32 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Stream execution to conversation
-   */
   async streamToConversation(conversationId, prompt, agentId) {
     try {
+      if (this.wsManager.isConnected) {
+        this.wsManager.sendMessage({ type: 'subscribe', conversationId });
+      }
+
       const response = await fetch(`${window.__BASE_URL}/api/conversations/${conversationId}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: prompt,
-          agentId,
-          skipPermissions: false
-        })
+        body: JSON.stringify({ content: prompt, agentId, skipPermissions: false })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const result = await response.json();
+
+      if (result.queued) {
+        console.log('Message queued, position:', result.queuePosition);
+        return;
       }
 
-      const { session, streamId } = await response.json();
-
-      // Subscribe to session events via WebSocket
-      if (this.wsManager.isConnected) {
-        this.wsManager.subscribeToSession(session.id);
+      if (result.session && this.wsManager.isConnected) {
+        this.wsManager.subscribeToSession(result.session.id);
       }
 
-      this.emit('execution:started', { session, streamId });
+      this.emit('execution:started', result);
     } catch (error) {
       console.error('Stream execution error:', error);
       this.showError('Failed to stream execution: ' + error.message);
@@ -675,37 +753,33 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Load and display conversation messages
-   */
   async loadConversationMessages(conversationId) {
     try {
-      this.state.currentConversation = { id: conversationId };
-
-      // Fetch conversation details
       const convResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}`);
       const { conversation } = await convResponse.json();
+      this.state.currentConversation = conversation;
 
-      // Fetch messages
-      const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
-      if (!messagesResponse.ok) {
-        throw new Error(`Failed to fetch messages: ${messagesResponse.status}`);
+      if (this.wsManager.isConnected) {
+        this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
+
+      const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
+      if (!messagesResponse.ok) throw new Error(`Failed to fetch messages: ${messagesResponse.status}`);
       const messagesData = await messagesResponse.json();
 
-      // Clear output and display conversation header
       const outputEl = document.getElementById('output');
       if (outputEl) {
-        const wdInfo = conversation.workingDirectory ? ` • ${this.escapeHtml(conversation.workingDirectory)}` : '';
+        const wdInfo = conversation.workingDirectory ? ` - ${this.escapeHtml(conversation.workingDirectory)}` : '';
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conversation.agentType || 'unknown'} • ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
+            <p class="text-secondary">${conversation.agentType || 'unknown'} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
           </div>
           <div class="conversation-messages">
             ${this.renderMessages(messagesData.messages || [])}
           </div>
         `;
+        this.scrollToBottom();
       }
     } catch (error) {
       console.error('Failed to load conversation messages:', error);
