@@ -79,8 +79,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/conversations' && req.method === 'POST') {
       const body = await parseBody(req);
-      const conversation = queries.createConversation(body.agentId, body.title);
-      queries.createEvent('conversation.created', { agentId: body.agentId }, conversation.id);
+      const conversation = queries.createConversation(body.agentId, body.title, body.workingDirectory || null);
+      queries.createEvent('conversation.created', { agentId: body.agentId, workingDirectory: conversation.workingDirectory }, conversation.id);
       broadcastSync({ type: 'conversation_created', conversation });
       res.writeHead(201, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ conversation }));
@@ -377,7 +377,8 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   try {
     debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}, agentId=${agentId}, skipPermissions=${skipPermissions}`);
 
-    const cwd = '/config';
+    const conv = queries.getConversation(conversationId);
+    const cwd = conv?.workingDirectory || '/config';
     const actualAgentId = agentId || 'claude-code';
 
     debugLog(`[stream] Calling runClaudeWithStreaming with config: skipPermissions=${skipPermissions}`);
@@ -505,7 +506,8 @@ async function processMessage(conversationId, messageId, content, agentId) {
   try {
     debugLog(`[processMessage] Starting: conversationId=${conversationId}, agentId=${agentId}`);
 
-    const cwd = '/config';
+    const conv = queries.getConversation(conversationId);
+    const cwd = conv?.workingDirectory || '/config';
     const actualAgentId = agentId || 'claude-code';
 
     // Handle both string content and object content (for structured messages)

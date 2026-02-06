@@ -168,8 +168,10 @@ class AgentGUIClient {
       themeToggle.addEventListener('click', () => this.toggleTheme());
     }
 
-    // Listen for new conversation creation
-    window.addEventListener('create-new-conversation', () => this.createNewConversation());
+    window.addEventListener('create-new-conversation', (event) => {
+      const detail = event.detail || {};
+      this.createNewConversation(detail.workingDirectory, detail.title);
+    });
 
     // Listen for conversation selection
     window.addEventListener('conversation-selected', (event) => {
@@ -636,16 +638,17 @@ class AgentGUIClient {
   /**
    * Create a new empty conversation
    */
-  async createNewConversation() {
+  async createNewConversation(workingDirectory, title) {
     try {
       const agentId = this.ui.agentSelector?.value || 'claude-code';
+      const convTitle = title || 'New Conversation';
+      const body = { agentId, title: convTitle };
+      if (workingDirectory) body.workingDirectory = workingDirectory;
+
       const response = await fetch(window.__BASE_URL + '/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          agentId,
-          title: 'New Conversation'
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -655,10 +658,13 @@ class AgentGUIClient {
       const { conversation } = await response.json();
       this.state.currentConversation = conversation;
 
-      // Refresh conversation list
       await this.loadConversations();
 
-      // Clear input for next execution
+      if (window.conversationManager) {
+        window.conversationManager.loadConversations();
+        window.conversationManager.select(conversation.id);
+      }
+
       if (this.ui.messageInput) {
         this.ui.messageInput.value = '';
         this.ui.messageInput.focus();
@@ -690,10 +696,11 @@ class AgentGUIClient {
       // Clear output and display conversation header
       const outputEl = document.getElementById('output');
       if (outputEl) {
+        const wdInfo = conversation.workingDirectory ? ` • ${this.escapeHtml(conversation.workingDirectory)}` : '';
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conversation.agentType || 'unknown'} • ${new Date(conversation.created_at).toLocaleDateString()}</p>
+            <p class="text-secondary">${conversation.agentType || 'unknown'} • ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
           </div>
           <div class="conversation-messages">
             ${this.renderMessages(messagesData.messages || [])}

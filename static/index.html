@@ -552,6 +552,180 @@
       }
     }
 
+    /* Folder Browser Modal */
+    .folder-modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .folder-modal-overlay.visible {
+      display: flex;
+    }
+
+    .folder-modal {
+      background: var(--color-bg-primary);
+      border: 1px solid var(--color-border);
+      border-radius: 0.5rem;
+      width: 500px;
+      max-width: 90vw;
+      max-height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .folder-modal-header {
+      padding: 1rem;
+      border-bottom: 1px solid var(--color-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .folder-modal-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .folder-modal-close {
+      background: none;
+      border: none;
+      font-size: 1.25rem;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      padding: 0.25rem;
+      line-height: 1;
+    }
+
+    .folder-modal-close:hover {
+      color: var(--color-text-primary);
+    }
+
+    .folder-breadcrumb {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 0.8rem;
+      font-family: 'Monaco', 'Menlo', monospace;
+      color: var(--color-text-secondary);
+      background: var(--color-bg-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex-shrink: 0;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .folder-breadcrumb-segment {
+      cursor: pointer;
+      color: var(--color-primary);
+      padding: 0.125rem 0.25rem;
+      border-radius: 0.25rem;
+    }
+
+    .folder-breadcrumb-segment:hover {
+      background: var(--color-bg-primary);
+      text-decoration: underline;
+    }
+
+    .folder-breadcrumb-separator {
+      color: var(--color-text-secondary);
+    }
+
+    .folder-list {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 200px;
+      max-height: 400px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .folder-list-item {
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color 0.15s;
+    }
+
+    .folder-list-item:hover {
+      background: var(--color-bg-secondary);
+    }
+
+    .folder-list-item-icon {
+      font-size: 1rem;
+      flex-shrink: 0;
+      width: 1.25rem;
+      text-align: center;
+    }
+
+    .folder-list-item-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .folder-list-empty {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .folder-list-loading {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--color-text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .folder-list-error {
+      padding: 1rem;
+      text-align: center;
+      color: var(--color-error);
+      font-size: 0.875rem;
+    }
+
+    .folder-modal-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--color-border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    .folder-modal-footer .btn {
+      padding: 0.5rem 1rem;
+      font-size: 0.8rem;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--color-border);
+    }
+
     /* Utilities */
     .flex {
       display: flex;
@@ -846,6 +1020,24 @@
           </button>
         </div>
       </main>
+    </div>
+  </div>
+
+  <!-- Folder Browser Modal -->
+  <div id="folderBrowserModal" class="folder-modal-overlay">
+    <div class="folder-modal">
+      <div class="folder-modal-header">
+        <h3>Select Working Directory</h3>
+        <button class="folder-modal-close" data-folder-close>&times;</button>
+      </div>
+      <div id="folderBreadcrumb" class="folder-breadcrumb"></div>
+      <ul id="folderList" class="folder-list">
+        <li class="folder-list-loading">Loading...</li>
+      </ul>
+      <div class="folder-modal-footer">
+        <button class="btn btn-secondary" data-folder-cancel>Cancel</button>
+        <button class="btn btn-primary" data-folder-select>Select This Folder</button>
+      </div>
     </div>
   </div>
 

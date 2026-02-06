@@ -1,6 +1,7 @@
 /**
  * Conversations Module
  * Manages conversation list sidebar with real-time updates
+ * Includes folder browser for selecting working directory on new conversation
  */
 
 class ConversationManager {
@@ -12,23 +13,180 @@ class ConversationManager {
     this.newBtn = document.querySelector('[data-new-conversation]');
     this.sidebarEl = document.querySelector('[data-sidebar]');
 
+    this.folderBrowser = {
+      modal: null,
+      listEl: null,
+      breadcrumbEl: null,
+      currentPath: '~',
+      homePath: '~'
+    };
+
     if (!this.listEl) return;
 
     this.init();
   }
 
   async init() {
-    this.newBtn?.addEventListener('click', () => this.createNew());
+    this.newBtn?.addEventListener('click', () => this.openFolderBrowser());
     this.loadConversations();
     this.setupWebSocketListener();
+    this.setupFolderBrowser();
 
-    // Auto-refresh every 30 seconds
     setInterval(() => this.loadConversations(), 30000);
+  }
+
+  setupFolderBrowser() {
+    this.folderBrowser.modal = document.getElementById('folderBrowserModal');
+    this.folderBrowser.listEl = document.getElementById('folderList');
+    this.folderBrowser.breadcrumbEl = document.getElementById('folderBreadcrumb');
+
+    if (!this.folderBrowser.modal) return;
+
+    const closeBtn = this.folderBrowser.modal.querySelector('[data-folder-close]');
+    const cancelBtn = this.folderBrowser.modal.querySelector('[data-folder-cancel]');
+    const selectBtn = this.folderBrowser.modal.querySelector('[data-folder-select]');
+
+    closeBtn?.addEventListener('click', () => this.closeFolderBrowser());
+    cancelBtn?.addEventListener('click', () => this.closeFolderBrowser());
+    selectBtn?.addEventListener('click', () => this.confirmFolderSelection());
+
+    this.folderBrowser.modal.addEventListener('click', (e) => {
+      if (e.target === this.folderBrowser.modal) this.closeFolderBrowser();
+    });
+
+    this.fetchHomePath();
+  }
+
+  async fetchHomePath() {
+    try {
+      const res = await fetch((window.__BASE_URL || '') + '/api/home');
+      if (res.ok) {
+        const data = await res.json();
+        this.folderBrowser.homePath = data.home || '~';
+      }
+    } catch (e) {
+      console.error('Failed to fetch home path:', e);
+    }
+  }
+
+  openFolderBrowser() {
+    if (!this.folderBrowser.modal) {
+      this.createNew();
+      return;
+    }
+    this.folderBrowser.currentPath = '~';
+    this.folderBrowser.modal.classList.add('visible');
+    this.loadFolders('~');
+  }
+
+  closeFolderBrowser() {
+    this.folderBrowser.modal?.classList.remove('visible');
+  }
+
+  async loadFolders(dirPath) {
+    this.folderBrowser.currentPath = dirPath;
+    this.renderBreadcrumb(dirPath);
+
+    if (!this.folderBrowser.listEl) return;
+    this.folderBrowser.listEl.innerHTML = '<li class="folder-list-loading">Loading...</li>';
+
+    try {
+      const res = await fetch((window.__BASE_URL || '') + '/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: dirPath })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const folders = data.folders || [];
+
+      this.folderBrowser.listEl.innerHTML = '';
+
+      if (dirPath !== '~' && dirPath !== '/' && dirPath !== this.folderBrowser.homePath) {
+        const parentPath = this.getParentPath(dirPath);
+        const upItem = document.createElement('li');
+        upItem.className = 'folder-list-item';
+        upItem.innerHTML = '<span class="folder-list-item-icon">..</span><span class="folder-list-item-name">Parent Directory</span>';
+        upItem.addEventListener('click', () => this.loadFolders(parentPath));
+        this.folderBrowser.listEl.appendChild(upItem);
+      }
+
+      if (folders.length === 0 && this.folderBrowser.listEl.children.length === 0) {
+        this.folderBrowser.listEl.innerHTML = '<li class="folder-list-empty">No subdirectories</li>';
+        return;
+      }
+
+      for (const folder of folders) {
+        const li = document.createElement('li');
+        li.className = 'folder-list-item';
+        li.innerHTML = `<span class="folder-list-item-icon">&#128193;</span><span class="folder-list-item-name">${this.escapeHtml(folder.name)}</span>`;
+        li.addEventListener('click', () => {
+          const expandedBase = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
+          const newPath = expandedBase + '/' + folder.name;
+          this.loadFolders(newPath);
+        });
+        this.folderBrowser.listEl.appendChild(li);
+      }
+    } catch (err) {
+      console.error('Failed to load folders:', err);
+      this.folderBrowser.listEl.innerHTML = `<li class="folder-list-error">Error: ${this.escapeHtml(err.message)}</li>`;
+    }
+  }
+
+  getParentPath(dirPath) {
+    const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
+    const parts = expanded.split('/').filter(Boolean);
+    if (parts.length <= 1) return '/';
+    parts.pop();
+    return '/' + parts.join('/');
+  }
+
+  renderBreadcrumb(dirPath) {
+    if (!this.folderBrowser.breadcrumbEl) return;
+
+    const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
+    const parts = expanded.split('/').filter(Boolean);
+
+    let html = '';
+    html += '<span class="folder-breadcrumb-segment" data-path="/">/ </span>';
+
+    let accumulated = '';
+    for (let i = 0; i < parts.length; i++) {
+      accumulated += '/' + parts[i];
+      const isLast = i === parts.length - 1;
+      html += '<span class="folder-breadcrumb-separator">/</span>';
+      html += `<span class="folder-breadcrumb-segment${isLast ? '' : ''}" data-path="${this.escapeHtml(accumulated)}">${this.escapeHtml(parts[i])}</span>`;
+    }
+
+    this.folderBrowser.breadcrumbEl.innerHTML = html;
+
+    this.folderBrowser.breadcrumbEl.querySelectorAll('.folder-breadcrumb-segment').forEach(seg => {
+      seg.addEventListener('click', () => {
+        const p = seg.dataset.path;
+        if (p) this.loadFolders(p);
+      });
+    });
+  }
+
+  confirmFolderSelection() {
+    const currentPath = this.folderBrowser.currentPath;
+    const expanded = currentPath === '~' ? this.folderBrowser.homePath : currentPath;
+    this.closeFolderBrowser();
+
+    const dirName = expanded.split('/').filter(Boolean).pop() || 'root';
+    window.dispatchEvent(new CustomEvent('create-new-conversation', {
+      detail: { workingDirectory: expanded, title: dirName }
+    }));
   }
 
   async loadConversations() {
     try {
-      const res = await fetch('/gm/api/conversations');
+      const res = await fetch((window.__BASE_URL || '') + '/api/conversations');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
@@ -51,7 +209,6 @@ class ConversationManager {
     this.listEl.innerHTML = '';
     this.emptyEl.style.display = 'none';
 
-    // Sort by most recent first
     const sorted = [...this.conversations].sort((a, b) =>
       new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
     );
@@ -71,10 +228,13 @@ class ConversationManager {
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
     const agent = conv.agentType || 'unknown';
+    const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
+    const metaParts = [agent, timestamp];
+    if (wd) metaParts.push(wd);
 
     li.innerHTML = `
       <div class="conversation-item-title">${this.escapeHtml(title)}</div>
-      <div class="conversation-item-meta">${agent} • ${timestamp}</div>
+      <div class="conversation-item-meta">${metaParts.join(' \u2022 ')}</div>
     `;
 
     li.addEventListener('click', () => this.select(conv.id));
@@ -84,7 +244,6 @@ class ConversationManager {
   select(convId) {
     this.activeId = convId;
 
-    // Update active indicator
     document.querySelectorAll('.conversation-item').forEach(item => {
       item.classList.remove('active');
     });
@@ -92,7 +251,6 @@ class ConversationManager {
     const active = document.querySelector(`[data-conv-id="${convId}"]`);
     if (active) active.classList.add('active');
 
-    // Emit event for client.js to handle
     window.dispatchEvent(new CustomEvent('conversation-selected', {
       detail: { conversationId: convId }
     }));
@@ -110,7 +268,6 @@ class ConversationManager {
   }
 
   addConversation(conv) {
-    // Add to beginning (most recent)
     this.conversations.unshift(conv);
     this.render();
   }
@@ -149,7 +306,6 @@ class ConversationManager {
   }
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     window.conversationManager = new ConversationManager();

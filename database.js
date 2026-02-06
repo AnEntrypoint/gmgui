@@ -197,7 +197,8 @@ try {
     projectPath: 'TEXT',
     gitBranch: 'TEXT',
     sourcePath: 'TEXT',
-    lastSyncedAt: 'INTEGER'
+    lastSyncedAt: 'INTEGER',
+    workingDirectory: 'TEXT'
   };
 
   let addedColumns = false;
@@ -228,18 +229,19 @@ function generateId(prefix) {
 }
 
 export const queries = {
-  createConversation(agentId, title = null) {
+  createConversation(agentId, title = null, workingDirectory = null) {
     const id = generateId('conv');
     const now = Date.now();
     const stmt = db.prepare(
-      `INSERT INTO conversations (id, agentId, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT INTO conversations (id, agentId, title, created_at, updated_at, status, workingDirectory) VALUES (?, ?, ?, ?, ?, ?, ?)`
     );
-    stmt.run(id, agentId, title, now, now, 'active');
+    stmt.run(id, agentId, title, now, now, 'active', workingDirectory);
 
     return {
       id,
       agentId,
       title,
+      workingDirectory,
       created_at: now,
       updated_at: now,
       status: 'active'
@@ -258,7 +260,7 @@ export const queries = {
 
   getConversationsList() {
     const stmt = db.prepare(
-      'SELECT id, title, agentType, created_at, updated_at, messageCount FROM conversations WHERE status != ? ORDER BY updated_at DESC'
+      'SELECT id, title, agentType, created_at, updated_at, messageCount, workingDirectory FROM conversations WHERE status != ? ORDER BY updated_at DESC'
     );
     return stmt.all('deleted');
   },
