@@ -26,7 +26,7 @@
       --color-warning: #f59e0b;
       --sidebar-width: 300px;
       --header-height: 52px;
-      --msg-max-width: 768px;
+      --msg-max-width: 100%;
     }
 
     html.dark {
@@ -318,10 +318,12 @@
       max-width: var(--msg-max-width);
       margin: 0 auto;
       width: 100%;
-      padding: 1.5rem 1rem;
+      padding: 1.5rem 2rem;
       display: flex;
       flex-direction: column;
       min-height: 100%;
+      padding-left: calc(max(2rem, (100vw - 900px) / 2));
+      padding-right: calc(max(2rem, (100vw - 900px) / 2));
     }
 
     #output {
@@ -815,6 +817,49 @@
       .messages-wrapper { padding: 0.75rem 0.5rem; }
       .input-section { padding: 0.5rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       .agent-selector { display: none; }
+    }
+
+    /* ===== SCROLLBAR STYLING ===== */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 8px;
+      border: 3px solid transparent;
+      background-clip: padding-box;
+      transition: background-color 0.2s;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: #94a3b8;
+      background-clip: padding-box;
+    }
+
+    html.dark ::-webkit-scrollbar-thumb {
+      background: #475569;
+      background-clip: padding-box;
+    }
+
+    html.dark ::-webkit-scrollbar-thumb:hover {
+      background-color: #64748b;
+      background-clip: padding-box;
+    }
+
+    /* Firefox scrollbar */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e1 transparent;
+    }
+
+    html.dark * {
+      scrollbar-color: #475569 transparent;
     }
 
     /* ===== RESPONSIVE: TABLET ===== */
