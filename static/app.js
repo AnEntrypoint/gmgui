@@ -227,20 +227,28 @@ class GMGUIApp {
         break;
       }
 
-      case 'tool_use':
+      case 'tool_use': {
         html += `<div class="block-tool-use">`;
         html += `<strong class="tool-name">${this.escapeHtml(block.name || 'Tool')}</strong>`;
-        html += `<div class="tool-input"><pre>${this.escapeHtml(JSON.stringify(block.input || {}, null, 2))}</pre></div>`;
+        const paramHtml = this.renderParameters(block.input || {});
+        html += `<div class="tool-input">${paramHtml}</div>`;
         html += `</div>`;
         break;
+      }
 
-      case 'tool_result':
+      case 'tool_result': {
         html += `<div class="block-tool-result">`;
         html += `<strong>Result:</strong>`;
-        const resultText = typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2);
-        html += `<div class="tool-result"><pre>${this.escapeHtml(resultText)}</pre></div>`;
+        let resultHtml;
+        if (typeof block.result === 'string') {
+          resultHtml = `<pre>${this.escapeHtml(block.result)}</pre>`;
+        } else {
+          resultHtml = this.renderParameters(block.result);
+        }
+        html += `<div class="tool-result">${resultHtml}</div>`;
         html += `</div>`;
         break;
+      }
 
       case 'file_operation':
         html += `<div class="block-file-op">`;
@@ -579,6 +587,52 @@ class GMGUIApp {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  renderParameters(obj, depth = 0) {
+    if (obj === null || obj === undefined) {
+      return `<span style="color: var(--text-tertiary);">null</span>`;
+    }
+
+    if (typeof obj === 'string') {
+      const isPath = obj.includes('/') || obj.includes('\\');
+      const isUrl = obj.startsWith('http://') || obj.startsWith('https://');
+      if (isPath || isUrl) {
+        return `<code style="color: var(--text-secondary); background: transparent;">${this.escapeHtml(obj)}</code>`;
+      }
+      return `<span>"${this.escapeHtml(obj)}"</span>`;
+    }
+
+    if (typeof obj === 'number' || typeof obj === 'boolean') {
+      return `<span style="color: var(--color-info);">${obj}</span>`;
+    }
+
+    if (Array.isArray(obj)) {
+      if (obj.length === 0) {
+        return `<span style="color: var(--text-tertiary);">[]</span>`;
+      }
+      const maxItems = depth === 0 ? 10 : 5;
+      const items = obj.slice(0, maxItems).map(item => this.renderParameters(item, depth + 1));
+      const more = obj.length > maxItems ? `<span style="color: var(--text-tertiary);">... ${obj.length - maxItems} more</span>` : '';
+      return `<span style="color: var(--text-tertiary);">[</span> ${items.join(', ')} ${more} <span style="color: var(--text-tertiary);">]</span>`;
+    }
+
+    if (typeof obj === 'object') {
+      const keys = Object.keys(obj);
+      if (keys.length === 0) {
+        return `<span style="color: var(--text-tertiary);">{}</span>`;
+      }
+      const maxKeys = depth === 0 ? 15 : 8;
+      const pairs = keys.slice(0, maxKeys).map(key => {
+        const keyHtml = `<span style="color: var(--color-primary);">${this.escapeHtml(key)}</span>`;
+        const valHtml = this.renderParameters(obj[key], depth + 1);
+        return `${keyHtml}: ${valHtml}`;
+      });
+      const more = keys.length > maxKeys ? `<span style="color: var(--text-tertiary);">... ${keys.length - maxKeys} more</span>` : '';
+      return `<div style="margin-left: ${depth * 1.5}rem;"><span style="color: var(--text-tertiary);">{</span><br/>${pairs.map(p => `&nbsp;&nbsp;${p}`).join(',<br/>')}<br/>${more}<span style="color: var(--text-tertiary);">}</span></div>`;
+    }
+
+    return `<span>${this.escapeHtml(String(obj))}</span>`;
   }
 }
 

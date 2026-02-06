@@ -739,7 +739,6 @@ html, body {
   align-items: center;
   justify-content: center;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
   border-radius: 0.25rem;
   font-family: monospace;
   font-size: 0.75rem;
@@ -787,7 +786,6 @@ html, body {
   max-height: 300px;
   overflow-y: auto;
   background: var(--bg-secondary);
-  border-top: 1px solid var(--border-color);
 }
 
 .tool-block.collapsed .tool-body {
@@ -812,7 +810,6 @@ html, body {
   padding: 0.375rem 0.75rem;
   font-size: 0.8rem;
   color: var(--text-secondary);
-  border-top: 1px solid var(--border-color);
 }
 
 .html-block {
@@ -1792,17 +1789,29 @@ p code {
 }
 
 .tool-input {
-  background: var(--bg-tertiary);
+  background: transparent;
   border-radius: 0.375rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0;
   overflow-x: auto;
   font-size: 0.8rem;
   font-family: 'Courier New', monospace;
+  line-height: 1.5;
 }
 
 .tool-input pre {
   margin: 0;
   color: var(--text-secondary);
+}
+
+.tool-input code {
+  color: var(--text-secondary);
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+}
+
+.tool-input span {
+  font-family: 'Courier New', monospace;
 }
 
 .block-tool-result {
@@ -1819,19 +1828,27 @@ p code {
 }
 
 .tool-result {
-  background: var(--bg-tertiary);
+  background: transparent;
   border-radius: 0.375rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0;
   overflow-x: auto;
   font-size: 0.8rem;
   font-family: 'Courier New', monospace;
   max-height: 300px;
   overflow-y: auto;
+  line-height: 1.5;
 }
 
 .tool-result pre {
   margin: 0;
   color: var(--text-secondary);
+}
+
+.tool-result code {
+  color: var(--text-secondary);
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
 }
 
 .block-file-op {
@@ -1853,15 +1870,15 @@ p code {
   font-size: 0.875rem;
   font-family: 'Courier New', monospace;
   margin-bottom: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: var(--bg-tertiary);
+  padding: 0.25rem 0;
+  background: transparent;
   border-radius: 0.25rem;
 }
 
 .file-content {
-  background: var(--bg-tertiary);
+  background: transparent;
   border-radius: 0.375rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0;
   overflow-x: auto;
   font-size: 0.8rem;
   font-family: 'Courier New', monospace;
