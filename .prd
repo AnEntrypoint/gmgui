@@ -1,0 +1,14 @@
+# AgentGUI - Conversation Area Full Width Fix
+
+## Completed Task
+✅ Fixed conversation message display area to fill full width
+
+## Changes Made
+- File: /config/workspace/agentgui/static/index.html
+- Lines: 317-327 (.messages-wrapper CSS)
+- Removed `max-width` constraint (was `var(--msg-max-width)`)
+- Removed centering with `margin: 0 auto`
+- Simplified padding to consistent `1.5rem 2rem`
+
+## Result
+Conversation area now uses 100% width matching the prompt input area behavior
