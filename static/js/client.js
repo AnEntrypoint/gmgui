@@ -708,8 +708,8 @@ class AgentGUIClient {
             html += `<div class="streaming-block-tool-use"><div class="tool-use-header"><span class="tool-use-icon">&#9881;</span> <span class="tool-use-name">${this.escapeHtml(block.name || 'unknown')}</span></div>${inputHtml}</div>`;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
-            const displayContent = content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content;
-            html += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div><pre class="tool-result-pre">${this.escapeHtml(displayContent)}</pre></div>`;
+            const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
+            html += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div>${smartHtml}</div>`;
           }
         });
       }
@@ -1234,8 +1234,8 @@ class AgentGUIClient {
               contentHtml += `<div class="streaming-block-tool-use"><div class="tool-use-header"><span class="tool-use-icon">&#9881;</span> <span class="tool-use-name">${this.escapeHtml(block.name || 'unknown')}</span></div>${inputHtml}</div>`;
             } else if (block.type === 'tool_result') {
               const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
-              const displayContent = content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content;
-              contentHtml += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div><pre class="tool-result-pre">${this.escapeHtml(displayContent)}</pre></div>`;
+              const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
+              contentHtml += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div>${smartHtml}</div>`;
             }
           });
         }

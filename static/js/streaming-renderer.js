@@ -621,6 +621,150 @@ class StreamingRenderer {
   }
 
   /**
+   * Render content smartly - detect JSON, images, file lists, markdown
+   */
+  renderSmartContent(contentStr) {
+    const trimmed = contentStr.trim();
+
+    if (trimmed.startsWith('data:image/')) {
+      return `<div style="padding:0.5rem"><img src="${this.escapeHtml(trimmed)}" style="max-width:100%;max-height:24rem;border-radius:0.375rem" loading="lazy"></div>`;
+    }
+
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return `<div style="padding:0.625rem 1rem">${this.renderParametersBeautiful(parsed)}</div>`;
+      } catch (e) {}
+    }
+
+    const lines = trimmed.split('\n');
+    const allFilePaths = lines.length > 1 && lines.every(l => l.trim() === '' || l.trim().startsWith('/'));
+    if (allFilePaths && lines.filter(l => l.trim()).length > 0) {
+      const fileHtml = lines.filter(l => l.trim()).map(l => {
+        const p = l.trim();
+        const parts = p.split('/');
+        const name = parts.pop();
+        const dir = parts.join('/');
+        return `<div style="display:flex;align-items:center;gap:0.375rem;padding:0.1875rem 0;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${this.escapeHtml(dir)}/</span><span style="font-weight:600">${this.escapeHtml(name)}</span></div>`;
+      }).join('');
+      return `<div style="padding:0.625rem 1rem">${fileHtml}</div>`;
+    }
+
+    if (trimmed.length > 1500) {
+      return `<div class="result-body collapsed" style="padding:0.625rem 1rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;line-height:1.5">${this.escapeHtml(trimmed)}</div><button class="expand-btn" onclick="this.previousElementSibling.classList.toggle('collapsed');this.textContent=this.textContent==='Show more'?'Show less':'Show more'">Show more</button>`;
+    }
+
+    return `<div style="padding:0.625rem 1rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;line-height:1.5">${this.escapeHtml(trimmed)}</div>`;
+  }
+
+  /**
+   * Render parsed JSON/object as formatted key-value display
+   */
+  renderParametersBeautiful(data, depth = 0) {
+    if (data === null || data === undefined) return `<span style="color:var(--color-text-secondary);font-style:italic">null</span>`;
+    if (typeof data === 'boolean') return `<span style="color:#d97706;font-weight:600">${data}</span>`;
+    if (typeof data === 'number') return `<span style="color:#7c3aed;font-weight:600">${data}</span>`;
+
+    if (typeof data === 'string') {
+      if (data.length > 500) {
+        const lines = data.split('\n').length;
+        return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${this.escapeHtml(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars, ' + lines + ' lines)' : ''}</div>`;
+      }
+      if (data.startsWith('/') && !data.includes(' ') && data.includes('.')) return this.renderFilePath(data);
+      return `<span style="color:var(--color-text-primary)">${this.escapeHtml(data)}</span>`;
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) return `<span style="color:var(--color-text-secondary)">[]</span>`;
+      if (data.every(i => typeof i === 'string') && data.length <= 20) {
+        return `<div style="display:flex;flex-wrap:wrap;gap:0.25rem">${data.map(i => `<span style="display:inline-block;padding:0.125rem 0.5rem;background:var(--color-bg-secondary);border-radius:1rem;font-size:0.7rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace">${this.escapeHtml(i)}</span>`).join('')}</div>`;
+      }
+      return `<div style="display:flex;flex-direction:column;gap:0.25rem;${depth > 0 ? 'padding-left:1rem' : ''}">${data.map((item, i) => `<div style="display:flex;gap:0.5rem;align-items:flex-start"><span style="color:var(--color-text-secondary);font-size:0.7rem;min-width:1.5rem;text-align:right;flex-shrink:0">${i}</span><div style="flex:1;min-width:0">${this.renderParametersBeautiful(item, depth + 1)}</div></div>`).join('')}</div>`;
+    }
+
+    if (typeof data === 'object') {
+      const entries = Object.entries(data);
+      if (entries.length === 0) return `<span style="color:var(--color-text-secondary)">{}</span>`;
+      return `<div style="display:flex;flex-direction:column;gap:0.375rem;${depth > 0 ? 'padding-left:1rem' : ''}">${entries.map(([k, v]) => `<div style="display:flex;gap:0.5rem;align-items:flex-start"><span style="font-weight:600;font-size:0.75rem;color:#0891b2;flex-shrink:0;min-width:fit-content;font-family:'Monaco','Menlo','Ubuntu Mono',monospace">${this.escapeHtml(k)}</span><div style="flex:1;min-width:0;font-size:0.8rem">${this.renderParametersBeautiful(v, depth + 1)}</div></div>`).join('')}</div>`;
+    }
+
+    return `<span>${this.escapeHtml(String(data))}</span>`;
+  }
+
+  /**
+   * Static HTML version of smart content rendering for use in string templates
+   */
+  static renderSmartContentHTML(contentStr, escapeHtml) {
+    const trimmed = contentStr.trim();
+    const esc = escapeHtml || (t => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
+
+    if (trimmed.startsWith('data:image/')) {
+      return `<div style="padding:0.5rem"><img src="${esc(trimmed)}" style="max-width:100%;max-height:24rem;border-radius:0.375rem" loading="lazy"></div>`;
+    }
+
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return `<div style="padding:0.625rem 1rem">${StreamingRenderer.renderParamsHTML(parsed, 0, esc)}</div>`;
+      } catch (e) {}
+    }
+
+    const lines = trimmed.split('\n');
+    const allFilePaths = lines.length > 1 && lines.every(l => l.trim() === '' || l.trim().startsWith('/'));
+    if (allFilePaths && lines.filter(l => l.trim()).length > 0) {
+      const fileHtml = lines.filter(l => l.trim()).map(l => {
+        const p = l.trim();
+        const parts = p.split('/');
+        const name = parts.pop();
+        const dir = parts.join('/');
+        return `<div style="display:flex;align-items:center;gap:0.375rem;padding:0.1875rem 0;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${esc(dir)}/</span><span style="font-weight:600">${esc(name)}</span></div>`;
+      }).join('');
+      return `<div style="padding:0.625rem 1rem">${fileHtml}</div>`;
+    }
+
+    const displayContent = trimmed.length > 2000 ? trimmed.substring(0, 2000) + '\n... (truncated)' : trimmed;
+    return `<pre class="tool-result-pre">${esc(displayContent)}</pre>`;
+  }
+
+  /**
+   * Static HTML version of parameter rendering
+   */
+  static renderParamsHTML(data, depth, esc) {
+    if (data === null || data === undefined) return `<span style="color:var(--color-text-secondary);font-style:italic">null</span>`;
+    if (typeof data === 'boolean') return `<span style="color:#d97706;font-weight:600">${data}</span>`;
+    if (typeof data === 'number') return `<span style="color:#7c3aed;font-weight:600">${data}</span>`;
+
+    if (typeof data === 'string') {
+      if (data.length > 500) {
+        return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${esc(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars)' : ''}</div>`;
+      }
+      if (data.startsWith('/') && !data.includes(' ') && data.includes('.')) {
+        const parts = data.split('/');
+        const name = parts.pop();
+        const dir = parts.join('/');
+        return `<div style="display:flex;align-items:center;gap:0.375rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.8rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${esc(dir)}/</span><span style="font-weight:600">${esc(name)}</span></div>`;
+      }
+      return `<span style="color:var(--color-text-primary)">${esc(data)}</span>`;
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) return `<span style="color:var(--color-text-secondary)">[]</span>`;
+      if (data.every(i => typeof i === 'string') && data.length <= 20) {
+        return `<div style="display:flex;flex-wrap:wrap;gap:0.25rem">${data.map(i => `<span style="display:inline-block;padding:0.125rem 0.5rem;background:var(--color-bg-secondary);border-radius:1rem;font-size:0.7rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace">${esc(i)}</span>`).join('')}</div>`;
+      }
+      return `<div style="display:flex;flex-direction:column;gap:0.25rem;${depth > 0 ? 'padding-left:1rem' : ''}">${data.map((item, i) => `<div style="display:flex;gap:0.5rem;align-items:flex-start"><span style="color:var(--color-text-secondary);font-size:0.7rem;min-width:1.5rem;text-align:right;flex-shrink:0">${i}</span><div style="flex:1;min-width:0">${StreamingRenderer.renderParamsHTML(item, depth + 1, esc)}</div></div>`).join('')}</div>`;
+    }
+
+    if (typeof data === 'object') {
+      const entries = Object.entries(data);
+      if (entries.length === 0) return `<span style="color:var(--color-text-secondary)">{}</span>`;
+      return `<div style="display:flex;flex-direction:column;gap:0.375rem;${depth > 0 ? 'padding-left:1rem' : ''}">${entries.map(([k, v]) => `<div style="display:flex;gap:0.5rem;align-items:flex-start"><span style="font-weight:600;font-size:0.75rem;color:#0891b2;flex-shrink:0;min-width:fit-content;font-family:'Monaco','Menlo','Ubuntu Mono',monospace">${esc(k)}</span><div style="flex:1;min-width:0;font-size:0.8rem">${StreamingRenderer.renderParamsHTML(v, depth + 1, esc)}</div></div>`).join('')}</div>`;
+    }
+
+    return `<span>${esc(String(data))}</span>`;
+  }
+
+  /**
    * Render tool result block with smart content display
    */
   renderBlockToolResult(block, context) {
@@ -631,21 +775,17 @@ class StreamingRenderer {
     const content = block.content || '';
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
     const toolUseId = block.tool_use_id || '';
-    const isLong = contentStr.length > 1500;
 
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-
-    const displayContent = isLong ? contentStr.substring(0, 1500) : contentStr;
 
     div.innerHTML = `
       <div class="result-header">
         <span class="status-label">${iconSvg} ${isError ? 'Error' : 'Success'}</span>
         ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
       </div>
-      <div class="result-body${isLong ? ' collapsed' : ''}">${this.escapeHtml(displayContent)}</div>
-      ${isLong ? '<button class="expand-btn" onclick="this.previousElementSibling.classList.toggle(\'collapsed\');this.textContent=this.textContent===\'Show more\'?\'Show less\':\'Show more\'">Show more</button>' : ''}
+      ${this.renderSmartContent(contentStr)}
     `;
 
     return div;
