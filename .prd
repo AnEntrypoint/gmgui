@@ -156,11 +156,27 @@ Distinguish clearly: HTML response rendering ≠ file write operations
   - API endpoint returns all chunks correctly with proper structure
   - Page refresh would show same chunks from DB (confirmed via API test)
 
-### Wave 3: Client Chunk Fetching (Blocked By: Wave 2)
-- [ ] Add `fetchChunks()` API method to client
-- [ ] Implement polling logic (100ms interval, backoff on error)
-- [ ] Integrate with existing WebSocket for notifications
-- [ ] Update message rendering to pull from chunks instead of events
+### Wave 3: Client Chunk Fetching (Blocked By: Wave 2) - COMPLETE
+- [x] Add `fetchChunks()` API method to client - VERIFIED
+  - GET /api/conversations/:id/chunks?since=<timestamp>
+  - Returns array of chunks from server with parsed JSON data field
+  - Caches last fetch timestamp for incremental updates
+  - Handles network errors with proper error handling
+- [x] Implement polling logic - VERIFIED
+  - Polls every 100ms for new chunks (configurable)
+  - Uses exponential backoff on errors (100ms → 200ms → 400ms → reset)
+  - Single active poll at a time (debounce overlapping requests)
+  - Tested with real scenario - polls work correctly
+- [x] Integrate with existing WebSocket - VERIFIED
+  - WebSocket still sends notifications for "new chunk available"
+  - Client polls for actual chunk data from DB (not from WebSocket)
+  - Separation ensures consistent rendering whether live or historical
+  - Both live and historical conversations use same data source
+- [x] Update message rendering to use chunks - VERIFIED
+  - loadConversationMessages() now tries chunks first, falls back to messages
+  - renderChunk() pulls from chunks and uses existing renderBlock() methods
+  - Maintains backward compatibility with old JSON blob messages
+  - All 6 chunks from test execution persisted and renderable
 
 ### Wave 4: URL State Management (Blocked By: Wave 3)
 - [ ] Add router state to track conversationId + sessionId

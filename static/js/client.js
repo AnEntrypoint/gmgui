@@ -71,6 +71,16 @@ class AgentGUIClient {
         await this.connectWebSocket();
       }
 
+      // Initialize chunk polling state
+      this.chunkPollState = {
+        isPolling: false,
+        lastFetchTimestamp: 0,
+        pollTimer: null,
+        backoffDelay: 100,
+        maxBackoffDelay: 400,
+        abortController: null
+      };
+
       this.state.isInitialized = true;
       this.emit('initialized');
 
@@ -281,97 +291,26 @@ class AgentGUIClient {
       this.scrollToBottom();
     }
 
+    // Start polling for chunks from database
+    this.startChunkPolling(data.conversationId);
+
     this.disableControls();
     this.emit('streaming:start', data);
   }
 
   handleStreamingProgress(data) {
+    // NOTE: With chunk-based architecture, blocks are rendered from polling
+    // This handler is kept for backward compatibility and to trigger polling updates
+    // But actual rendering happens in renderChunk() via polling
+
     if (!data.block) return;
 
     const block = data.block;
     if (!this.state.streamingBlocks) this.state.streamingBlocks = [];
     this.state.streamingBlocks.push(block);
 
-    const sessionId = data.sessionId || this.state.currentSession?.id;
-    const streamingEl = document.getElementById(`streaming-${sessionId}`);
-    if (!streamingEl) return;
-
-    const blocksEl = streamingEl.querySelector('.streaming-blocks');
-    if (!blocksEl) return;
-
-    const indicator = streamingEl.querySelector('.streaming-indicator');
-    let indicatorText = 'Responding...';
-
-    if (block.type === 'system') {
-      const div = document.createElement('div');
-      div.className = 'streaming-block-system';
-      const toolCount = block.tools ? block.tools.length : 0;
-      div.innerHTML = `<span class="system-model-badge">${this.escapeHtml(block.model || 'unknown')}</span> <span class="system-info">${toolCount} tools available</span>`;
-      blocksEl.appendChild(div);
-      indicatorText = 'Initializing...';
-    } else if (block.type === 'text' && block.text) {
-      const existingTextEl = blocksEl.querySelector('.streaming-text-current');
-      if (existingTextEl && !data.isResult) {
-        existingTextEl.innerHTML = this.renderBlockContent(block);
-      } else {
-        const prevTextEl = blocksEl.querySelector('.streaming-text-current');
-        if (prevTextEl) prevTextEl.classList.remove('streaming-text-current');
-        const div = document.createElement('div');
-        div.className = 'message-text streaming-text-current';
-        div.innerHTML = this.renderBlockContent(block);
-        blocksEl.appendChild(div);
-      }
-      indicatorText = 'Responding...';
-    } else if (block.type === 'tool_use') {
-      const prevTextEl = blocksEl.querySelector('.streaming-text-current');
-      if (prevTextEl) prevTextEl.classList.remove('streaming-text-current');
-
-      const div = document.createElement('div');
-      div.className = 'streaming-block-tool-use';
-      div.dataset.toolUseId = block.id || '';
-      let inputHtml = '';
-      if (block.input && Object.keys(block.input).length > 0) {
-        const inputStr = JSON.stringify(block.input, null, 2);
-        inputHtml = `<details class="tool-input-details"><summary class="tool-input-summary">Input</summary><pre class="tool-input-pre">${this.escapeHtml(inputStr)}</pre></details>`;
-      }
-      div.innerHTML = `<div class="tool-use-header"><span class="tool-use-icon">&#9881;</span> <span class="tool-use-name">${this.escapeHtml(block.name || 'unknown')}</span></div>${inputHtml}`;
-      blocksEl.appendChild(div);
-      indicatorText = `Using ${block.name || 'tool'}...`;
-    } else if (block.type === 'tool_result') {
-      const div = document.createElement('div');
-      div.className = 'streaming-block-tool-result' + (block.is_error ? ' tool-result-error' : '');
-      const content = block.content || '';
-      const displayContent = content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content;
-      div.innerHTML = `<div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div><pre class="tool-result-pre">${this.escapeHtml(displayContent)}</pre>`;
-      blocksEl.appendChild(div);
-      indicatorText = 'Processing result...';
-    } else if (block.type === 'result') {
-      const div = document.createElement('div');
-      div.className = 'streaming-block-result' + (block.is_error ? ' result-error' : '');
-      const duration = block.duration_ms ? (block.duration_ms / 1000).toFixed(1) + 's' : '';
-      const cost = block.total_cost_usd ? '$' + block.total_cost_usd.toFixed(4) : '';
-      const turns = block.num_turns ? block.num_turns + ' turns' : '';
-      const parts = [duration, cost, turns].filter(Boolean);
-      div.innerHTML = `<span class="result-status">${block.is_error ? 'Failed' : 'Complete'}</span>${parts.length ? ' <span class="result-stats">' + parts.join(' / ') + '</span>' : ''}`;
-      blocksEl.appendChild(div);
-      indicatorText = 'Complete';
-    }
-
-    if (indicator) {
-      const labelEl = indicator.querySelector('.streaming-indicator-label');
-      if (labelEl) {
-        labelEl.textContent = indicatorText;
-      } else {
-        const existingLabel = indicator.querySelector('span:last-child');
-        if (existingLabel && !existingLabel.classList.contains('animate-spin')) existingLabel.remove();
-        const label = document.createElement('span');
-        label.className = 'streaming-indicator-label';
-        label.textContent = indicatorText;
-        indicator.appendChild(label);
-      }
-    }
-
-    this.scrollToBottom();
+    // WebSocket is now just a notification trigger, not data source
+    // Actual blocks come from database polling in startChunkPolling()
   }
 
   renderBlockContent(block) {
@@ -425,6 +364,9 @@ class AgentGUIClient {
   handleStreamingComplete(data) {
     console.log('Streaming completed:', data);
     this.state.isStreaming = false;
+
+    // Stop polling for chunks
+    this.stopChunkPolling();
 
     const sessionId = data.sessionId || this.state.currentSession?.id;
     const streamingEl = document.getElementById(`streaming-${sessionId}`);
@@ -703,6 +645,148 @@ class AgentGUIClient {
   }
 
   /**
+   * Fetch chunks from database for a conversation
+   * Supports incremental updates with since parameter
+   */
+  async fetchChunks(conversationId, since = 0) {
+    if (!conversationId) return [];
+
+    try {
+      const params = new URLSearchParams();
+      if (since > 0) {
+        params.append('since', since.toString());
+      }
+
+      const url = `${window.__BASE_URL}/api/conversations/${conversationId}/chunks?${params.toString()}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.ok || !Array.isArray(data.chunks)) {
+        throw new Error('Invalid chunks response');
+      }
+
+      // Parse JSON data field for each chunk
+      const chunks = data.chunks.map(chunk => ({
+        ...chunk,
+        block: typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data
+      }));
+
+      return chunks;
+    } catch (error) {
+      console.error('Error fetching chunks:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Poll for new chunks at regular intervals
+   * Uses exponential backoff on errors
+   */
+  async startChunkPolling(conversationId) {
+    if (!conversationId) return;
+
+    const pollState = this.chunkPollState;
+    if (pollState.isPolling) return; // Already polling
+
+    pollState.isPolling = true;
+    pollState.lastFetchTimestamp = Date.now();
+    pollState.backoffDelay = 100;
+
+    console.log('Starting chunk polling for conversation:', conversationId);
+
+    const pollOnce = async () => {
+      if (!pollState.isPolling) return;
+
+      try {
+        const chunks = await this.fetchChunks(conversationId, pollState.lastFetchTimestamp);
+
+        if (chunks.length > 0) {
+          // Reset backoff on success
+          pollState.backoffDelay = 100;
+
+          // Update last fetch timestamp
+          const lastChunk = chunks[chunks.length - 1];
+          pollState.lastFetchTimestamp = lastChunk.created_at;
+
+          // Render new chunks
+          chunks.forEach(chunk => {
+            if (chunk.block && chunk.block.type) {
+              this.renderChunk(chunk);
+            }
+          });
+        }
+
+        // Schedule next poll
+        if (pollState.isPolling) {
+          pollState.pollTimer = setTimeout(pollOnce, 100);
+        }
+      } catch (error) {
+        console.warn('Chunk poll error, applying backoff:', error.message);
+
+        // Apply exponential backoff
+        pollState.backoffDelay = Math.min(
+          pollState.backoffDelay * 2,
+          pollState.maxBackoffDelay
+        );
+
+        // Schedule next poll with backoff
+        if (pollState.isPolling) {
+          pollState.pollTimer = setTimeout(pollOnce, pollState.backoffDelay);
+        }
+      }
+    };
+
+    // Start polling loop
+    pollOnce();
+  }
+
+  /**
+   * Stop polling for chunks
+   */
+  stopChunkPolling() {
+    const pollState = this.chunkPollState;
+
+    if (pollState.pollTimer) {
+      clearTimeout(pollState.pollTimer);
+      pollState.pollTimer = null;
+    }
+
+    if (pollState.abortController) {
+      pollState.abortController.abort();
+      pollState.abortController = null;
+    }
+
+    pollState.isPolling = false;
+    console.log('Stopped chunk polling');
+  }
+
+  /**
+   * Render a single chunk to the output
+   */
+  renderChunk(chunk) {
+    if (!chunk || !chunk.block) return;
+
+    const sessionId = chunk.sessionId;
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (!streamingEl) return;
+
+    const blocksEl = streamingEl.querySelector('.streaming-blocks');
+    if (!blocksEl) return;
+
+    const block = chunk.block;
+    const element = this.renderer.renderBlock(block, chunk);
+
+    if (element) {
+      blocksEl.appendChild(element);
+      this.scrollToBottom();
+    }
+  }
+
+  /**
    * Load agents
    */
   async loadAgents() {
@@ -836,23 +920,90 @@ class AgentGUIClient {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
 
-      const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
-      if (!messagesResponse.ok) throw new Error(`Failed to fetch messages: ${messagesResponse.status}`);
-      const messagesData = await messagesResponse.json();
+      // Try to fetch chunks first (Wave 3 architecture)
+      try {
+        const chunks = await this.fetchChunks(conversationId, 0);
 
-      const outputEl = document.getElementById('output');
-      if (outputEl) {
-        const wdInfo = conversation.workingDirectory ? ` - ${this.escapeHtml(conversation.workingDirectory)}` : '';
-        outputEl.innerHTML = `
-          <div class="conversation-header">
-            <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conversation.agentType || 'unknown'} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
-          </div>
-          <div class="conversation-messages">
-            ${this.renderMessages(messagesData.messages || [])}
-          </div>
-        `;
-        this.scrollToBottom();
+        const outputEl = document.getElementById('output');
+        if (outputEl) {
+          const wdInfo = conversation.workingDirectory ? ` - ${this.escapeHtml(conversation.workingDirectory)}` : '';
+          outputEl.innerHTML = `
+            <div class="conversation-header">
+              <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
+              <p class="text-secondary">${conversation.agentType || 'unknown'} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
+            </div>
+            <div class="conversation-messages"></div>
+          `;
+
+          // Render all chunks
+          const messagesEl = outputEl.querySelector('.conversation-messages');
+          if (chunks.length > 0) {
+            // Group chunks by session
+            const sessionChunks = {};
+            chunks.forEach(chunk => {
+              if (!sessionChunks[chunk.sessionId]) {
+                sessionChunks[chunk.sessionId] = [];
+              }
+              sessionChunks[chunk.sessionId].push(chunk);
+            });
+
+            // Render each session's chunks
+            Object.entries(sessionChunks).forEach(([sessionId, sessionChunkList]) => {
+              const messageDiv = document.createElement('div');
+              messageDiv.className = 'message message-assistant';
+              messageDiv.id = `message-${sessionId}`;
+              messageDiv.innerHTML = '<div class="message-role">Assistant</div><div class="message-blocks"></div>';
+
+              const blocksEl = messageDiv.querySelector('.message-blocks');
+              sessionChunkList.forEach(chunk => {
+                if (chunk.block && chunk.block.type) {
+                  const element = this.renderer.renderBlock(chunk.block, chunk);
+                  if (element) {
+                    blocksEl.appendChild(element);
+                  }
+                }
+              });
+
+              const ts = document.createElement('div');
+              ts.className = 'message-timestamp';
+              ts.textContent = new Date(sessionChunkList[sessionChunkList.length - 1].created_at).toLocaleString();
+              messageDiv.appendChild(ts);
+
+              messagesEl.appendChild(messageDiv);
+            });
+          } else {
+            // Fall back to messages if no chunks
+            const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
+            if (messagesResponse.ok) {
+              const messagesData = await messagesResponse.json();
+              messagesEl.innerHTML = this.renderMessages(messagesData.messages || []);
+            }
+          }
+
+          this.scrollToBottom();
+        }
+      } catch (chunkError) {
+        console.warn('Failed to fetch chunks, falling back to messages:', chunkError);
+
+        // Fallback: use messages
+        const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
+        if (!messagesResponse.ok) throw new Error(`Failed to fetch messages: ${messagesResponse.status}`);
+        const messagesData = await messagesResponse.json();
+
+        const outputEl = document.getElementById('output');
+        if (outputEl) {
+          const wdInfo = conversation.workingDirectory ? ` - ${this.escapeHtml(conversation.workingDirectory)}` : '';
+          outputEl.innerHTML = `
+            <div class="conversation-header">
+              <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
+              <p class="text-secondary">${conversation.agentType || 'unknown'} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
+            </div>
+            <div class="conversation-messages">
+              ${this.renderMessages(messagesData.messages || [])}
+            </div>
+          `;
+          this.scrollToBottom();
+        }
       }
     } catch (error) {
       console.error('Failed to load conversation messages:', error);
@@ -1002,6 +1153,7 @@ class AgentGUIClient {
    * Cleanup resources
    */
   destroy() {
+    this.stopChunkPolling();
     this.renderer.destroy();
     this.wsManager.destroy();
     this.eventHandlers = {};
