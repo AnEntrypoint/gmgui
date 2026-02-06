@@ -222,16 +222,8 @@ class GMGUIApp {
     switch (block.type) {
       case 'text': {
         const text = block.text || '';
-        const parts = this.parseMarkdownCodeBlocks(text);
-        html += '<div class="block-text">';
-        for (const part of parts) {
-          if (part.type === 'text') {
-            html += `<div>${this.escapeHtml(part.content)}</div>`;
-          } else if (part.type === 'code') {
-            html += this.renderCodeBlock(part.language, part.content);
-          }
-        }
-        html += '</div>';
+        const beautified = this.markdownToHtml(text);
+        html += `<div class="block-text">${beautified}</div>`;
         break;
       }
 
@@ -452,6 +444,122 @@ class GMGUIApp {
     }
 
     return parts.length > 0 ? parts : [{ type: 'text', content: text }];
+  }
+
+  markdownToHtml(markdown) {
+    const lines = markdown.split('\n');
+    let html = '';
+    let inList = false;
+    let listType = null;
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // Code blocks
+      if (trimmed.startsWith('```')) {
+        if (inList) {
+          html += listType === 'ul' ? '</ul>' : '</ol>';
+          inList = false;
+        }
+        const match = trimmed.match(/^```(\w*)/);
+        const lang = (match && match[1]) || 'text';
+        i++;
+        const codeLines = [];
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        html += `<div class="code-block" data-language="${this.escapeHtml(lang)}"><pre><code>${this.escapeHtml(codeLines.join('\n'))}</code></pre></div>`;
+        i++;
+        continue;
+      }
+
+      // Headings
+      if (trimmed.startsWith('#')) {
+        if (inList) {
+          html += listType === 'ul' ? '</ul>' : '</ol>';
+          inList = false;
+        }
+        const match = trimmed.match(/^(#+)\s+(.*)/);
+        if (match) {
+          const level = match[1].length;
+          const text = this.escapeAndFormatInline(match[2]);
+          html += `<h${level}>${text}</h${level}>`;
+          i++;
+          continue;
+        }
+      }
+
+      // Lists
+      if (trimmed.match(/^[-*+]\s/)) {
+        if (!inList) {
+          html += '<ul>';
+          inList = true;
+          listType = 'ul';
+        }
+        const match = trimmed.match(/^[-*+]\s+(.*)/);
+        if (match) {
+          const text = this.escapeAndFormatInline(match[1]);
+          html += `<li>${text}</li>`;
+        }
+        i++;
+        continue;
+      }
+
+      if (trimmed.match(/^\d+\.\s/)) {
+        if (!inList || listType !== 'ol') {
+          if (inList) html += '</ul>';
+          html += '<ol>';
+          inList = true;
+          listType = 'ol';
+        }
+        const match = trimmed.match(/^\d+\.\s+(.*)/);
+        if (match) {
+          const text = this.escapeAndFormatInline(match[1]);
+          html += `<li>${text}</li>`;
+        }
+        i++;
+        continue;
+      }
+
+      // End list if not a list item
+      if (inList && trimmed && !trimmed.match(/^[-*+]\s/) && !trimmed.match(/^\d+\.\s/)) {
+        html += listType === 'ul' ? '</ul>' : '</ol>';
+        inList = false;
+      }
+
+      // Paragraphs
+      if (trimmed) {
+        const text = this.escapeAndFormatInline(trimmed);
+        html += `<p>${text}</p>`;
+      }
+
+      i++;
+    }
+
+    // Close any open list
+    if (inList) {
+      html += listType === 'ul' ? '</ul>' : '</ol>';
+    }
+
+    return html;
+  }
+
+  escapeAndFormatInline(text) {
+    text = this.escapeHtml(text);
+    // Bold and italic (must be before single asterisk)
+    text = text.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
+    text = text.replace(/_(.*?)_/g, '<em>$1</em>');
+    // Inline code
+    text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+    // Links
+    text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return text;
   }
 
   renderCodeBlock(language, code) {

@@ -1451,24 +1451,6 @@ html, body {
   margin: 1rem 0;
 }
 
-.code-block {
-  background: #f5f5f5;
-  border-left: 4px solid #007acc;
-  padding: 1rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  font-family: 'Courier New', monospace;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: #333;
-}
-
-.code-block code {
-  color: inherit;
-  background: none;
-  padding: 0;
-}
-
 /* Inline code */
 p code {
   background: #f0f0f0;
@@ -1734,8 +1716,65 @@ p code {
 
 .block-text {
   color: var(--text-primary);
-  white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.6;
+}
+
+.block-text h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 1rem 0 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.block-text h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.875rem 0 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.block-text h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.375rem 0;
+  color: var(--text-primary);
+}
+
+.block-text p {
+  margin: 0.5rem 0;
+  white-space: normal;
+}
+
+.block-text ul,
+.block-text ol {
+  margin: 0.5rem 0 0.5rem 1.5rem;
+  padding-left: 1rem;
+}
+
+.block-text li {
+  margin: 0.25rem 0;
+}
+
+.block-text code.inline-code {
+  background: var(--bg-tertiary);
+  color: var(--color-info);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.block-text a {
+  color: var(--color-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: var(--transition-fast);
+}
+
+.block-text a:hover {
+  border-bottom-color: var(--color-primary);
+  text-decoration: underline;
 }
 
 .block-tool-use {
