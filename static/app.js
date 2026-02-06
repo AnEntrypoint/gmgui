@@ -203,9 +203,14 @@ class GMGUIApp {
           throw new Error('Not a claude_execution message');
         }
       } catch (e) {
-        // Fallback: render as plain text
-        const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-        contentHtml = `<div class="message-content">${this.escapeHtml(text)}</div>`;
+        // Fallback: try to parse and beautify, or render as plain text
+        try {
+          const parsed = typeof message.content === 'string' ? JSON.parse(message.content) : message.content;
+          contentHtml = `<div class="message-content">${this.renderParameters(parsed)}</div>`;
+        } catch (parseErr) {
+          const text = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+          contentHtml = `<div class="message-content"><pre>${this.escapeHtml(text)}</pre></div>`;
+        }
       }
 
       msgEl.innerHTML = contentHtml;
@@ -241,7 +246,12 @@ class GMGUIApp {
         html += `<strong>Result:</strong>`;
         let resultHtml;
         if (typeof block.result === 'string') {
-          resultHtml = `<pre>${this.escapeHtml(block.result)}</pre>`;
+          try {
+            const parsed = JSON.parse(block.result);
+            resultHtml = this.renderParameters(parsed);
+          } catch (e) {
+            resultHtml = `<pre>${this.escapeHtml(block.result)}</pre>`;
+          }
         } else {
           resultHtml = this.renderParameters(block.result);
         }
@@ -358,9 +368,14 @@ class GMGUIApp {
           throw new Error('Not a claude_execution message');
         }
       } catch (e) {
-        // Fallback: render as plain text
-        const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-        contentHtml = `<div class="message-content">${this.escapeHtml(text)}</div>`;
+        // Fallback: try to parse and beautify, or render as plain text
+        try {
+          const parsed = typeof msg.content === 'string' ? JSON.parse(msg.content) : msg.content;
+          contentHtml = `<div class="message-content">${this.renderParameters(parsed)}</div>`;
+        } catch (parseErr) {
+          const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          contentHtml = `<div class="message-content"><pre>${this.escapeHtml(text)}</pre></div>`;
+        }
       }
 
       msgEl.innerHTML = contentHtml;
