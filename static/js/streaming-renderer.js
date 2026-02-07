@@ -451,8 +451,10 @@ class StreamingRenderer {
       });
     });
 
-    const codeContainer = document.createElement('pre');
-    codeContainer.innerHTML = `<code class="language-${this.escapeHtml(language)}">${this.escapeHtml(code)}</code>`;
+    // Use syntax highlighting instead of just escaping
+    const highlightedHTML = StreamingRenderer.renderCodeWithHighlight(code, this.escapeHtml.bind(this));
+    const codeContainer = document.createElement('div');
+    codeContainer.innerHTML = highlightedHTML;
 
     div.appendChild(header);
     div.appendChild(codeContainer);
@@ -1157,11 +1159,19 @@ class StreamingRenderer {
     const command = block.command || block.code || '';
     const output = block.output || '';
 
-    div.innerHTML = `
-      <div class="bash-command"><span class="prompt">$</span><code>${this.escapeHtml(command)}</code></div>
-      ${output ? `<pre class="bash-output"><code>${this.escapeHtml(output)}</code></pre>` : ''}
-    `;
+    // For the command, use simple escaping
+    let html = `<div class="bash-command"><span class="prompt">$</span><code>${this.escapeHtml(command)}</code></div>`;
 
+    // For output, check if it looks like code and use syntax highlighting
+    if (output) {
+      if (StreamingRenderer.detectCodeContent(output)) {
+        html += StreamingRenderer.renderCodeWithHighlight(output, this.escapeHtml.bind(this));
+      } else {
+        html += `<pre class="bash-output"><code>${this.escapeHtml(output)}</code></pre>`;
+      }
+    }
+
+    div.innerHTML = html;
     return div;
   }
 
