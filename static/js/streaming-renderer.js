@@ -599,22 +599,21 @@ class StreamingRenderer {
           </div>`;
         }
 
-        // Render code in a styled code block
+        // Render code with syntax highlighting
         if (input.code) {
-          const lines = input.code.split('\n');
-          const lineCount = lines.length;
+          const codeLines = input.code.split('\n');
+          const lineCount = codeLines.length;
           const truncated = lineCount > 50;
-          const displayLines = truncated ? lines.slice(0, 50) : lines;
+          const displayCode = truncated ? codeLines.slice(0, 50).join('\n') : input.code;
 
+          const lang = input.runtime || 'javascript';
           html += `<div style="margin-top:0.5rem">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem">
-              <span style="font-size:0.7rem;font-weight:600;color:#0891b2;text-transform:uppercase">JavaScript Code</span>
+              <span style="font-size:0.7rem;font-weight:600;color:#0891b2;text-transform:uppercase">${this.escapeHtml(lang)}</span>
               <span style="font-size:0.7rem;color:var(--color-text-secondary)">${lineCount} lines</span>
             </div>
-            <div style="background:var(--color-bg-code);border-radius:0.375rem;padding:0.75rem;overflow-x:auto">
-              <pre style="margin:0;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#d1d5db">${this.escapeHtml(displayLines.join('\n'))}</pre>
-              ${truncated ? `<div style="margin-top:0.5rem;padding-top:0.5rem;border-top:1px solid var(--color-border);font-size:0.7rem;color:var(--color-text-secondary);text-align:center">... ${lineCount - 50} more lines truncated ...</div>` : ''}
-            </div>
+            ${StreamingRenderer.renderCodeWithHighlight(displayCode, this.escapeHtml.bind(this))}
+            ${truncated ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${lineCount - 50} more lines</div>` : ''}
           </div>`;
         }
 
@@ -635,14 +634,17 @@ class StreamingRenderer {
     const truncated = content.length > maxLen;
     const displayContent = truncated ? content.substring(0, maxLen) : content;
     const lineCount = content.split('\n').length;
-    return `<div class="tool-param-content-preview" style="margin-top:0.5rem"><div class="preview-header"><span>${this.escapeHtml(label)}</span><span style="font-weight:400">${lineCount} lines${truncated ? ' (truncated)' : ''}</span></div><div class="preview-body">${this.escapeHtml(displayContent)}</div>${truncated ? '<div class="preview-truncated">... ' + (content.length - maxLen) + ' more characters</div>' : ''}</div>`;
+    const codeBody = StreamingRenderer.detectCodeContent(displayContent)
+      ? StreamingRenderer.renderCodeWithHighlight(displayContent, this.escapeHtml.bind(this))
+      : `<div class="preview-body">${this.escapeHtml(displayContent)}</div>`;
+    return `<div class="tool-param-content-preview" style="margin-top:0.5rem"><div class="preview-header"><span>${this.escapeHtml(label)}</span><span style="font-weight:400">${lineCount} lines${truncated ? ' (truncated)' : ''}</span></div>${codeBody}${truncated ? '<div class="preview-truncated">... ' + (content.length - maxLen) + ' more characters</div>' : ''}</div>`;
   }
 
   /**
    * Render params as formatted JSON (default fallback for unknown tools)
    */
   renderJsonParams(input) {
-    return `<div class="tool-params"><div class="tool-param-json"><pre>${this.escapeHtml(JSON.stringify(input, null, 2))}</pre></div></div>`;
+    return `<div class="tool-params">${this.renderParametersBeautiful(input)}</div>`;
   }
 
   /**
@@ -712,6 +714,11 @@ class StreamingRenderer {
     if (typeof data === 'number') return `<span style="color:#7c3aed;font-weight:600">${data}</span>`;
 
     if (typeof data === 'string') {
+      if (data.length > 200 && StreamingRenderer.detectCodeContent(data)) {
+        const displayData = data.length > 1000 ? data.substring(0, 1000) : data;
+        const suffix = data.length > 1000 ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${data.length - 1000} more characters</div>` : '';
+        return `<div style="max-height:200px;overflow-y:auto">${StreamingRenderer.renderCodeWithHighlight(displayData, this.escapeHtml.bind(this))}${suffix}</div>`;
+      }
       if (data.length > 500) {
         const lines = data.split('\n').length;
         return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${this.escapeHtml(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars, ' + lines + ' lines)' : ''}</div>`;
