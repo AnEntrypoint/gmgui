@@ -991,64 +991,12 @@ class StreamingRenderer {
    * Render code with basic syntax highlighting
    */
   static renderCodeWithHighlight(code, esc) {
-    // Tokenize-then-replace approach: collect spans as tokens so regexes
-    // never see previously-injected HTML, preventing cascading corruption.
-    const tokens = [];
-    const mkToken = (cls, text) => {
-      const id = `\x00T${tokens.length}\x00`;
-      tokens.push({ id, cls, text });
-      return id;
-    };
-
-    let src = code;
-
-    // Detect JSON
-    const isJSON = (code.trim().startsWith('{') || code.trim().startsWith('[')) &&
-                   code.includes('"') && (code.includes(':') || code.includes(','));
-
-    if (isJSON) {
-      // JSON keys
-      src = src.replace(/"([^"]+)"\s*:/g, (m, k) => `"${mkToken('jk', k)}":`);
-      // JSON string values
-      src = src.replace(/:\s*"([^"]*)"/g, (m, v) => `: "${mkToken('js', v)}"`);
-      // JSON numbers
-      src = src.replace(/:\s*(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, (m, n) => `: ${mkToken('jn', n)}`);
-      // JSON booleans/null
-      src = src.replace(/:\s*(true|false|null)/g, (m, b) => `: ${mkToken('jb', b)}`);
-    } else {
-      // Comments
-      src = src.replace(/(\/\/[^\n]*)/g, (m) => mkToken('cm', m));
-      src = src.replace(/(\/\*[\s\S]*?\*\/)/g, (m) => mkToken('cm', m));
-      src = src.replace(/(#[^\n]*)/g, (m) => mkToken('cm', m));
-      // Strings
-      src = src.replace(/(["'])(?:[^\\]|\\.)*?\1/g, (m) => mkToken('st', m));
-      src = src.replace(/`([^`]*)`/g, (m) => mkToken('st', m));
-      // Keywords
-      src = src.replace(/\b(function|const|let|var|class|import|export|async|await|return|if|else|for|while|try|catch|throw|new|typeof|instanceof|this|super|switch|case|default|break|continue|do|def|from|elif|except|raise|with|as|lambda|pass|yield|global|nonlocal|public|private|protected|static|final|abstract|interface|extends|implements|package|void)\b/g, (m) => mkToken('kw', m));
-      // Booleans/null
-      src = src.replace(/\b(true|false|null|undefined|None|True|False|nil)\b/g, (m) => mkToken('bl', m));
-      // Numbers
-      src = src.replace(/\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, (m) => mkToken('nu', m));
-      // Functions
-      src = src.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\s*\()/g, (m) => mkToken('fn', m));
-      // Operators
-      src = src.replace(/(===|!==|==|!=|<=|>=|&&|\|\||\+=|-=|\*=|\/=|%=|=>|->)/g, (m) => mkToken('op', m));
+    const preStyle = "background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155";
+    if (typeof hljs !== 'undefined') {
+      const result = hljs.highlightAuto(code);
+      return `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
     }
-
-    // Now escape HTML on the tokenized source (tokens are safe null-byte markers)
-    let highlighted = esc(src);
-
-    // Replace tokens with actual styled spans
-    const styles = {
-      jk: 'color:#3b82f6;font-weight:600', js: 'color:#10b981', jn: 'color:#f59e0b', jb: 'color:#ef4444',
-      cm: 'color:#6b7280;font-style:italic', st: 'color:#10b981', kw: 'color:#8b5cf6;font-weight:600',
-      bl: 'color:#ef4444', nu: 'color:#f59e0b', fn: 'color:#3b82f6', op: 'color:#a855f7'
-    };
-    for (const { id, cls, text } of tokens) {
-      highlighted = highlighted.replace(id, `<span style="${styles[cls]}">${esc(text)}</span>`);
-    }
-
-    return `<pre style="background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155">${highlighted}</pre>`;
+    return `<pre style="${preStyle}">${esc(code)}</pre>`;
   }
 
   /**
