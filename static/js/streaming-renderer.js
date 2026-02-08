@@ -991,81 +991,64 @@ class StreamingRenderer {
    * Render code with basic syntax highlighting
    */
   static renderCodeWithHighlight(code, esc) {
-    // Escape HTML first
-    let highlighted = esc(code);
+    // Tokenize-then-replace approach: collect spans as tokens so regexes
+    // never see previously-injected HTML, preventing cascading corruption.
+    const tokens = [];
+    const mkToken = (cls, text) => {
+      const id = `\x00T${tokens.length}\x00`;
+      tokens.push({ id, cls, text });
+      return id;
+    };
 
-    // Detect if this is JSON and apply JSON-specific highlighting
+    let src = code;
+
+    // Detect JSON
     const isJSON = (code.trim().startsWith('{') || code.trim().startsWith('[')) &&
                    code.includes('"') && (code.includes(':') || code.includes(','));
 
     if (isJSON) {
-      // JSON-specific highlighting
-      const jsonHighlights = [
-        // Property names (keys) in quotes
-        { pattern: /"([^"]+)"\s*:/g, replacement: '"<span style="color:#3b82f6;font-weight:600">$1</span>":' },
-        // String values
-        { pattern: /:\s*"([^"]*)"/g, replacement: ': "<span style="color:#10b981">$1</span>"' },
-        // Numbers
-        { pattern: /:\s*(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, replacement: ': <span style="color:#f59e0b">$1</span>' },
-        // Booleans and null
-        { pattern: /:\s*(true|false|null)/g, replacement: ': <span style="color:#ef4444">$1</span>' },
-        // Array/object brackets
-        { pattern: /([\[\]{}])/g, replacement: '<span style="color:#6b7280;font-weight:600">$1</span>' },
-      ];
-
-      jsonHighlights.forEach(({ pattern, replacement }) => {
-        highlighted = highlighted.replace(pattern, replacement);
-      });
+      // JSON keys
+      src = src.replace(/"([^"]+)"\s*:/g, (m, k) => `"${mkToken('jk', k)}":`);
+      // JSON string values
+      src = src.replace(/:\s*"([^"]*)"/g, (m, v) => `: "${mkToken('js', v)}"`);
+      // JSON numbers
+      src = src.replace(/:\s*(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g, (m, n) => `: ${mkToken('jn', n)}`);
+      // JSON booleans/null
+      src = src.replace(/:\s*(true|false|null)/g, (m, b) => `: ${mkToken('jb', b)}`);
     } else {
-      // General code syntax highlighting
-      const highlights = [
-        // Comments (do these first to avoid conflicts)
-        { pattern: /(\/\/[^\n]*)/g, replacement: '<span style="color:#6b7280;font-style:italic">$1</span>' },
-        { pattern: /(\/\*[\s\S]*?\*\/)/g, replacement: '<span style="color:#6b7280;font-style:italic">$1</span>' },
-        { pattern: /(#[^\n]*)/g, replacement: '<span style="color:#6b7280;font-style:italic">$1</span>' },
-
-        // Strings (improved to handle escaped quotes)
-        { pattern: /(["'])(?:[^\\]|\\.)*?\1/g, replacement: (match) => `<span style="color:#10b981">${match}</span>` },
-
-        // Template literals (backticks)
-        { pattern: /`([^`]*)`/g, replacement: '<span style="color:#10b981">`$1`</span>' },
-
-        // Keywords
-        { pattern: /\b(function|const|let|var|class|import|export|async|await|return|if|else|for|while|try|catch|throw|new|typeof|instanceof|this|super|switch|case|default|break|continue|do)\b/g,
-          replacement: '<span style="color:#8b5cf6;font-weight:600">$1</span>' },
-        { pattern: /\b(def|class|import|from|return|if|elif|else|for|while|try|except|raise|with|as|lambda|pass|break|continue|yield|global|nonlocal)\b/g,
-          replacement: '<span style="color:#8b5cf6;font-weight:600">$1</span>' },
-        { pattern: /\b(public|private|protected|static|final|abstract|interface|extends|implements|package|void|int|string|boolean|float|double|char)\b/g,
-          replacement: '<span style="color:#8b5cf6;font-weight:600">$1</span>' },
-
-        // Type annotations
-        { pattern: /:\s*([A-Z][a-zA-Z0-9_]*)/g, replacement: ': <span style="color:#0891b2">$1</span>' },
-
-        // Numbers
-        { pattern: /\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, replacement: '<span style="color:#f59e0b">$1</span>' },
-
-        // Booleans and null
-        { pattern: /\b(true|false|null|undefined|None|True|False|nil)\b/g, replacement: '<span style="color:#ef4444">$1</span>' },
-
-        // Function/method names (improved)
-        { pattern: /\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\s*\()/g, replacement: '<span style="color:#3b82f6">$1</span>' },
-
-        // Operators
-        { pattern: /(===|!==|==|!=|<=|>=|&&|\|\||\+=|-=|\*=|\/=|%=|=>|->)/g, replacement: '<span style="color:#a855f7">$1</span>' },
-      ];
-
-      // Apply highlights
-      highlights.forEach(({ pattern, replacement }) => {
-        if (typeof replacement === 'function') {
-          highlighted = highlighted.replace(pattern, replacement);
-        } else {
-          highlighted = highlighted.replace(pattern, replacement);
-        }
-      });
+      // Comments
+      src = src.replace(/(\/\/[^\n]*)/g, (m) => mkToken('cm', m));
+      src = src.replace(/(\/\*[\s\S]*?\*\/)/g, (m) => mkToken('cm', m));
+      src = src.replace(/(#[^\n]*)/g, (m) => mkToken('cm', m));
+      // Strings
+      src = src.replace(/(["'])(?:[^\\]|\\.)*?\1/g, (m) => mkToken('st', m));
+      src = src.replace(/`([^`]*)`/g, (m) => mkToken('st', m));
+      // Keywords
+      src = src.replace(/\b(function|const|let|var|class|import|export|async|await|return|if|else|for|while|try|catch|throw|new|typeof|instanceof|this|super|switch|case|default|break|continue|do|def|from|elif|except|raise|with|as|lambda|pass|yield|global|nonlocal|public|private|protected|static|final|abstract|interface|extends|implements|package|void)\b/g, (m) => mkToken('kw', m));
+      // Booleans/null
+      src = src.replace(/\b(true|false|null|undefined|None|True|False|nil)\b/g, (m) => mkToken('bl', m));
+      // Numbers
+      src = src.replace(/\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/g, (m) => mkToken('nu', m));
+      // Functions
+      src = src.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)(?=\s*\()/g, (m) => mkToken('fn', m));
+      // Operators
+      src = src.replace(/(===|!==|==|!=|<=|>=|&&|\|\||\+=|-=|\*=|\/=|%=|=>|->)/g, (m) => mkToken('op', m));
     }
 
-    // Use a dark theme that works well for code
-    return `<pre style="background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;box-shadow:0 2px 4px rgba(0,0,0,0.1)">${highlighted}</pre>`;
+    // Now escape HTML on the tokenized source (tokens are safe null-byte markers)
+    let highlighted = esc(src);
+
+    // Replace tokens with actual styled spans
+    const styles = {
+      jk: 'color:#3b82f6;font-weight:600', js: 'color:#10b981', jn: 'color:#f59e0b', jb: 'color:#ef4444',
+      cm: 'color:#6b7280;font-style:italic', st: 'color:#10b981', kw: 'color:#8b5cf6;font-weight:600',
+      bl: 'color:#ef4444', nu: 'color:#f59e0b', fn: 'color:#3b82f6', op: 'color:#a855f7'
+    };
+    for (const { id, cls, text } of tokens) {
+      highlighted = highlighted.replace(id, `<span style="${styles[cls]}">${esc(text)}</span>`);
+    }
+
+    return `<pre style="background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155">${highlighted}</pre>`;
   }
 
   /**
