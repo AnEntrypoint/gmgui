@@ -253,9 +253,9 @@ export const queries = {
     const id = generateId('conv');
     const now = Date.now();
     const stmt = db.prepare(
-      `INSERT INTO conversations (id, agentType, title, created_at, updated_at, status, workingDirectory) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO conversations (id, agentId, agentType, title, created_at, updated_at, status, workingDirectory) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    stmt.run(id, agentType, title, now, now, 'active', workingDirectory);
+    stmt.run(id, agentType, agentType, title, now, now, 'active', workingDirectory);
 
     return {
       id,
