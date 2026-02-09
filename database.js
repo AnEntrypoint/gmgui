@@ -573,6 +573,7 @@ export const queries = {
     }
 
     const deleteStmt = db.transaction(() => {
+      db.prepare('DELETE FROM stream_updates WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM chunks WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM events WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM sessions WHERE conversationId = ?').run(id);
@@ -1064,6 +1065,7 @@ export const queries = {
     }
 
     const deleteStmt = db.transaction(() => {
+      db.prepare('DELETE FROM stream_updates WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM chunks WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM events WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM sessions WHERE conversationId = ?').run(id);
