@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 3000;
 const BASE_URL = (process.env.BASE_URL || '/gm').replace(/\/+$/, '');
 const watch = process.argv.includes('--no-watch') ? false : (process.argv.includes('--watch') || process.env.HOT_RELOAD !== 'false');
 
-const STARTUP_CWD = process.cwd();
+const STARTUP_CWD = process.env.STARTUP_CWD || process.cwd();
 const staticDir = path.join(__dirname, 'static');
 if (!fs.existsSync(staticDir)) fs.mkdirSync(staticDir, { recursive: true });
 

@@ -44,7 +44,7 @@ async function gmgui(args = []) {
     return new Promise((resolve, reject) => {
       const ps = spawn(runtime, [path.join(projectRoot, 'server.js')], {
         cwd: projectRoot,
-        env: { ...process.env, PORT: port, BASE_URL: baseUrl },
+        env: { ...process.env, PORT: port, BASE_URL: baseUrl, STARTUP_CWD: process.cwd() },
         stdio: 'inherit'
       });
 
