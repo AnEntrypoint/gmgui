@@ -1,0 +1,64 @@
+GitHub Actions npm Publishing Fix - Complete Execution Plan
+
+DISCOVERY PHASE (COMPLETED):
+[x] 1.1 - Locate GitHub Actions workflow files in .github/workflows directory
+    Found: /home/user/agentgui/.github/workflows/publish-npm.yml and publish.yml
+[x] 1.2 - Examine workflow file structure and identify npm publishing step
+    Workflow correctly references ${{ secrets.NPM_TOKEN }} on line 33
+[x] 1.3 - Identify what credentials/tokens are required
+    Requires: secrets.NPM_TOKEN for npm authentication
+[x] 1.4 - Check current token status
+    Existing token found: github-actions-publish (expires May 10, 2026)
+
+TOKEN STRATEGY PHASE:
+[ ] 2.1 - Understand granular token limitations for npm publishing
+    Blocks: 2.2
+    BlockedBy: none
+[ ] 2.2 - Determine if classic npm token or granular token should be used
+    Blocks: 2.3
+    BlockedBy: 2.1
+[ ] 2.3 - Create appropriate npm token for GitHub Actions
+    Blocks: 2.4
+    BlockedBy: 2.2
+[ ] 2.4 - Copy token value and document for GitHub Secrets
+    Blocks: 3.1
+    BlockedBy: 2.3
+
+GITHUB CONFIG PHASE:
+[ ] 3.1 - Access GitHub repository secrets via web interface
+    Blocks: 3.2
+    BlockedBy: 2.4
+[ ] 3.2 - Add/update NPM_TOKEN secret in GitHub repository
+    Blocks: 3.3
+    BlockedBy: 3.1
+[ ] 3.3 - Verify secret is properly stored and accessible
+    Blocks: 4.1
+    BlockedBy: 3.2
+
+VERIFICATION PHASE:
+[ ] 4.1 - Verify workflow file syntax and npm registry setup
+    Blocks: 4.2
+    BlockedBy: 3.3
+[ ] 4.2 - Verify npm package.json is correct and publishable
+    Blocks: 5.1
+    BlockedBy: 4.1
+
+EXECUTION & TESTING PHASE:
+[ ] 5.1 - Trigger GitHub Actions publish-npm workflow
+    Blocks: 5.2
+    BlockedBy: 4.2
+[ ] 5.2 - Monitor workflow execution in real time
+    Blocks: 5.3
+    BlockedBy: 5.1
+[ ] 5.3 - Verify package appears on npm registry
+    Blocks: 6.1
+    BlockedBy: 5.2
+[ ] 5.4 - Verify version bump commit was created
+    Blocks: 6.1
+    BlockedBy: 5.3
+
+FINAL VERIFICATION:
+[ ] 6.1 - Document successful publishing result
+    Blocks: none
+    BlockedBy: 5.3, 5.4
+# NPM Publishing Fix - Tue Feb 10 20:21:18 SAST 2026
