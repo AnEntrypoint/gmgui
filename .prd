@@ -1,57 +1,222 @@
-GitHub Actions npm Publishing Fix - COMPLETED
+# OIDC Trusted Publishing for npm - Product Requirements Document
 
-NPM_TOKEN SECRET SUCCESSFULLY UPDATED:
-- New Token: [ACTIVE - Stored securely in GitHub Actions secrets]
-- Token Type: npm Granular Access Token
-- Package: agentgui (scoped)
-- Permissions: Read and write
-- Expiration: 90 days
-- GitHub Secret Status: ACTIVE - Last updated 31 minutes ago
-- Verification: GitHub Actions secrets page shows NPM_TOKEN exists and is current
-- Current package.json version: 1.0.136
+## GOAL
+Replace long-lived NPM_TOKEN secret with GitHub Actions OIDC Trusted Publishing. Enable npm publishing without token expiration/rotation/validation issues. Witness successful npm publish using OIDC credentials with provenance metadata.
 
-INVESTIGATION FINDINGS:
-[x] 1.1 - Workflow file is correctly configured
-         File: /home/user/agentgui/.github/workflows/publish-npm.yml
-         Trigger: On push to main branch (except commits with "chore: bump version")
-[x] 1.2 - Workflow correctly sets NPM_TOKEN
-         Command: npm config set //registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}
-[x] 1.3 - GitHub secret NPM_TOKEN exists in repository
-         Confirmed via: gh secret list (shows NPM_TOKEN with timestamp 2026-02-10T18:20:20Z)
-[x] 1.4 - Package 'agentgui' is published on npm.com
-         Maintainer: lanmower account
-         Latest published version: 1.0.131
-         Link: https://www.npmjs.com/package/agentgui
-[x] 2.1 - Token validation test via curl
-         Result: Previous token was invalid (empty response confirmed expiration)
-[x] 2.2 - Direct npm publish test
-         Result: "need auth" error (token not recognized for authentication)
-[x] 2.3 - Token scoping analysis
-         Token is registered as: //registry.npmjs.org/@lanmower:_authToken (scoped to @lanmower)
-         Package name is: agentgui (unscoped package)
-         Updated .npmrc to include both scoped and unscoped token configuration
-         Still fails with "Access token expired or revoked"
+## CURRENT STATE
+- ✓ Workflow updated: Added id-token: write permission, changed to "npm publish --provenance", removed NPM_TOKEN configuration step
+- ✓ Commits created: d7f82a4 pushed to main branch with workflow changes
+- ✓ Secrets cleaned: NPM_TOKEN secret deleted from GitHub Actions
+- ⏳ Pending: npm.org trusted publisher configuration (requires 2FA on npm.com)
+- ⏳ Pending: Test publishing workflow with OIDC tokens
+- Version 1.0.136 is current in package.json (will bump to 1.0.137 on next publish)
+- Package "agentgui" is public on npm.org under "lanmower" account
 
-EXECUTION COMPLETED:
-[x] 3.1 - Generated npm Granular Access Token
-         Token name: "github-actions-publish"
-         Description: "GitHub Actions workflow for publishing agentgui to npm"
-         Token: [SECURE - Stored in GitHub Actions NPM_TOKEN secret]
-[x] 3.2 - Updated GitHub NPM_TOKEN secret
-         Repository: https://github.com/AnEntrypoint/agentgui
-         Secret name: NPM_TOKEN
-         Status: ACTIVE (verified via GitHub web UI)
-         Last updated: 31 minutes ago (timestamp: 2026-02-10T19:30:00Z)
-[x] 3.3 - Verified token in GitHub Actions secrets
-         Location: https://github.com/AnEntrypoint/agentgui/settings/secrets/actions
-         NPM_TOKEN secret present and editable
-         Can be used by GitHub Actions workflows immediately
+## REMAINING WORK - MANUAL CONFIGURATION & TESTING
 
-NEXT STEPS:
-1. Push a test commit to main branch (non-bump commit) to trigger GitHub Actions
-2. Verify workflow executes and publishes to npm
-3. Check npm package page: https://www.npmjs.com/package/agentgui
-4. Expected: New version published successfully
+### Wave 3 (Sequential - Configure npm OIDC Trust) - IN PROGRESS
+- [LOGIN-NPM] MANUAL - Log into npm account at https://www.npmjs.com/login (lanmower account)
+  - Blocks: [NAVIGATE-NPM-SETTINGS]
+- [NAVIGATE-NPM-SETTINGS] MANUAL - Go to https://www.npmjs.com/package/agentgui/access
+  - Blocks: [ADD-TRUSTED-PUBLISHER]
+- [ADD-TRUSTED-PUBLISHER] MANUAL - Look for "Trusted Publishers" section, click "Add trusted publisher"
+  - Blocks: [CONFIGURE-GITHUB-PROVIDER]
+- [CONFIGURE-GITHUB-PROVIDER] MANUAL - Select "GitHub Actions" as provider type
+  - Blocks: [INPUT-REPO-DETAILS]
+- [INPUT-REPO-DETAILS] MANUAL - Fill in:
+    Organization: AnEntrypoint
+    Repository: agentgui
+    Workflow filename: .github/workflows/publish-npm.yml
+    Environment: (leave blank)
+  - Blocks: [SAVE-PUBLISHER]
+- [SAVE-PUBLISHER] MANUAL - Click Save button
+  - Blocks: [VERIFY-PUBLISHER-SAVED]
+- [VERIFY-PUBLISHER-SAVED] MANUAL - Confirm GitHub appears in trusted publishers list on npm.org
+  - Blocks: [TEST-PUBLISH]
 
-STATUS: READY FOR TESTING
-All infrastructure is in place. Token is valid for 90 days. System ready for automated npm publishing via GitHub Actions.
+
+### Wave 5 (Sequential - Test Publishing, depends on Waves 2, 3, 4)
+- [TEST-PUBLISH] Push workflow changes and trigger automatic build
+  - Blocks: [MONITOR-WORKFLOW]
+- [MONITOR-WORKFLOW] Watch GitHub Actions execution in real-time
+  - Blocks: [VERIFY-OIDC-TOKEN]
+- [VERIFY-OIDC-TOKEN] Confirm OIDC token generation succeeds in workflow log
+  - Blocks: [VERIFY-NPM-PUBLISH]
+- [VERIFY-NPM-PUBLISH] Confirm "npm publish --provenance" succeeds
+  - Blocks: [VERIFY-VERSION-BUMPED]
+- [VERIFY-VERSION-BUMPED] Check that version was incremented in main branch
+  - Blocks: [VERIFY-NPM-RELEASE]
+- [VERIFY-NPM-RELEASE] Go to npm.org and verify new version published
+  - Blocks: [VERIFY-PROVENANCE-METADATA]
+- [VERIFY-PROVENANCE-METADATA] Inspect provenance metadata in published package
+  - Blocks: [FAILURE-SCENARIOS]
+
+### Wave 6 (Parallel - Failure Handling & Documentation, depends on Wave 5)
+- [HANDLE-OIDC-FAILURE] If OIDC token generation fails: research GitHub Actions OIDC requirements
+- [HANDLE-UNTRUSTED-FAILURE] If npm rejects as "untrusted publisher": verify npm config matches workflow exactly
+- [HANDLE-PUBLISH-FAILURE] If npm publish fails: verify package.json validity and version uniqueness
+- [DOCUMENT-SETUP] Record npm trusted publisher configuration details
+- [UPDATE-DOCS] Add OIDC setup documentation to project README or CLAUDE.md
+
+## DETAILED IMPLEMENTATION STEPS
+
+### Research Phase (Wave 1)
+1. Fetch npm Trusted Publishers documentation
+2. Fetch GitHub Actions OIDC documentation
+3. Verify package tier supports OIDC
+4. Understand workflow configuration requirements
+5. Validate GitHub Actions OIDC token generation capabilities
+
+### Workflow Modification (Wave 2)
+```yaml
+CHANGE: permissions section
+FROM:   contents: write
+TO:     contents: write
+        id-token: write
+
+REMOVE: "Setup npm credentials" step entirely
+
+CHANGE: "Publish to npm" step
+FROM:   run: npm publish
+TO:     run: npm publish --provenance
+```
+
+### npm OIDC Configuration (Wave 3)
+1. Log into npm.org account (lanmower)
+2. Navigate to package "agentgui" settings
+3. Go to "Trusted Publishers" section
+4. Add trusted publisher:
+   - Type: GitHub
+   - Owner: AnEntrypoint
+   - Repo: agentgui
+   - Workflow: publish-npm.yml
+5. Save configuration
+6. Verify appears in trusted publishers list
+
+### Secret Removal (Wave 4)
+1. Commit workflow changes to git
+2. Navigate to GitHub repo Settings > Secrets and Variables > Actions
+3. Delete NPM_TOKEN secret
+4. Verify deletion confirmation
+
+### Testing & Verification (Wave 5)
+1. Push workflow changes to main branch
+2. Monitor GitHub Actions execution
+3. Verify OIDC token generated (check workflow logs)
+4. Verify npm publish succeeded with provenance flag
+5. Verify version bumped in main branch
+6. Verify new version on npm.org
+7. Verify provenance metadata attached to published package
+
+## SUCCESS CRITERIA - All Must Be True
+- [SUCCESS-1] Workflow file updated with id-token: write permission
+- [SUCCESS-2] Workflow file uses "npm publish --provenance" command
+- [SUCCESS-3] Workflow file does NOT contain NPM_TOKEN configuration step
+- [SUCCESS-4] npm package has GitHub as trusted publisher
+- [SUCCESS-5] GitHub Actions workflow executes without NPM_TOKEN secret
+- [SUCCESS-6] Workflow generates OIDC token (visible in logs)
+- [SUCCESS-7] npm publish succeeds with OIDC token
+- [SUCCESS-8] New package version published to npm.org
+- [SUCCESS-9] Provenance metadata attached to published package
+- [SUCCESS-10] Version bumped in main branch
+- [SUCCESS-11] NPM_TOKEN secret removed from GitHub
+- [SUCCESS-12] No token-related authentication errors
+
+## FAILURE PATHS & RECOVERY
+
+### Failure: npm account doesn't support OIDC
+- Recovery: Check account tier, upgrade if needed, or use automation token
+- Verification: npm documentation explicitly lists tier requirements
+
+### Failure: "untrusted publisher" error from npm
+- Recovery: Verify GitHub trusted publisher config matches workflow exactly
+  - Owner must match (AnEntrypoint)
+  - Repo must match (agentgui)
+  - Workflow must match (publish-npm.yml)
+- Verification: Regenerate OIDC token and retry
+
+### Failure: OIDC token generation fails in GitHub Actions
+- Recovery: Check GitHub Actions OIDC permissions (id-token: write)
+- Recovery: Verify GitHub Actions environment supports OIDC
+- Verification: Check workflow logs for token generation errors
+
+### Failure: npm publish fails with version conflict
+- Recovery: Check current npm version vs package.json version
+- Recovery: Verify version bump logic in workflow
+- Verification: Manually publish test version after manual bump
+
+### Failure: Provenance metadata not attached
+- Recovery: Verify "npm publish --provenance" flag is present
+- Recovery: Check npm CLI version supports provenance
+- Verification: Use "npm view agentgui" to inspect metadata
+
+## EDGE CASES & SPECIAL HANDLING
+
+### Edge Case: OIDC token expiration during long publish
+- Mitigation: npm handles token refresh; typically <5 minute token is sufficient
+- Verification: Monitor workflow execution time (should be <2 minutes)
+
+### Edge Case: Multiple workflows publishing different packages
+- Mitigation: Each trusted publisher is package-specific
+- Verification: npm config shows workflow path and package name
+
+### Edge Case: Workflow branches other than main
+- Consideration: Trusted publisher may be branch-specific
+- Resolution: Configure trust for "main" branch only initially
+
+### Edge Case: Version bump commit triggers new publish
+- Current: Workflow skips if commit message contains "chore: bump version"
+- Verification: Ensure skip logic still works with new OIDC setup
+
+## VALIDATION CHECKPOINTS
+
+### Checkpoint 1: Workflow Structure Valid
+- [CHECK] YAML syntax is valid
+- [CHECK] Permissions section has id-token: write
+- [CHECK] npm publish command includes --provenance
+- [CHECK] No NPM_TOKEN references remain
+
+### Checkpoint 2: npm Configuration Complete
+- [CHECK] npm.org shows GitHub as trusted publisher
+- [CHECK] Trusted publisher details match workflow exactly
+- [CHECK] Settings saved and persistent
+
+### Checkpoint 3: Integration Test Success
+- [CHECK] Workflow triggered on push to main
+- [CHECK] OIDC token generated without errors
+- [CHECK] npm publish succeeded
+- [CHECK] New version visible on npm.org within 5 minutes
+- [CHECK] Provenance metadata present in published package
+- [CHECK] Version bump commit in git history
+
+## COMPLETION REQUIREMENTS
+- Witness full end-to-end execution: git push → workflow trigger → OIDC token generation → npm publish → version bumped → published on npm.org
+- Verify provenance metadata in published package
+- Confirm no NPM_TOKEN secret exists in GitHub
+- Confirm workflow has id-token: write and uses --provenance flag
+- Document the exact npm trusted publisher configuration for reference
+- Ensure system is stable and ready for production use
+
+## REMAINING TASKS
+- [ ] LOGIN-NPM - User must login to npm account (lanmower)
+- [ ] NAVIGATE-NPM-SETTINGS - User must go to https://www.npmjs.com/package/agentgui/access
+- [ ] ADD-TRUSTED-PUBLISHER - User must click "Add trusted publisher"
+- [ ] CONFIGURE-GITHUB-PROVIDER - User must select GitHub as provider
+- [ ] INPUT-REPO-DETAILS - User must enter: AnEntrypoint, agentgui, .github/workflows/publish-npm.yml
+- [ ] SAVE-PUBLISHER - User must save the configuration
+- [ ] VERIFY-PUBLISHER-SAVED - User must verify GitHub appears as trusted publisher
+
+### Testing Phase (Triggered After Manual Configuration)
+- [ ] TEST-PUBLISH - Trigger workflow: git commit --allow-empty; git push
+- [ ] MONITOR-WORKFLOW - Watch GitHub Actions execution at /actions
+- [ ] VERIFY-OIDC-TOKEN - Confirm token generated in logs (no NPM_TOKEN error)
+- [ ] VERIFY-NPM-PUBLISH - Confirm "npm publish --provenance" succeeded
+- [ ] VERIFY-VERSION-BUMPED - Check version incremented to 1.0.137 in main
+- [ ] VERIFY-NPM-RELEASE - Check new version on npm.org within 5 minutes
+- [ ] VERIFY-PROVENANCE-METADATA - Verify provenance metadata attached to package
+
+## NEXT IMMEDIATE ACTION
+Complete npm.org 2FA authentication dialog that appeared when configuring GitHub trusted publisher. After completing 2FA:
+1. Verify GitHub appears as trusted publisher for agentgui on npm.org
+2. Push workflow changes to main (git push)
+3. Monitor GitHub Actions for successful OIDC-based publish
