@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { execSync } from 'child_process';
@@ -11,7 +12,7 @@ import { runClaudeWithStreaming } from './lib/claude-runner.js';
 const require = createRequire(import.meta.url);
 const express = require('express');
 const Busboy = require('busboy');
-const fsbrowse = require('../fsbrowse');
+const fsbrowse = require('fsbrowse');
 
 const SYSTEM_PROMPT = `Always write your responses in ripple-ui enhanced HTML. Avoid overriding light/dark mode CSS variables. Use all the benefits of HTML to express technical details with proper semantic markup, tables, code blocks, headings, and lists. Write clean, well-structured HTML that respects the existing design system.`;
 
@@ -425,7 +426,7 @@ const server = http.createServer(async (req, res) => {
 
     if (routePath === '/api/home' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ home: process.env.HOME || '/config', cwd: STARTUP_CWD }));
+      res.end(JSON.stringify({ home: os.homedir(), cwd: STARTUP_CWD }));
       return;
     }
 
@@ -434,7 +435,7 @@ const server = http.createServer(async (req, res) => {
       const folderPath = body.path || STARTUP_CWD;
       try {
         const expandedPath = folderPath.startsWith('~') ?
-          folderPath.replace('~', process.env.HOME || '/config') : folderPath;
+          folderPath.replace('~', os.homedir()) : folderPath;
         const entries = fs.readdirSync(expandedPath, { withFileTypes: true });
         const folders = entries
           .filter(e => e.isDirectory() && !e.name.startsWith('.'))
@@ -453,7 +454,7 @@ const server = http.createServer(async (req, res) => {
       const imagePath = routePath.slice('/api/image/'.length);
       const decodedPath = decodeURIComponent(imagePath);
       const expandedPath = decodedPath.startsWith('~') ?
-        decodedPath.replace('~', process.env.HOME || '/config') : decodedPath;
+        decodedPath.replace('~', os.homedir()) : decodedPath;
       const normalizedPath = path.normalize(expandedPath);
       if (!normalizedPath.startsWith('/') || normalizedPath.includes('..')) {
         res.writeHead(403); res.end('Forbidden'); return;
