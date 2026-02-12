@@ -166,11 +166,18 @@ const server = http.createServer(async (req, res) => {
       const demoPath = path.join(__dirname, 'node_modules', 'webtalk', 'app.html');
       return fs.readFile(demoPath, 'utf-8', (err, html) => {
         if (err) { res.writeHead(500); res.end('Error'); return; }
-        const patched = html.replace("from '/webtalk/sdk.js'", "from './sdk.js'");
-        res.writeHead(200, { 'Content-Type': 'text/html', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+        let patched = html.replace("from '/webtalk/sdk.js'", `from '${BASE_URL}/webtalk/sdk.js'`);
+        patched = patched.replace('<head>', `<head>\n    <script>window.__WEBTALK_BASE='${BASE_URL}';</script>`);
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Cross-Origin-Embedder-Policy': 'credentialless', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
         res.end(patched);
       });
     }
+    const origSetHeader = res.setHeader.bind(res);
+    res.setHeader = (name, value) => {
+      const lower = name.toLowerCase();
+      if (lower === 'cross-origin-embedder-policy' || lower === 'cross-origin-opener-policy') return;
+      origSetHeader(name, value);
+    };
     return webtalkApp(req, res);
   }
 
