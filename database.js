@@ -573,12 +573,19 @@ export const queries = {
     }
 
     const deleteStmt = db.transaction(() => {
+      const sessionIds = db.prepare('SELECT id FROM sessions WHERE conversationId = ?').all(id).map(r => r.id);
       db.prepare('DELETE FROM stream_updates WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM chunks WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM events WHERE conversationId = ?').run(id);
+      if (sessionIds.length > 0) {
+        const placeholders = sessionIds.map(() => '?').join(',');
+        db.prepare(`DELETE FROM stream_updates WHERE sessionId IN (${placeholders})`).run(...sessionIds);
+        db.prepare(`DELETE FROM chunks WHERE sessionId IN (${placeholders})`).run(...sessionIds);
+        db.prepare(`DELETE FROM events WHERE sessionId IN (${placeholders})`).run(...sessionIds);
+      }
       db.prepare('DELETE FROM sessions WHERE conversationId = ?').run(id);
       db.prepare('DELETE FROM messages WHERE conversationId = ?').run(id);
-      db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run('deleted', id);
+      db.prepare('DELETE FROM conversations WHERE id = ?').run(id);
     });
 
     deleteStmt();
