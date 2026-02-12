@@ -162,6 +162,15 @@ const server = http.createServer(async (req, res) => {
     pathOnly.startsWith('/models/');
   if (isWebtalkRoute) {
     if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
+    if (pathOnly === webtalkPrefix + '/demo' || pathOnly === '/webtalk/demo') {
+      const demoPath = path.join(__dirname, 'node_modules', 'webtalk', 'app.html');
+      return fs.readFile(demoPath, 'utf-8', (err, html) => {
+        if (err) { res.writeHead(500); res.end('Error'); return; }
+        const patched = html.replace("from '/webtalk/sdk.js'", "from './sdk.js'");
+        res.writeHead(200, { 'Content-Type': 'text/html', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+        res.end(patched);
+      });
+    }
     return webtalkApp(req, res);
   }
 
