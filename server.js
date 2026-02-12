@@ -152,12 +152,23 @@ const server = http.createServer(async (req, res) => {
   // Route webtalk (voice STT/TTS) through isolated Express app (COEP/COOP scoped)
   const pathOnly = req.url.split('?')[0];
   if (pathOnly.startsWith(BASE_URL + '/webtalk') || pathOnly.startsWith('/webtalk') || pathOnly.startsWith('/assets/') || pathOnly.startsWith('/tts/') || pathOnly.startsWith('/models/')) {
+    // Rewrite bare /webtalk/* paths to include BASE_URL prefix so webtalk middleware routes match
+    if (!req.url.startsWith(BASE_URL) && (pathOnly.startsWith('/webtalk') || pathOnly.startsWith('/assets/') || pathOnly.startsWith('/tts/') || pathOnly.startsWith('/models/'))) {
+      req.url = BASE_URL + req.url;
+    }
     return webtalkApp(req, res);
   }
 
   // Route file upload and fsbrowse requests through Express sub-app
   if (pathOnly.startsWith(BASE_URL + '/api/upload/') || pathOnly.startsWith(BASE_URL + '/files/')) {
     return expressApp(req, res);
+  }
+
+  if (req.url === '/favicon.ico' || req.url === BASE_URL + '/favicon.ico') {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#3b82f6"/><text x="50" y="68" font-size="50" font-family="sans-serif" font-weight="bold" fill="white" text-anchor="middle">G</text></svg>';
+    res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400' });
+    res.end(svg);
+    return;
   }
 
   if (req.url === '/') { res.writeHead(302, { Location: BASE_URL + '/' }); res.end(); return; }
