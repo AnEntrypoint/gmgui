@@ -162,14 +162,26 @@ const server = http.createServer(async (req, res) => {
     pathOnly.startsWith('/models/');
   if (isWebtalkRoute) {
     if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
+    const webtalkPath = (req.url.startsWith('/webtalk') ? req.url : '/webtalk' + req.url).split('?')[0];
+    const webtalkSdkDir = path.join(__dirname, 'node_modules', 'webtalk');
+    const sdkFiles = { '/webtalk/sdk.js': 'sdk.js', '/webtalk/stt.js': 'stt.js', '/webtalk/tts.js': 'tts.js', '/webtalk/tts-utils.js': 'tts-utils.js' };
     if (pathOnly === webtalkPrefix + '/demo' || pathOnly === '/webtalk/demo') {
-      const demoPath = path.join(__dirname, 'node_modules', 'webtalk', 'app.html');
+      const demoPath = path.join(webtalkSdkDir, 'app.html');
       return fs.readFile(demoPath, 'utf-8', (err, html) => {
         if (err) { res.writeHead(500); res.end('Error'); return; }
-        let patched = html.replace("from '/webtalk/sdk.js'", `from '${BASE_URL}/webtalk/sdk.js'`);
+        let patched = html.replace(/from\s+['"]\/webtalk\/sdk\.js['"]/g, `from '${BASE_URL}/webtalk/sdk.js'`);
         patched = patched.replace('<head>', `<head>\n    <script>window.__WEBTALK_BASE='${BASE_URL}';</script>`);
         res.writeHead(200, { 'Content-Type': 'text/html', 'Cross-Origin-Embedder-Policy': 'credentialless', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
         res.end(patched);
+      });
+    }
+    if (sdkFiles[webtalkPath]) {
+      const filePath = path.join(webtalkSdkDir, sdkFiles[webtalkPath]);
+      return fs.readFile(filePath, 'utf-8', (err, js) => {
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
+        const rewritten = js.replace(/from\s+['"]\.\/([^'"]+)['"]/g, `from '${BASE_URL}/webtalk/$1'`);
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+        res.end(rewritten);
       });
     }
     const origSetHeader = res.setHeader.bind(res);
