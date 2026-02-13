@@ -413,9 +413,7 @@ class EventProcessor {
    * HTML escape utility
    */
   escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return window._escHtml(text);
   }
 
   /**

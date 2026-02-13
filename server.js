@@ -298,8 +298,8 @@ const server = http.createServer(async (req, res) => {
       const conv = queries.getConversation(conversationId);
       if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
 
-      const prompt = body.content || '';
-      const agentId = body.agentId || 'claude-code';
+      const prompt = body.content || body.message || '';
+      const agentId = body.agentId || conv.agentType || conv.agentId || 'claude-code';
 
       const userMessage = queries.createMessage(conversationId, 'user', prompt);
       queries.createEvent('message.created', { role: 'user', messageId: userMessage.id }, conversationId);
@@ -702,6 +702,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   activeExecutions.set(conversationId, { pid: null, startTime, sessionId, lastActivity: startTime });
   queries.setIsStreaming(conversationId, true);
   queries.updateSession(sessionId, { status: 'active' });
+  const batcher = createChunkBatcher();
 
   try {
     debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}`);
@@ -713,7 +714,6 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     let allBlocks = [];
     let eventCount = 0;
     let currentSequence = queries.getMaxSequence(sessionId) ?? -1;
-    const batcher = createChunkBatcher();
 
     const onEvent = (parsed) => {
       eventCount++;
@@ -826,6 +826,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     };
 
     const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(content, cwd, agentId || 'claude-code', config);
+    activeExecutions.delete(conversationId);
     batcher.drain();
     debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
 

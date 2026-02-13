@@ -1102,6 +1102,12 @@
       opacity: 0.3;
     }
 
+    .conversation-messages { contain: content; }
+    .streaming-blocks { contain: content; }
+    .sidebar-list { contain: strict; content-visibility: auto; }
+    .message { contain: layout style; content-visibility: auto; contain-intrinsic-size: auto 120px; }
+    #output-scroll { will-change: transform; }
+
     .voice-block .voice-result-stats {
       font-size: 0.8rem;
       color: var(--color-text-secondary);
@@ -2077,6 +2083,11 @@
     </div>
   </div>
 
+  <script>
+    var _escHtmlMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    var _escHtmlRe = /[&<>"']/g;
+    window._escHtml = function(t) { return t.replace(_escHtmlRe, function(c) { return _escHtmlMap[c]; }); };
+  </script>
   <script defer src="/gm/js/event-processor.js"></script>
   <script defer src="/gm/js/streaming-renderer.js"></script>
   <script defer src="/gm/js/websocket-manager.js"></script>

@@ -69,6 +69,7 @@ class StreamingRenderer {
     this.setupDOMObserver();
     this.setupResizeObserver();
     this.setupScrollOptimization();
+    StreamingRenderer._setupGlobalLazyHL();
     return this;
   }
 
@@ -820,7 +821,7 @@ class StreamingRenderer {
    */
   static renderSmartContentHTML(contentStr, escapeHtml) {
     const trimmed = contentStr.trim();
-    const esc = escapeHtml || (t => t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])));
+    const esc = escapeHtml || window._escHtml;
 
     if (trimmed.startsWith('data:image/')) {
       return `<div style="padding:0.5rem"><img src="${esc(trimmed)}" style="max-width:100%;max-height:24rem;border-radius:0.375rem" loading="lazy"></div>`;
@@ -1071,16 +1072,44 @@ class StreamingRenderer {
   static renderCodeWithHighlight(code, esc) {
     const preStyle = "background:#1e293b;padding:1rem;border-radius:0 0 0.375rem 0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;border-top:none;margin:0";
     const lineCount = code.split('\n').length;
-    const lang = (typeof hljs !== 'undefined') ? (hljs.highlightAuto(code).language || 'code') : 'code';
-    const summaryLabel = `${lang} - ${lineCount} line${lineCount !== 1 ? 's' : ''}`;
-    let codeHtml;
-    if (typeof hljs !== 'undefined') {
-      const result = hljs.highlightAuto(code);
-      codeHtml = `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
-    } else {
-      codeHtml = `<pre style="${preStyle}">${esc(code)}</pre>`;
-    }
+    const summaryLabel = `code - ${lineCount} line${lineCount !== 1 ? 's' : ''}`;
+    const codeHtml = `<pre style="${preStyle}"><code class="lazy-hl">${esc(code)}</code></pre>`;
     return `<details class="collapsible-code"><summary class="collapsible-code-summary">${summaryLabel}</summary>${codeHtml}</details>`;
+  }
+
+  static _setupGlobalLazyHL() {
+    if (StreamingRenderer._lazyHLObserver) return;
+    StreamingRenderer._lazyHLObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          const els = node.querySelectorAll ? node.querySelectorAll('code.lazy-hl') : [];
+          if (node.classList && node.classList.contains('lazy-hl')) StreamingRenderer._observeHL(node);
+          for (const el of els) StreamingRenderer._observeHL(el);
+        }
+      }
+    });
+    StreamingRenderer._hlIO = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const el = entry.target;
+        StreamingRenderer._hlIO.unobserve(el);
+        if (typeof hljs === 'undefined') continue;
+        try {
+          const raw = el.textContent;
+          const result = hljs.highlightAuto(raw);
+          el.classList.remove('lazy-hl');
+          el.classList.add('hljs');
+          el.innerHTML = result.value;
+        } catch (_) {}
+      }
+    }, { rootMargin: '300px' });
+    const root = document.getElementById('output-scroll') || document.body;
+    StreamingRenderer._lazyHLObserver.observe(root, { childList: true, subtree: true });
+  }
+
+  static _observeHL(el) {
+    if (StreamingRenderer._hlIO) StreamingRenderer._hlIO.observe(el);
   }
 
   static getToolDisplayName(toolName) {
@@ -1845,9 +1874,7 @@ class StreamingRenderer {
    * HTML escape utility
    */
   escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return window._escHtml(text);
   }
 
   /**

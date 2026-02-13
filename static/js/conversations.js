@@ -31,11 +31,29 @@ class ConversationManager {
 
   async init() {
     this.newBtn?.addEventListener('click', () => this.openFolderBrowser());
+    this.setupDelegatedListeners();
     this.loadConversations();
     this.setupWebSocketListener();
     this.setupFolderBrowser();
 
     setInterval(() => this.loadConversations(), 30000);
+  }
+
+  setupDelegatedListeners() {
+    this.listEl.addEventListener('click', (e) => {
+      const deleteBtn = e.target.closest('[data-delete-conv]');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const convId = deleteBtn.dataset.deleteConv;
+        const conv = this.conversations.find(c => c.id === convId);
+        this.confirmDelete(convId, conv?.title || 'Untitled');
+        return;
+      }
+      const item = e.target.closest('[data-conv-id]');
+      if (item) {
+        this.select(item.dataset.convId);
+      }
+    });
   }
 
   setupFolderBrowser() {
@@ -267,14 +285,6 @@ class ConversationManager {
       </button>
     `;
 
-    // Handle delete button click
-    const deleteBtn = li.querySelector('[data-delete-conv]');
-    deleteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.confirmDelete(conv.id, title);
-    });
-
-    li.addEventListener('click', () => this.select(conv.id));
     return li;
   }
 
@@ -368,8 +378,7 @@ class ConversationManager {
   }
 
   escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return text.replace(/[&<>"']/g, c => map[c]);
+    return window._escHtml(text);
   }
 }
 

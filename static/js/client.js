@@ -446,28 +446,40 @@ class AgentGUIClient {
                 if (!sessionGroups[c.sessionId]) { sessionGroups[c.sessionId] = []; sessionOrder.push(c.sessionId); }
                 sessionGroups[c.sessionId].push(c);
               });
+              const priorFrag = document.createDocumentFragment();
               let ui = 0;
               sessionOrder.forEach(sid => {
                 const sList = sessionGroups[sid];
                 const sStart = sList[0].created_at;
                 while (ui < userMsgs.length && userMsgs[ui].created_at <= sStart) {
                   const m = userMsgs[ui++];
-                  messagesEl.insertAdjacentHTML('beforeend', `<div class="message message-user" data-msg-id="${m.id}"><div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div></div>`);
+                  const uDiv = document.createElement('div');
+                  uDiv.className = 'message message-user';
+                  uDiv.setAttribute('data-msg-id', m.id);
+                  uDiv.innerHTML = `<div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div>`;
+                  priorFrag.appendChild(uDiv);
                 }
                 const mDiv = document.createElement('div');
                 mDiv.className = 'message message-assistant';
                 mDiv.id = `message-${sid}`;
                 mDiv.innerHTML = '<div class="message-role">Assistant</div><div class="message-blocks streaming-blocks"></div>';
                 const bEl = mDiv.querySelector('.message-blocks');
-                sList.forEach(chunk => { if (chunk.block?.type) { const el = this.renderer.renderBlock(chunk.block, chunk); if (el) bEl.appendChild(el); } });
+                const bFrag = document.createDocumentFragment();
+                sList.forEach(chunk => { if (chunk.block?.type) { const el = this.renderer.renderBlock(chunk.block, chunk); if (el) bFrag.appendChild(el); } });
+                bEl.appendChild(bFrag);
                 const ts = document.createElement('div'); ts.className = 'message-timestamp'; ts.textContent = new Date(sList[sList.length - 1].created_at).toLocaleString();
                 mDiv.appendChild(ts);
-                messagesEl.appendChild(mDiv);
+                priorFrag.appendChild(mDiv);
               });
               while (ui < userMsgs.length) {
                 const m = userMsgs[ui++];
-                messagesEl.insertAdjacentHTML('beforeend', `<div class="message message-user" data-msg-id="${m.id}"><div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div></div>`);
+                const uDiv = document.createElement('div');
+                uDiv.className = 'message message-user';
+                uDiv.setAttribute('data-msg-id', m.id);
+                uDiv.innerHTML = `<div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div>`;
+                priorFrag.appendChild(uDiv);
               }
+              messagesEl.appendChild(priorFrag);
             } else {
               messagesEl.innerHTML = this.renderMessages(fullData.messages || []);
             }
@@ -1228,6 +1240,7 @@ class AgentGUIClient {
             sessionChunks[chunk.sessionId].push(chunk);
           });
 
+          const frag = document.createDocumentFragment();
           let userMsgIdx = 0;
           sessionOrder.forEach((sessionId) => {
             const sessionChunkList = sessionChunks[sessionId];
@@ -1243,7 +1256,7 @@ class AgentGUIClient {
                 ${this.renderMessageContent(msg.content)}
                 <div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>
               `;
-              messagesEl.appendChild(userDiv);
+              frag.appendChild(userDiv);
               userMsgIdx++;
             }
 
@@ -1254,12 +1267,14 @@ class AgentGUIClient {
             messageDiv.innerHTML = '<div class="message-role">Assistant</div><div class="message-blocks streaming-blocks"></div>';
 
             const blocksEl = messageDiv.querySelector('.message-blocks');
+            const blockFrag = document.createDocumentFragment();
             sessionChunkList.forEach(chunk => {
               if (chunk.block && chunk.block.type) {
                 const element = this.renderer.renderBlock(chunk.block, chunk);
-                if (element) blocksEl.appendChild(element);
+                if (element) blockFrag.appendChild(element);
               }
             });
+            blocksEl.appendChild(blockFrag);
 
             if (isCurrentActiveSession) {
               const indicatorDiv = document.createElement('div');
@@ -1277,7 +1292,7 @@ class AgentGUIClient {
               messageDiv.appendChild(ts);
             }
 
-            messagesEl.appendChild(messageDiv);
+            frag.appendChild(messageDiv);
           });
 
           while (userMsgIdx < userMessages.length) {
@@ -1290,9 +1305,10 @@ class AgentGUIClient {
               ${this.renderMessageContent(msg.content)}
               <div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>
             `;
-            messagesEl.appendChild(userDiv);
+            frag.appendChild(userDiv);
             userMsgIdx++;
           }
+          messagesEl.appendChild(frag);
         } else {
           messagesEl.innerHTML = this.renderMessages(allMessages || []);
         }
@@ -1431,8 +1447,7 @@ class AgentGUIClient {
    * Escape HTML to prevent XSS
    */
   escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return text.replace(/[&<>"']/g, c => map[c]);
+    return window._escHtml(text);
   }
 
   /**

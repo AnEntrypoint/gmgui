@@ -396,9 +396,7 @@ class UIComponents {
    * HTML escape utility
    */
   static escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return window._escHtml(text);
   }
 
   /**
