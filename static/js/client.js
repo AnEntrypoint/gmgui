@@ -481,7 +481,7 @@ class AgentGUIClient {
               }
               messagesEl.appendChild(priorFrag);
             } else {
-              messagesEl.innerHTML = this.renderMessages(fullData.messages || []);
+              messagesEl.appendChild(this.renderMessagesFragment(fullData.messages || []));
             }
           }
         } catch (e) {
@@ -1001,9 +1001,7 @@ class AgentGUIClient {
           pollState.backoffDelay = 150;
           const lastChunk = chunks[chunks.length - 1];
           pollState.lastFetchTimestamp = lastChunk.created_at;
-          chunks.forEach(chunk => {
-            if (chunk.block && chunk.block.type) this.renderChunk(chunk);
-          });
+          this.renderChunkBatch(chunks.filter(c => c.block && c.block.type));
         } else {
           pollState.backoffDelay = Math.min(pollState.backoffDelay + 50, 500);
         }
@@ -1310,7 +1308,7 @@ class AgentGUIClient {
           }
           messagesEl.appendChild(frag);
         } else {
-          messagesEl.innerHTML = this.renderMessages(allMessages || []);
+          messagesEl.appendChild(this.renderMessagesFragment(allMessages || []));
         }
 
         if (shouldResumeStreaming && latestSession) {
@@ -1346,101 +1344,29 @@ class AgentGUIClient {
     }
   }
 
-  /**
-   * Render messages for display
-   */
+  renderMessagesFragment(messages) {
+    const frag = document.createDocumentFragment();
+    if (messages.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'text-secondary';
+      p.textContent = 'No messages in this conversation yet';
+      frag.appendChild(p);
+      return frag;
+    }
+    for (const msg of messages) {
+      const div = document.createElement('div');
+      div.className = `message message-${msg.role}`;
+      div.innerHTML = `<div class="message-role">${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}</div>${this.renderMessageContent(msg.content)}<div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>`;
+      frag.appendChild(div);
+    }
+    return frag;
+  }
+
   renderMessages(messages) {
     if (messages.length === 0) {
       return '<p class="text-secondary">No messages in this conversation yet</p>';
     }
-
-    return messages.map(msg => {
-      let contentHtml = '';
-
-      if (typeof msg.content === 'string') {
-        if (this.isHtmlContent(msg.content)) {
-          contentHtml = `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(msg.content)}</div></div>`;
-        } else {
-          contentHtml = `<div class="message-text">${this.escapeHtml(msg.content)}</div>`;
-        }
-      } else if (msg.content && typeof msg.content === 'object' && msg.content.type === 'claude_execution') {
-        contentHtml = '<div class="message-blocks">';
-        if (msg.content.blocks && Array.isArray(msg.content.blocks)) {
-          msg.content.blocks.forEach(block => {
-            if (block.type === 'text') {
-              const parts = this.parseMarkdownCodeBlocks(block.text);
-              parts.forEach(part => {
-                if (part.type === 'html') {
-                  contentHtml += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div></div>`;
-                } else if (part.type === 'text') {
-                  contentHtml += `<div class="message-text">${this.escapeHtml(part.content)}</div>`;
-                } else if (part.type === 'code') {
-                  contentHtml += this.renderCodeBlock(part.language, part.code);
-                }
-              });
-            } else if (block.type === 'code_block') {
-              // Render HTML code blocks as actual HTML elements
-              if (block.language === 'html') {
-                contentHtml += `
-                  <div class="message-code">
-                    <div class="html-rendered-label mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
-                      Rendered HTML
-                    </div>
-                    <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-                      ${block.code}
-                    </div>
-                  </div>
-                `;
-              } else {
-                const cBlkLineCount = block.code.split('\n').length;
-                contentHtml += `<div class="message-code"><details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(block.language || 'code')} - ${cBlkLineCount} line${cBlkLineCount !== 1 ? 's' : ''}</summary><pre style="margin:0;border-radius:0 0 0.375rem 0.375rem">${this.escapeHtml(block.code)}</pre></details></div>`;
-              }
-            } else if (block.type === 'tool_use') {
-              let inputHtml = '';
-              if (block.input && Object.keys(block.input).length > 0) {
-                const inputStr = JSON.stringify(block.input, null, 2);
-                inputHtml = `<div class="folded-tool-body"><pre class="tool-input-pre">${this.escapeHtml(inputStr)}</pre></div>`;
-              }
-              const tn2 = block.name || 'unknown';
-              const foldable2 = tn2.startsWith('mcp__') || tn2 === 'Edit';
-              if (foldable2) {
-                const dName2 = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.getToolDisplayName(tn2) : tn2;
-                const tTitle2 = typeof StreamingRenderer !== 'undefined' && block.input ? StreamingRenderer.getToolTitle(tn2, block.input) : '';
-                contentHtml += `<details class="streaming-block-tool-use folded-tool"><summary class="folded-tool-bar"><span class="folded-tool-name">${this.escapeHtml(dName2)}</span>${tTitle2 ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle2)}</span>` : ''}</summary>${inputHtml}</details>`;
-              } else {
-                contentHtml += `<div class="streaming-block-tool-use"><div class="tool-use-header"><span class="tool-use-icon">&#9881;</span> <span class="tool-use-name">${this.escapeHtml(tn2)}</span></div>${inputHtml}</div>`;
-              }
-            } else if (block.type === 'tool_result') {
-              const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
-              const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
-              contentHtml += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div>${smartHtml}</div>`;
-            }
-          });
-        }
-        contentHtml += '</div>';
-      } else {
-        // Fallback for non-array msg.content: format as key-value pairs
-        if (typeof msg.content === 'object' && msg.content !== null) {
-          const fieldsHtml = Object.entries(msg.content)
-            .map(([key, value]) => {
-              let displayValue = typeof value === 'string' ? value : JSON.stringify(value);
-              if (displayValue.length > 150) displayValue = displayValue.substring(0, 150) + '...';
-              return `<div style="font-size:0.8rem;margin-bottom:0.375rem"><span style="font-weight:600">${this.escapeHtml(key)}:</span> <code style="background:var(--color-bg-secondary);padding:0.125rem 0.25rem;border-radius:0.25rem">${this.escapeHtml(displayValue)}</code></div>`;
-            }).join('');
-          contentHtml = `<div class="message-text" style="background:var(--color-bg-secondary);padding:0.75rem;border-radius:0.375rem">${fieldsHtml}</div>`;
-        } else {
-          contentHtml = `<div class="message-text">${this.escapeHtml(String(msg.content))}</div>`;
-        }
-      }
-
-      return `
-        <div class="message message-${msg.role}">
-          <div class="message-role">${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}</div>
-          ${contentHtml}
-          <div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>
-        </div>
-      `;
-    }).join('');
+    return messages.map(msg => `<div class="message message-${msg.role}"><div class="message-role">${msg.role.charAt(0).toUpperCase() + msg.role.slice(1)}</div>${this.renderMessageContent(msg.content)}<div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div></div>`).join('');
   }
 
   /**

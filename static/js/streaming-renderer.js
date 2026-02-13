@@ -703,40 +703,26 @@ class StreamingRenderer {
   renderBlockToolUse(block, context) {
     const toolName = block.name || 'unknown';
     const input = block.input || {};
-    const shouldFold = toolName.startsWith('mcp__') || toolName === 'Edit';
 
-    if (shouldFold) {
-      const details = document.createElement('details');
-      details.className = 'block-tool-use folded-tool';
-      const summary = document.createElement('summary');
-      summary.className = 'folded-tool-bar';
-      const displayName = this.getToolUseDisplayName(toolName);
-      const titleInfo = this.getToolUseTitle(toolName, input);
-      summary.innerHTML = `
-        <span class="folded-tool-icon">${this.getToolIcon(toolName)}</span>
-        <span class="folded-tool-name">${this.escapeHtml(displayName)}</span>
-        ${titleInfo ? `<span class="folded-tool-desc">${this.escapeHtml(titleInfo)}</span>` : ''}
-      `;
-      details.appendChild(summary);
-      if (Object.keys(input).length > 0) {
-        const paramsDiv = document.createElement('div');
-        paramsDiv.className = 'folded-tool-body';
-        paramsDiv.innerHTML = this.renderSmartParams(toolName, input);
-        details.appendChild(paramsDiv);
-      }
-      return details;
-    }
-
-    const div = document.createElement('div');
-    div.className = 'block-tool-use';
-    div.innerHTML = `
-      <div class="tool-header">
-        <span class="tool-icon">${this.getToolIcon(toolName)}</span>
-        <span class="tool-name"><code>${this.escapeHtml(toolName)}</code></span>
-      </div>
-      ${Object.keys(input).length > 0 ? this.renderSmartParams(toolName, input) : ''}
+    const details = document.createElement('details');
+    details.className = 'block-tool-use folded-tool';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    const displayName = this.getToolUseDisplayName(toolName);
+    const titleInfo = this.getToolUseTitle(toolName, input);
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${this.getToolIcon(toolName)}</span>
+      <span class="folded-tool-name">${this.escapeHtml(displayName)}</span>
+      ${titleInfo ? `<span class="folded-tool-desc">${this.escapeHtml(titleInfo)}</span>` : ''}
     `;
-    return div;
+    details.appendChild(summary);
+    if (Object.keys(input).length > 0) {
+      const paramsDiv = document.createElement('div');
+      paramsDiv.className = 'folded-tool-body';
+      paramsDiv.innerHTML = this.renderSmartParams(toolName, input);
+      details.appendChild(paramsDiv);
+    }
+    return details;
   }
 
   /**
