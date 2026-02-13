@@ -15,3 +15,4 @@ build/
 bun.lock
 tmp/
 test-results/
+.prd
