@@ -430,6 +430,17 @@ export const queries = {
      });
    },
 
+  getLastUserMessage(conversationId) {
+    const stmt = prep(
+      "SELECT * FROM messages WHERE conversationId = ? AND role = 'user' ORDER BY created_at DESC LIMIT 1"
+    );
+    const msg = stmt.get(conversationId);
+    if (msg && typeof msg.content === 'string') {
+      try { msg.content = JSON.parse(msg.content); } catch (_) {}
+    }
+    return msg || null;
+  },
+
   getPaginatedMessages(conversationId, limit = 50, offset = 0) {
     const countStmt = prep('SELECT COUNT(*) as count FROM messages WHERE conversationId = ?');
     const total = countStmt.get(conversationId).count;

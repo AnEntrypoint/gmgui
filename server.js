@@ -1228,29 +1228,75 @@ function recoverStaleSessions() {
   try {
     const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
     const now = Date.now();
-    let recoveredCount = 0;
+    let resumedCount = 0;
+    let failedCount = 0;
+
     for (const session of staleSessions) {
       if (activeExecutions.has(session.conversationId)) continue;
       const sessionAge = now - session.started_at;
       if (sessionAge < STALE_SESSION_MIN_AGE_MS) continue;
+
       queries.updateSession(session.id, {
         status: 'error',
-        error: 'Agent died unexpectedly (server restart)',
+        error: 'Server restarted - resuming',
         completed_at: now
       });
-      queries.setIsStreaming(session.conversationId, false);
+
+      const conv = queries.getConversation(session.conversationId);
+      if (!conv) {
+        queries.setIsStreaming(session.conversationId, false);
+        failedCount++;
+        continue;
+      }
+
+      const lastMsg = queries.getLastUserMessage(session.conversationId);
+      if (!lastMsg || !conv.claudeSessionId) {
+        queries.setIsStreaming(session.conversationId, false);
+        debugLog(`[RECOVERY] Conv ${session.conversationId}: no user message or no claudeSessionId, cannot resume`);
+        broadcastSync({
+          type: 'streaming_error',
+          sessionId: session.id,
+          conversationId: session.conversationId,
+          error: 'Server restarted - could not resume (missing context)',
+          recoverable: false,
+          timestamp: now
+        });
+        failedCount++;
+        continue;
+      }
+
+      const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
+      const agentId = conv.agentType || conv.agentId || 'claude-code';
+
+      debugLog(`[RECOVERY] Resuming conv ${session.conversationId} with claudeSessionId=${conv.claudeSessionId}`);
+
+      const newSession = queries.createSession(session.conversationId);
+      queries.createEvent('session.created', {
+        messageId: lastMsg.id,
+        sessionId: newSession.id,
+        retryReason: 'server_restart'
+      }, session.conversationId, newSession.id);
+
       broadcastSync({
-        type: 'streaming_error',
-        sessionId: session.id,
+        type: 'streaming_start',
+        sessionId: newSession.id,
         conversationId: session.conversationId,
-        error: 'Agent died unexpectedly (server restart)',
-        recoverable: false,
+        messageId: lastMsg.id,
+        agentId,
         timestamp: now
       });
-      recoveredCount++;
+
+      processMessageWithStreaming(session.conversationId, lastMsg.id, newSession.id, content, agentId)
+        .catch(err => debugLog(`[RECOVERY] Resume error for ${session.conversationId}: ${err.message}`));
+
+      resumedCount++;
     }
-    if (recoveredCount > 0) {
-      console.log(`[RECOVERY] Recovered ${recoveredCount} stale active session(s)`);
+
+    if (resumedCount > 0) {
+      console.log(`[RECOVERY] Resumed ${resumedCount} conversation(s) from previous run`);
+    }
+    if (failedCount > 0) {
+      console.log(`[RECOVERY] Failed to resume ${failedCount} conversation(s)`);
     }
   } catch (err) {
     console.error('[RECOVERY] Stale session recovery error:', err.message);
