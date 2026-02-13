@@ -938,40 +938,29 @@ class AgentGUIClient {
     if (!conversationId) return;
 
     const pollState = this.chunkPollState;
-    if (pollState.isPolling) return; // Already polling
+    if (pollState.isPolling) return;
 
     pollState.isPolling = true;
     pollState.lastFetchTimestamp = Date.now();
-    pollState.backoffDelay = 100;
-
-    console.log('Starting chunk polling for conversation:', conversationId);
+    pollState.backoffDelay = 150;
+    pollState.sessionCheckCounter = 0;
 
     const pollOnce = async () => {
       if (!pollState.isPolling) return;
 
       try {
-        // Check session status periodically
-        if (this.state.currentSession?.id) {
+        pollState.sessionCheckCounter++;
+        if (pollState.sessionCheckCounter % 10 === 0 && this.state.currentSession?.id) {
           const sessionResponse = await fetch(`${window.__BASE_URL}/api/sessions/${this.state.currentSession.id}`);
           if (sessionResponse.ok) {
             const { session } = await sessionResponse.json();
             if (session && (session.status === 'complete' || session.status === 'error')) {
-              // Session has finished, trigger appropriate handler
               if (session.status === 'complete') {
-                this.handleStreamingComplete({
-                  sessionId: session.id,
-                  conversationId: conversationId,
-                  timestamp: Date.now()
-                });
+                this.handleStreamingComplete({ sessionId: session.id, conversationId, timestamp: Date.now() });
               } else {
-                this.handleStreamingError({
-                  sessionId: session.id,
-                  conversationId: conversationId,
-                  error: session.error || 'Unknown error',
-                  timestamp: Date.now()
-                });
+                this.handleStreamingError({ sessionId: session.id, conversationId, error: session.error || 'Unknown error', timestamp: Date.now() });
               }
-              return; // Stop polling
+              return;
             }
           }
         }
@@ -979,42 +968,28 @@ class AgentGUIClient {
         const chunks = await this.fetchChunks(conversationId, pollState.lastFetchTimestamp);
 
         if (chunks.length > 0) {
-          // Reset backoff on success
-          pollState.backoffDelay = 100;
-
-          // Update last fetch timestamp
+          pollState.backoffDelay = 150;
           const lastChunk = chunks[chunks.length - 1];
           pollState.lastFetchTimestamp = lastChunk.created_at;
-
-          // Render new chunks
           chunks.forEach(chunk => {
-            if (chunk.block && chunk.block.type) {
-              this.renderChunk(chunk);
-            }
+            if (chunk.block && chunk.block.type) this.renderChunk(chunk);
           });
+        } else {
+          pollState.backoffDelay = Math.min(pollState.backoffDelay + 50, 500);
         }
 
-        // Schedule next poll
         if (pollState.isPolling) {
-          pollState.pollTimer = setTimeout(pollOnce, 100);
+          pollState.pollTimer = setTimeout(pollOnce, pollState.backoffDelay);
         }
       } catch (error) {
-        console.warn('Chunk poll error, applying backoff:', error.message);
-
-        // Apply exponential backoff
-        pollState.backoffDelay = Math.min(
-          pollState.backoffDelay * 2,
-          pollState.maxBackoffDelay
-        );
-
-        // Schedule next poll with backoff
+        console.warn('Chunk poll error:', error.message);
+        pollState.backoffDelay = Math.min(pollState.backoffDelay * 2, pollState.maxBackoffDelay);
         if (pollState.isPolling) {
           pollState.pollTimer = setTimeout(pollOnce, pollState.backoffDelay);
         }
       }
     };
 
-    // Start polling loop
     pollOnce();
   }
 

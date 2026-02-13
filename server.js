@@ -40,6 +40,24 @@ const expressApp = express();
 // Separate Express app for webtalk (STT/TTS) - isolated to contain COEP/COOP headers
 const webtalkApp = express();
 const webtalkInstance = webtalk(webtalkApp, { path: '/webtalk' });
+
+const webtalkSdkDir = path.dirname(require.resolve('webtalk'));
+const WASM_MIN_BYTES = 1000000;
+const webtalkCriticalFiles = [
+  { path: path.join(webtalkSdkDir, 'assets', 'ort-wasm-simd-threaded.jsep.wasm'), minBytes: WASM_MIN_BYTES }
+];
+for (const file of webtalkCriticalFiles) {
+  try {
+    if (fs.existsSync(file.path)) {
+      const stat = fs.statSync(file.path);
+      if (stat.size < file.minBytes) {
+        debugLog(`Removing corrupt file ${path.basename(file.path)} (${stat.size} bytes, need ${file.minBytes}+)`);
+        fs.unlinkSync(file.path);
+      }
+    }
+  } catch (e) { debugLog(`File check error: ${e.message}`); }
+}
+
 webtalkInstance.init().catch(err => debugLog('Webtalk init: ' + err.message));
 
 // File upload endpoint - copies dropped files to conversation workingDirectory
@@ -164,7 +182,7 @@ const server = http.createServer(async (req, res) => {
     pathOnly.startsWith('/tts/') ||
     pathOnly.startsWith('/models/');
   if (isWebtalkRoute) {
-    const webtalkSdkDir = path.dirname(require.resolve('webtalk/package.json'));
+    const webtalkSdkDir = path.dirname(require.resolve('webtalk'));
     const sdkFiles = { '/demo': 'app.html', '/sdk.js': 'sdk.js', '/stt.js': 'stt.js', '/tts.js': 'tts.js', '/tts-utils.js': 'tts-utils.js' };
     let stripped = pathOnly.startsWith(webtalkPrefix) ? pathOnly.slice(webtalkPrefix.length) : (pathOnly.startsWith('/webtalk') ? pathOnly.slice('/webtalk'.length) : null);
     if (stripped !== null && !sdkFiles[stripped] && !stripped.endsWith('.js') && sdkFiles[stripped + '.js']) stripped += '.js';
@@ -193,6 +211,10 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
+    const isModelOrAsset = pathOnly.includes('/models/') || pathOnly.includes('/assets/') || pathOnly.endsWith('.wasm') || pathOnly.endsWith('.onnx');
+    if (isModelOrAsset) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    }
     const origSetHeader = res.setHeader.bind(res);
     res.setHeader = (name, value) => {
       if (name.toLowerCase() === 'cross-origin-embedder-policy') return;
@@ -569,46 +591,50 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+const MIME_TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream' };
+
 function serveFile(filePath, res) {
   const ext = path.extname(filePath).toLowerCase();
-  const mimeTypes = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+  const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+  if (ext !== '.html') {
+    fs.stat(filePath, (err, stats) => {
+      if (err) { res.writeHead(500); res.end('Server error'); return; }
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': stats.size,
+        'Cache-Control': 'public, max-age=3600'
+      });
+      fs.createReadStream(filePath).pipe(res);
+    });
+    return;
+  }
+
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(500); res.end('Server error'); return; }
     let content = data.toString();
-    if (ext === '.html') {
-      const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>\n  <script type="importmap">{"imports":{"webtalk-sdk":"${BASE_URL}/webtalk/sdk.js"}}</script>`;
-      content = content.replace('<head>', '<head>\n  ' + baseTag);
-      if (watch) {
-        content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
-      }
+    const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>\n  <script type="importmap">{"imports":{"webtalk-sdk":"${BASE_URL}/webtalk/sdk.js"}}</script>`;
+    content = content.replace('<head>', '<head>\n  ' + baseTag);
+    if (watch) {
+      content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
     }
-    res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': contentType });
     res.end(content);
   });
 }
 
 function persistChunkWithRetry(sessionId, conversationId, sequence, blockType, blockData, maxRetries = 3) {
-  let lastError = null;
-  const backoffs = [100, 200, 400];
-
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const chunk = queries.createChunk(sessionId, conversationId, sequence, blockType, blockData);
-      return chunk;
+      return queries.createChunk(sessionId, conversationId, sequence, blockType, blockData);
     } catch (err) {
-      lastError = err;
       debugLog(`[chunk] Persist attempt ${attempt + 1}/${maxRetries} failed: ${err.message}`);
-      if (attempt < maxRetries - 1) {
-        const delayMs = backoffs[attempt] || 400;
-        const endTime = Date.now() + delayMs;
-        while (Date.now() < endTime) {
-          // Synchronous sleep for backoff
-        }
+      if (attempt >= maxRetries - 1) {
+        debugLog(`[chunk] Failed to persist after ${maxRetries} retries: ${err.message}`);
+        return null;
       }
     }
   }
-
-  debugLog(`[chunk] Failed to persist after ${maxRetries} retries: ${lastError?.message}`);
   return null;
 }
 
@@ -941,23 +967,22 @@ wss.on('connection', (ws, req) => {
   }
 });
 
+const BROADCAST_TYPES = new Set([
+  'message_created', 'conversation_created', 'conversations_updated',
+  'conversation_deleted', 'queue_status', 'streaming_start',
+  'streaming_complete', 'streaming_error'
+]);
+
 function broadcastSync(event) {
+  if (syncClients.size === 0) return;
   const data = JSON.stringify(event);
+  const isBroadcast = BROADCAST_TYPES.has(event.type);
 
   for (const ws of syncClients) {
     if (ws.readyState !== 1) continue;
-
-    let shouldSend = false;
-
-    if (event.sessionId && ws.subscriptions?.has(event.sessionId)) {
-      shouldSend = true;
-    } else if (event.conversationId && ws.subscriptions?.has(`conv-${event.conversationId}`)) {
-      shouldSend = true;
-    } else if (event.type === 'message_created' || event.type === 'conversation_created' || event.type === 'conversations_updated' || event.type === 'conversation_deleted' || event.type === 'queue_status' || event.type === 'streaming_start' || event.type === 'streaming_complete' || event.type === 'streaming_error') {
-      shouldSend = true;
-    }
-
-    if (shouldSend) {
+    if (isBroadcast ||
+        (event.sessionId && ws.subscriptions?.has(event.sessionId)) ||
+        (event.conversationId && ws.subscriptions?.has(`conv-${event.conversationId}`))) {
       ws.send(data);
     }
   }

@@ -127,32 +127,40 @@
     }
   }
 
-  async function initTTS() {
-    try {
-      tts = new TTS({
-        basePath: BASE + '/webtalk',
-        apiBasePath: BASE,
-        onStatus: function() {},
-        onAudioReady: function(url) {
-          var audio = new Audio(url);
-          audio.onended = function() {
-            isSpeaking = false;
-            processQueue();
-          };
-          audio.onerror = function() {
-            isSpeaking = false;
-            processQueue();
-          };
-          audio.play().catch(function() {
-            isSpeaking = false;
-            processQueue();
-          });
+  async function initTTS(retries) {
+    var maxRetries = retries || 3;
+    for (var attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        tts = new TTS({
+          basePath: BASE + '/webtalk',
+          apiBasePath: BASE,
+          onStatus: function() {},
+          onAudioReady: function(url) {
+            var audio = new Audio(url);
+            audio.onended = function() {
+              isSpeaking = false;
+              processQueue();
+            };
+            audio.onerror = function() {
+              isSpeaking = false;
+              processQueue();
+            };
+            audio.play().catch(function() {
+              isSpeaking = false;
+              processQueue();
+            });
+          }
+        });
+        await tts.init();
+        ttsReady = true;
+        return;
+      } catch (e) {
+        console.warn('TTS init attempt ' + (attempt + 1) + '/' + maxRetries + ' failed:', e.message);
+        tts = null;
+        if (attempt < maxRetries - 1) {
+          await new Promise(function(r) { setTimeout(r, 3000 * (attempt + 1)); });
         }
-      });
-      await tts.init();
-      ttsReady = true;
-    } catch (e) {
-      console.warn('TTS init failed:', e.message);
+      }
     }
   }
 
