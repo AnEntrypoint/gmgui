@@ -1199,75 +1199,30 @@ server.on('error', (err) => {
 
 function recoverStaleSessions() {
   try {
-    const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
     const now = Date.now();
-    let resumedCount = 0;
-    let failedCount = 0;
 
+    const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
     for (const session of staleSessions) {
       if (activeExecutions.has(session.conversationId)) continue;
-
       queries.updateSession(session.id, {
         status: 'error',
-        error: 'Server restarted - resuming',
+        error: 'Server restarted',
         completed_at: now
       });
-
-      const conv = queries.getConversation(session.conversationId);
-      if (!conv) {
-        queries.setIsStreaming(session.conversationId, false);
-        failedCount++;
-        continue;
-      }
-
-      const lastMsg = queries.getLastUserMessage(session.conversationId);
-      if (!lastMsg || !conv.claudeSessionId) {
-        queries.setIsStreaming(session.conversationId, false);
-        debugLog(`[RECOVERY] Conv ${session.conversationId}: no user message or no claudeSessionId, cannot resume`);
-        broadcastSync({
-          type: 'streaming_error',
-          sessionId: session.id,
-          conversationId: session.conversationId,
-          error: 'Server restarted - could not resume (missing context)',
-          recoverable: false,
-          timestamp: now
-        });
-        failedCount++;
-        continue;
-      }
-
-      const content = typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg.content);
-      const agentId = conv.agentType || conv.agentId || 'claude-code';
-
-      debugLog(`[RECOVERY] Resuming conv ${session.conversationId} with claudeSessionId=${conv.claudeSessionId}`);
-
-      const newSession = queries.createSession(session.conversationId);
-      queries.createEvent('session.created', {
-        messageId: lastMsg.id,
-        sessionId: newSession.id,
-        retryReason: 'server_restart'
-      }, session.conversationId, newSession.id);
-
-      broadcastSync({
-        type: 'streaming_start',
-        sessionId: newSession.id,
-        conversationId: session.conversationId,
-        messageId: lastMsg.id,
-        agentId,
-        timestamp: now
-      });
-
-      processMessageWithStreaming(session.conversationId, lastMsg.id, newSession.id, content, agentId)
-        .catch(err => debugLog(`[RECOVERY] Resume error for ${session.conversationId}: ${err.message}`));
-
-      resumedCount++;
+    }
+    if (staleSessions.length > 0) {
+      console.log(`[RECOVERY] Marked ${staleSessions.length} stale session(s) as error`);
     }
 
-    if (resumedCount > 0) {
-      console.log(`[RECOVERY] Resumed ${resumedCount} conversation(s) from previous run`);
+    const streamingConvs = queries.getStreamingConversations ? queries.getStreamingConversations() : [];
+    let clearedCount = 0;
+    for (const conv of streamingConvs) {
+      if (activeExecutions.has(conv.id)) continue;
+      queries.setIsStreaming(conv.id, false);
+      clearedCount++;
     }
-    if (failedCount > 0) {
-      console.log(`[RECOVERY] Failed to resume ${failedCount} conversation(s)`);
+    if (clearedCount > 0) {
+      console.log(`[RECOVERY] Cleared isStreaming flag on ${clearedCount} stale conversation(s)`);
     }
   } catch (err) {
     console.error('[RECOVERY] Stale session recovery error:', err.message);

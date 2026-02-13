@@ -349,6 +349,16 @@ export const queries = {
     return row?.isStreaming === 1;
   },
 
+  getStreamingConversations() {
+    const stmt = prep('SELECT id, title, claudeSessionId, agentType FROM conversations WHERE isStreaming = 1');
+    return stmt.all();
+  },
+
+  clearAllStreamingFlags() {
+    const stmt = prep('UPDATE conversations SET isStreaming = 0 WHERE isStreaming = 1');
+    return stmt.run().changes;
+  },
+
   markSessionIncomplete(sessionId, errorMsg) {
     const stmt = prep('UPDATE sessions SET status = ?, error = ?, completed_at = ? WHERE id = ?');
     stmt.run('incomplete', errorMsg || 'unknown', Date.now(), sessionId);
