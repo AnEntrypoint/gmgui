@@ -161,29 +161,35 @@ const server = http.createServer(async (req, res) => {
     pathOnly.startsWith('/tts/') ||
     pathOnly.startsWith('/models/');
   if (isWebtalkRoute) {
-    if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
-    const webtalkPath = (req.url.startsWith('/webtalk') ? req.url : '/webtalk' + req.url).split('?')[0];
-    const webtalkSdkDir = path.join(__dirname, 'node_modules', 'webtalk');
-    const sdkFiles = { '/webtalk/sdk.js': 'sdk.js', '/webtalk/stt.js': 'stt.js', '/webtalk/tts.js': 'tts.js', '/webtalk/tts-utils.js': 'tts-utils.js' };
-    if (pathOnly === webtalkPrefix + '/demo' || pathOnly === '/webtalk/demo') {
-      const demoPath = path.join(webtalkSdkDir, 'app.html');
-      return fs.readFile(demoPath, 'utf-8', (err, html) => {
-        if (err) { res.writeHead(500); res.end('Error'); return; }
-        let patched = html.replace(/from\s+['"]\/webtalk\/sdk\.js['"]/g, `from '${BASE_URL}/webtalk/sdk.js'`);
-        patched = patched.replace('<head>', `<head>\n    <script>window.__WEBTALK_BASE='${BASE_URL}';</script>`);
-        res.writeHead(200, { 'Content-Type': 'text/html', 'Cross-Origin-Embedder-Policy': 'credentialless', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
-        res.end(patched);
-      });
-    }
-    if (sdkFiles[webtalkPath]) {
-      const filePath = path.join(webtalkSdkDir, sdkFiles[webtalkPath]);
-      return fs.readFile(filePath, 'utf-8', (err, js) => {
+    const webtalkSdkDir = path.dirname(require.resolve('webtalk/package.json'));
+    const sdkFiles = { '/demo': 'app.html', '/sdk.js': 'sdk.js', '/stt.js': 'stt.js', '/tts.js': 'tts.js', '/tts-utils.js': 'tts-utils.js' };
+    let stripped = pathOnly.startsWith(webtalkPrefix) ? pathOnly.slice(webtalkPrefix.length) : (pathOnly.startsWith('/webtalk') ? pathOnly.slice('/webtalk'.length) : null);
+    if (stripped !== null && !sdkFiles[stripped] && !stripped.endsWith('.js') && sdkFiles[stripped + '.js']) stripped += '.js';
+    if (stripped !== null && sdkFiles[stripped]) {
+      const filePath = path.join(webtalkSdkDir, sdkFiles[stripped]);
+      return fs.readFile(filePath, 'utf-8', (err, content) => {
         if (err) { res.writeHead(404); res.end('Not found'); return; }
-        const rewritten = js.replace(/from\s+['"]\.\/([^'"]+)['"]/g, `from '${BASE_URL}/webtalk/$1'`);
+        if (stripped === '/demo') {
+          let patched = content
+            .replace(/from\s+['"](\/webtalk\/[^'"]+)['"]/g, (_, p) => `from '${BASE_URL}${p}'`)
+            .replace(/from\s+['"]\.\/([^'"]+)['"]/g, (_, p) => `from '${BASE_URL}/webtalk/${p}'`)
+            .replace('<head>', `<head>\n    <script>window.__WEBTALK_BASE='${BASE_URL}';</script>`);
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cross-Origin-Embedder-Policy': 'credentialless', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Resource-Policy': 'cross-origin' });
+          return res.end(patched);
+        }
+        let js = content;
+        const ensureExt = (mod) => mod.endsWith('.js') ? mod : mod + '.js';
+        if (js.includes('require(') || js.includes('module.exports')) {
+          js = js.replace(/const\s*\{([^}]+)\}\s*=\s*require\(['"]\.\/([^'"]+)['"]\);?/g, (_, names, mod) => `import {${names}} from '${BASE_URL}/webtalk/${ensureExt(mod)}';`);
+          js = js.replace(/const\s+(\w+)\s*=\s*require\(['"]\.\/([^'"]+)['"]\);?/g, (_, name, mod) => `import ${name} from '${BASE_URL}/webtalk/${ensureExt(mod)}';`);
+          js = js.replace(/module\.exports\s*=\s*\{([^}]+)\};?/, (_, names) => `export {${names.trim().replace(/\s+/g, ' ')} };`);
+        }
+        js = js.replace(/from\s+['"]\.\/([^'"]+)['"]/g, (_, p) => `from '${BASE_URL}/webtalk/${ensureExt(p)}'`);
         res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cross-Origin-Resource-Policy': 'cross-origin' });
-        res.end(rewritten);
+        res.end(js);
       });
     }
+    if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
     const origSetHeader = res.setHeader.bind(res);
     res.setHeader = (name, value) => {
       const lower = name.toLowerCase();
