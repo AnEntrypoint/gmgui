@@ -135,12 +135,17 @@ class StreamingRenderer {
     const lastTime = this.dedupMap.get(key);
     const now = Date.now();
 
-    // Deduplicate within 100ms window
     if (lastTime && (now - lastTime) < 100) {
       return true;
     }
 
     this.dedupMap.set(key, now);
+    if (this.dedupMap.size > 5000) {
+      const cutoff = now - 1000;
+      for (const [k, t] of this.dedupMap) {
+        if (t < cutoff) this.dedupMap.delete(k);
+      }
+    }
     return false;
   }
 
@@ -358,17 +363,25 @@ class StreamingRenderer {
    * Render text block with semantic HTML
    */
   renderBlockText(block, context) {
-    const div = document.createElement('div');
-    div.className = 'block-text';
-
     const text = block.text || '';
-    if (this.containsHtmlTags(text)) {
-      div.innerHTML = this.sanitizeHtml(text);
-      div.classList.add('html-content');
-    } else {
-      div.innerHTML = this.parseAndRenderMarkdown(text);
+    const isHtml = this.containsHtmlTags(text);
+    const cached = this.renderCache.get(text);
+    const html = cached || (isHtml ? this.sanitizeHtml(text) : this.parseAndRenderMarkdown(text));
+
+    if (!cached && this.renderCache.size < 2000) {
+      this.renderCache.set(text, html);
     }
 
+    const lastChild = this.outputContainer && this.outputContainer.lastElementChild;
+    if (lastChild && lastChild.classList.contains('block-text') && !isHtml && !lastChild.classList.contains('html-content')) {
+      lastChild.innerHTML += html;
+      return null;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'block-text';
+    if (isHtml) div.classList.add('html-content');
+    div.innerHTML = html;
     return div;
   }
 
@@ -447,11 +460,9 @@ class StreamingRenderer {
 
     const preStyle = "background:#1e293b;padding:1rem;border-radius:0 0 0.375rem 0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;border-top:none;margin:0";
     const codeContainer = document.createElement('div');
+    codeContainer.innerHTML = `<pre style="${preStyle}"><code>${this.escapeHtml(code)}</code></pre>`;
     if (typeof hljs !== 'undefined') {
-      const result = hljs.highlightAuto(code);
-      codeContainer.innerHTML = `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
-    } else {
-      codeContainer.innerHTML = `<pre style="${preStyle}"><code>${this.escapeHtml(code)}</code></pre>`;
+      this.lazyHighlight(codeContainer, code);
     }
 
     details.appendChild(summary);
@@ -1785,13 +1796,39 @@ class StreamingRenderer {
    * Auto-scroll to bottom of container
    */
   autoScroll() {
-    if (this.scrollContainer) {
-      try {
-        this.scrollContainer.scrollTop = this.scrollContainer.scrollHeight;
-      } catch (e) {
-        // Ignore scroll errors
+    if (this._scrollRafPending) return;
+    this._scrollRafPending = true;
+    requestAnimationFrame(() => {
+      this._scrollRafPending = false;
+      if (this.scrollContainer) {
+        try { this.scrollContainer.scrollTop = this.scrollContainer.scrollHeight; } catch (_) {}
       }
+    });
+  }
+
+  lazyHighlight(container, code) {
+    if (!this._hlObserver) {
+      this._hlObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target;
+          const raw = el._rawCode;
+          if (!raw) continue;
+          this._hlObserver.unobserve(el);
+          try {
+            const codeEl = el.querySelector('code');
+            if (codeEl && typeof hljs !== 'undefined') {
+              const result = hljs.highlightAuto(raw);
+              codeEl.classList.add('hljs');
+              codeEl.innerHTML = result.value;
+            }
+          } catch (_) {}
+          delete el._rawCode;
+        }
+      }, { rootMargin: '200px' });
     }
+    container._rawCode = code;
+    this._hlObserver.observe(container);
   }
 
   updateVirtualScroll() {
