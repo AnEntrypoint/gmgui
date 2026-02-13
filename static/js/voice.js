@@ -51,10 +51,27 @@ import { STT, TTS } from 'webtalk-sdk';
           }
         }
       });
-      await stt.init();
+      var initTimeout = new Promise(function(_, reject) {
+        setTimeout(function() { reject(new Error('STT init timed out after 30s')); }, 30000);
+      });
+      await Promise.race([stt.init(), initTimeout]);
       sttReady = true;
+      updateMicState();
     } catch (e) {
       console.warn('STT init failed:', e.message);
+      updateMicState();
+    }
+  }
+
+  function updateMicState() {
+    var micBtn = document.getElementById('voiceMicBtn');
+    if (!micBtn) return;
+    if (sttReady) {
+      micBtn.removeAttribute('disabled');
+      micBtn.title = 'Click to record';
+    } else {
+      micBtn.setAttribute('disabled', 'true');
+      micBtn.title = 'Speech recognition loading...';
     }
   }
 
@@ -139,11 +156,16 @@ import { STT, TTS } from 'webtalk-sdk';
     if (sendBtn) {
       sendBtn.addEventListener('click', sendVoiceMessage);
     }
+    updateMicState();
   }
 
   async function startRecording() {
-    if (!stt || !sttReady || isRecording) return;
+    if (isRecording) return;
     var el = document.getElementById('voiceTranscript');
+    if (!stt || !sttReady) {
+      if (el) el.textContent = 'Speech recognition still loading, please wait...';
+      return;
+    }
     if (el) {
       el.textContent = '';
       el.setAttribute('data-final', '');
@@ -153,6 +175,7 @@ import { STT, TTS } from 'webtalk-sdk';
       await stt.startRecording();
     } catch (e) {
       isRecording = false;
+      if (el) el.textContent = 'Mic access denied or unavailable: ' + e.message;
       console.warn('Recording start failed:', e.message);
     }
   }

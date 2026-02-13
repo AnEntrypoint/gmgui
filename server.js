@@ -147,6 +147,9 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
   const pathOnly = req.url.split('?')[0];
@@ -192,8 +195,7 @@ const server = http.createServer(async (req, res) => {
     if (req.url.startsWith(BASE_URL)) req.url = req.url.slice(BASE_URL.length) || '/';
     const origSetHeader = res.setHeader.bind(res);
     res.setHeader = (name, value) => {
-      const lower = name.toLowerCase();
-      if (lower === 'cross-origin-embedder-policy' || lower === 'cross-origin-opener-policy') return;
+      if (name.toLowerCase() === 'cross-origin-embedder-policy') return;
       origSetHeader(name, value);
     };
     return webtalkApp(req, res);
