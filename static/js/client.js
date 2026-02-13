@@ -690,7 +690,8 @@ class AgentGUIClient {
         </div>
       `;
     } else {
-      return `<div class="message-code"><pre>${this.escapeHtml(code)}</pre></div>`;
+      const lineCount = code.split('\n').length;
+      return `<div class="message-code"><details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(language)} - ${lineCount} line${lineCount !== 1 ? 's' : ''}</summary><pre style="margin:0;border-radius:0 0 0.375rem 0.375rem">${this.escapeHtml(code)}</pre></details></div>`;
     }
   }
 
@@ -732,7 +733,8 @@ class AgentGUIClient {
                 </div>
               `;
             } else {
-              html += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+              const blkLineCount = block.code.split('\n').length;
+              html += `<div class="message-code"><details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(block.language || 'code')} - ${blkLineCount} line${blkLineCount !== 1 ? 's' : ''}</summary><pre style="margin:0;border-radius:0 0 0.375rem 0.375rem">${this.escapeHtml(block.code)}</pre></details></div>`;
             }
           } else if (block.type === 'tool_use') {
             let inputHtml = '';
@@ -1355,7 +1357,8 @@ class AgentGUIClient {
                   </div>
                 `;
               } else {
-                contentHtml += `<div class="message-code"><pre>${this.escapeHtml(block.code)}</pre></div>`;
+                const cBlkLineCount = block.code.split('\n').length;
+                contentHtml += `<div class="message-code"><details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(block.language || 'code')} - ${cBlkLineCount} line${cBlkLineCount !== 1 ? 's' : ''}</summary><pre style="margin:0;border-radius:0 0 0.375rem 0.375rem">${this.escapeHtml(block.code)}</pre></details></div>`;
               }
             } else if (block.type === 'tool_use') {
               let inputHtml = '';

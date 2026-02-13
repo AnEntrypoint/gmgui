@@ -494,7 +494,8 @@ class GMGUIApp {
           codeLines.push(lines[i]);
           i++;
         }
-        html += `<div class="code-block" data-language="${this.escapeHtml(lang)}"><pre><code>${this.escapeHtml(codeLines.join('\n'))}</code></pre></div>`;
+        const clCount = codeLines.length;
+        html += `<details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(lang)} - ${clCount} line${clCount !== 1 ? 's' : ''}</summary><div class="code-block" data-language="${this.escapeHtml(lang)}"><pre><code>${this.escapeHtml(codeLines.join('\n'))}</code></pre></div></details>`;
         i++;
         continue;
       }
@@ -592,9 +593,10 @@ class GMGUIApp {
         <div class="html-content">${code}</div>
       </div>`;
     } else {
-      return `<div class="code-block" data-language="${this.escapeHtml(language)}">
+      const lcCount = code.split('\n').length;
+      return `<details class="collapsible-code"><summary class="collapsible-code-summary">${this.escapeHtml(language)} - ${lcCount} line${lcCount !== 1 ? 's' : ''}</summary><div class="code-block" data-language="${this.escapeHtml(language)}">
         <pre><code>${this.escapeHtml(code)}</code></pre>
-      </div>`;
+      </div></details>`;
     }
   }
 

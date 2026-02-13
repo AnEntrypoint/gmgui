@@ -432,18 +432,24 @@ class StreamingRenderer {
 
     const code = block.code || '';
     const language = (block.language || 'plaintext').toLowerCase();
+    const lineCount = code.split('\n').length;
 
-    const header = document.createElement('div');
-    header.className = 'code-header';
-    header.innerHTML = `
-      <span class="lang-badge">${this.escapeHtml(language)}</span>
+    const details = document.createElement('details');
+    details.className = 'collapsible-code';
+
+    const summary = document.createElement('summary');
+    summary.className = 'collapsible-code-summary';
+    summary.innerHTML = `
+      <span class="collapsible-code-label">${this.escapeHtml(language)} - ${lineCount} line${lineCount !== 1 ? 's' : ''}</span>
       <button class="copy-code-btn" title="Copy code">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
       </button>
     `;
 
-    const copyBtn = header.querySelector('.copy-code-btn');
-    copyBtn.addEventListener('click', () => {
+    const copyBtn = summary.querySelector('.copy-code-btn');
+    copyBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       navigator.clipboard.writeText(code).then(() => {
         const orig = copyBtn.innerHTML;
         copyBtn.innerHTML = '<svg viewBox="0 0 20 20" fill="#34d399"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
@@ -451,13 +457,18 @@ class StreamingRenderer {
       });
     });
 
-    // Use syntax highlighting instead of just escaping
-    const highlightedHTML = StreamingRenderer.renderCodeWithHighlight(code, this.escapeHtml.bind(this));
+    const preStyle = "background:#1e293b;padding:1rem;border-radius:0 0 0.375rem 0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;border-top:none;margin:0";
     const codeContainer = document.createElement('div');
-    codeContainer.innerHTML = highlightedHTML;
+    if (typeof hljs !== 'undefined') {
+      const result = hljs.highlightAuto(code);
+      codeContainer.innerHTML = `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
+    } else {
+      codeContainer.innerHTML = `<pre style="${preStyle}"><code>${this.escapeHtml(code)}</code></pre>`;
+    }
 
-    div.appendChild(header);
-    div.appendChild(codeContainer);
+    details.appendChild(summary);
+    details.appendChild(codeContainer);
+    div.appendChild(details);
 
     return div;
   }
@@ -991,12 +1002,18 @@ class StreamingRenderer {
    * Render code with basic syntax highlighting
    */
   static renderCodeWithHighlight(code, esc) {
-    const preStyle = "background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155";
+    const preStyle = "background:#1e293b;padding:1rem;border-radius:0 0 0.375rem 0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;border-top:none;margin:0";
+    const lineCount = code.split('\n').length;
+    const lang = (typeof hljs !== 'undefined') ? (hljs.highlightAuto(code).language || 'code') : 'code';
+    const summaryLabel = `${lang} - ${lineCount} line${lineCount !== 1 ? 's' : ''}`;
+    let codeHtml;
     if (typeof hljs !== 'undefined') {
       const result = hljs.highlightAuto(code);
-      return `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
+      codeHtml = `<pre style="${preStyle}"><code class="hljs">${result.value}</code></pre>`;
+    } else {
+      codeHtml = `<pre style="${preStyle}">${esc(code)}</pre>`;
     }
-    return `<pre style="${preStyle}">${esc(code)}</pre>`;
+    return `<details class="collapsible-code"><summary class="collapsible-code-summary">${summaryLabel}</summary>${codeHtml}</details>`;
   }
 
   /**
@@ -1521,16 +1538,19 @@ class StreamingRenderer {
             <div class="html-content bg-white dark:bg-gray-800 p-4 overflow-x-auto">${part.code}</div>
           </div>`;
         } else {
+          const partLineCount = part.code.split('\n').length;
           html += `<div class="mb-3 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-800">
-            <div class="flex items-center justify-between gap-2 bg-gray-900 dark:bg-gray-950 px-4 py-2 border-b border-gray-800">
-              <span class="text-xs font-mono text-gray-400 uppercase">${this.escapeHtml(part.language)}</span>
-              <button class="copy-code-btn text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-800" title="Copy code">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
-                </svg>
-              </button>
-            </div>
-            <pre class="bg-gray-900 text-gray-100 p-4 overflow-x-auto"><code class="language-${this.escapeHtml(part.language)}">${this.escapeHtml(part.code)}</code></pre>
+            <details class="collapsible-code">
+              <summary class="collapsible-code-summary">
+                <span>${this.escapeHtml(part.language)} - ${partLineCount} line${partLineCount !== 1 ? 's' : ''}</span>
+                <button class="copy-code-btn text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-800" title="Copy code" onclick="event.preventDefault();event.stopPropagation();navigator.clipboard.writeText(this.closest('.collapsible-code').querySelector('code').textContent)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                  </svg>
+                </button>
+              </summary>
+              <pre class="bg-gray-900 text-gray-100 p-4 overflow-x-auto" style="margin:0;border-radius:0 0 0.375rem 0.375rem"><code class="language-${this.escapeHtml(part.language)}">${this.escapeHtml(part.code)}</code></pre>
+            </details>
           </div>`;
         }
       }
@@ -1578,8 +1598,12 @@ class StreamingRenderer {
         </div>
       `;
     } else {
+      const codeLineCount = code.split('\n').length;
       div.innerHTML = `
-        <pre class="bg-gray-900 text-gray-100 p-4 rounded overflow-x-auto"><code class="language-${this.escapeHtml(language)}">${this.escapeHtml(code)}</code></pre>
+        <details class="collapsible-code">
+          <summary class="collapsible-code-summary">${this.escapeHtml(language)} - ${codeLineCount} line${codeLineCount !== 1 ? 's' : ''}</summary>
+          <pre class="bg-gray-900 text-gray-100 p-4 overflow-x-auto" style="margin:0;border-radius:0 0 0.375rem 0.375rem"><code class="language-${this.escapeHtml(language)}">${this.escapeHtml(code)}</code></pre>
+        </details>
       `;
     }
     return div;
