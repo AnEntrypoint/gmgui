@@ -348,7 +348,7 @@ class AgentGUIClient {
 
       switch (data.type) {
         case 'streaming_start':
-          this.handleStreamingStart(data);
+          this.handleStreamingStart(data).catch(e => console.error('handleStreamingStart error:', e));
           break;
         case 'streaming_progress':
           this.handleStreamingProgress(data);
@@ -388,7 +388,7 @@ class AgentGUIClient {
     }
   }
 
-  handleStreamingStart(data) {
+  async handleStreamingStart(data) {
     console.log('Streaming started:', data);
 
     // If this streaming event is for a different conversation than what we are viewing,
@@ -420,8 +420,60 @@ class AgentGUIClient {
     if (outputEl) {
       let messagesEl = outputEl.querySelector('.conversation-messages');
       if (!messagesEl) {
-        outputEl.innerHTML = '<div class="conversation-messages"></div>';
+        // Load existing conversation history before starting the stream
+        const conv = this.state.currentConversation;
+        const wdInfo = conv?.workingDirectory ? ` - ${this.escapeHtml(conv.workingDirectory)}` : '';
+        outputEl.innerHTML = `
+          <div class="conversation-header">
+            <h2>${this.escapeHtml(conv?.title || 'Conversation')}</h2>
+            <p class="text-secondary">${conv?.agentType || 'unknown'} - ${new Date(conv?.created_at || Date.now()).toLocaleDateString()}${wdInfo}</p>
+          </div>
+          <div class="conversation-messages"></div>
+        `;
         messagesEl = outputEl.querySelector('.conversation-messages');
+        // Load prior messages into the container
+        try {
+          const msgResp = await fetch(window.__BASE_URL + `/api/conversations/${data.conversationId}/messages`);
+          if (msgResp.ok) {
+            const msgData = await msgResp.json();
+            const priorChunks = await this.fetchChunks(data.conversationId, 0);
+            if (priorChunks.length > 0) {
+              const userMsgs = (msgData.messages || []).filter(m => m.role === 'user');
+              const sessionOrder = [];
+              const sessionGroups = {};
+              priorChunks.forEach(c => {
+                if (!sessionGroups[c.sessionId]) { sessionGroups[c.sessionId] = []; sessionOrder.push(c.sessionId); }
+                sessionGroups[c.sessionId].push(c);
+              });
+              let ui = 0;
+              sessionOrder.forEach(sid => {
+                const sList = sessionGroups[sid];
+                const sStart = sList[0].created_at;
+                while (ui < userMsgs.length && userMsgs[ui].created_at <= sStart) {
+                  const m = userMsgs[ui++];
+                  messagesEl.insertAdjacentHTML('beforeend', `<div class="message message-user" data-msg-id="${m.id}"><div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div></div>`);
+                }
+                const mDiv = document.createElement('div');
+                mDiv.className = 'message message-assistant';
+                mDiv.id = `message-${sid}`;
+                mDiv.innerHTML = '<div class="message-role">Assistant</div><div class="message-blocks streaming-blocks"></div>';
+                const bEl = mDiv.querySelector('.message-blocks');
+                sList.forEach(chunk => { if (chunk.block?.type) { const el = this.renderer.renderBlock(chunk.block, chunk); if (el) bEl.appendChild(el); } });
+                const ts = document.createElement('div'); ts.className = 'message-timestamp'; ts.textContent = new Date(sList[sList.length - 1].created_at).toLocaleString();
+                mDiv.appendChild(ts);
+                messagesEl.appendChild(mDiv);
+              });
+              while (ui < userMsgs.length) {
+                const m = userMsgs[ui++];
+                messagesEl.insertAdjacentHTML('beforeend', `<div class="message message-user" data-msg-id="${m.id}"><div class="message-role">User</div>${this.renderMessageContent(m.content)}<div class="message-timestamp">${new Date(m.created_at).toLocaleString()}</div></div>`);
+              }
+            } else {
+              messagesEl.innerHTML = this.renderMessages(msgData.messages || []);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load prior messages for streaming view:', e);
+        }
       }
       const streamingDiv = document.createElement('div');
       streamingDiv.className = 'message message-assistant streaming-message';
@@ -1181,17 +1233,48 @@ class AgentGUIClient {
           // Render all chunks
           const messagesEl = outputEl.querySelector('.conversation-messages');
           if (chunks.length > 0) {
-            // Group chunks by session
+            // Fetch user messages to interleave with session chunks
+            let userMessages = [];
+            try {
+              const msgResp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
+              if (msgResp.ok) {
+                const msgData = await msgResp.json();
+                userMessages = (msgData.messages || []).filter(m => m.role === 'user');
+              }
+            } catch (_) {}
+
+            // Group chunks by session, preserving order
+            const sessionOrder = [];
             const sessionChunks = {};
             chunks.forEach(chunk => {
               if (!sessionChunks[chunk.sessionId]) {
                 sessionChunks[chunk.sessionId] = [];
+                sessionOrder.push(chunk.sessionId);
               }
               sessionChunks[chunk.sessionId].push(chunk);
             });
 
-            // Render each session's chunks
-            Object.entries(sessionChunks).forEach(([sessionId, sessionChunkList]) => {
+            // Build a timeline: match user messages to sessions by timestamp
+            let userMsgIdx = 0;
+            sessionOrder.forEach((sessionId) => {
+              const sessionChunkList = sessionChunks[sessionId];
+              const sessionStart = sessionChunkList[0].created_at;
+
+              // Render user messages that came before this session
+              while (userMsgIdx < userMessages.length && userMessages[userMsgIdx].created_at <= sessionStart) {
+                const msg = userMessages[userMsgIdx];
+                const userDiv = document.createElement('div');
+                userDiv.className = 'message message-user';
+                userDiv.setAttribute('data-msg-id', msg.id);
+                userDiv.innerHTML = `
+                  <div class="message-role">User</div>
+                  ${this.renderMessageContent(msg.content)}
+                  <div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>
+                `;
+                messagesEl.appendChild(userDiv);
+                userMsgIdx++;
+              }
+
               const isCurrentActiveSession = shouldResumeStreaming && latestSession && latestSession.id === sessionId;
               const messageDiv = document.createElement('div');
               messageDiv.className = `message message-assistant${isCurrentActiveSession ? ' streaming-message' : ''}`;
@@ -1208,7 +1291,6 @@ class AgentGUIClient {
                 }
               });
 
-              // Add streaming indicator for active session
               if (isCurrentActiveSession) {
                 const indicatorDiv = document.createElement('div');
                 indicatorDiv.className = 'streaming-indicator';
@@ -1227,6 +1309,21 @@ class AgentGUIClient {
 
               messagesEl.appendChild(messageDiv);
             });
+
+            // Render any remaining user messages after the last session
+            while (userMsgIdx < userMessages.length) {
+              const msg = userMessages[userMsgIdx];
+              const userDiv = document.createElement('div');
+              userDiv.className = 'message message-user';
+              userDiv.setAttribute('data-msg-id', msg.id);
+              userDiv.innerHTML = `
+                <div class="message-role">User</div>
+                ${this.renderMessageContent(msg.content)}
+                <div class="message-timestamp">${new Date(msg.created_at).toLocaleString()}</div>
+              `;
+              messagesEl.appendChild(userDiv);
+              userMsgIdx++;
+            }
           } else {
             // Fall back to messages if no chunks
             const messagesResponse = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/messages`);
