@@ -1045,21 +1045,42 @@ class AgentGUIClient {
    */
   renderChunk(chunk) {
     if (!chunk || !chunk.block) return;
-
-    const sessionId = chunk.sessionId;
-    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    const streamingEl = document.getElementById(`streaming-${chunk.sessionId}`);
     if (!streamingEl) return;
-
     const blocksEl = streamingEl.querySelector('.streaming-blocks');
     if (!blocksEl) return;
-
-    const block = chunk.block;
-    const element = this.renderer.renderBlock(block, chunk);
-
+    const element = this.renderer.renderBlock(chunk.block, chunk);
     if (element) {
       blocksEl.appendChild(element);
       this.scrollToBottom();
     }
+  }
+
+  renderChunkBatch(chunks) {
+    if (!chunks.length) return;
+    const groups = {};
+    for (const chunk of chunks) {
+      const sid = chunk.sessionId;
+      if (!groups[sid]) groups[sid] = [];
+      groups[sid].push(chunk);
+    }
+    let appended = false;
+    for (const sid of Object.keys(groups)) {
+      const streamingEl = document.getElementById(`streaming-${sid}`);
+      if (!streamingEl) continue;
+      const blocksEl = streamingEl.querySelector('.streaming-blocks');
+      if (!blocksEl) continue;
+      const frag = document.createDocumentFragment();
+      for (const chunk of groups[sid]) {
+        const el = this.renderer.renderBlock(chunk.block, chunk);
+        if (el) frag.appendChild(el);
+      }
+      if (frag.childNodes.length) {
+        blocksEl.appendChild(frag);
+        appended = true;
+      }
+    }
+    if (appended) this.scrollToBottom();
   }
 
   /**

@@ -240,17 +240,56 @@ class ConversationManager {
       return;
     }
 
-    this.listEl.innerHTML = '';
     this.emptyEl.style.display = 'none';
 
     const sorted = [...this.conversations].sort((a, b) =>
       new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
     );
 
-    sorted.forEach(conv => {
-      const item = this.createConversationItem(conv);
-      this.listEl.appendChild(item);
-    });
+    const existingMap = {};
+    for (const child of Array.from(this.listEl.children)) {
+      const cid = child.dataset.convId;
+      if (cid) existingMap[cid] = child;
+    }
+
+    const frag = document.createDocumentFragment();
+    for (const conv of sorted) {
+      const existing = existingMap[conv.id];
+      if (existing) {
+        this.updateConversationItem(existing, conv);
+        delete existingMap[conv.id];
+        frag.appendChild(existing);
+      } else {
+        frag.appendChild(this.createConversationItem(conv));
+      }
+    }
+
+    for (const orphan of Object.values(existingMap)) orphan.remove();
+    this.listEl.appendChild(frag);
+  }
+
+  updateConversationItem(el, conv) {
+    const isActive = conv.id === this.activeId;
+    el.classList.toggle('active', isActive);
+
+    const isStreaming = conv.isStreaming === 1 || conv.isStreaming === true || this.streamingConversations?.has(conv.id);
+    const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
+    const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
+    const agent = conv.agentType || 'unknown';
+    const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
+    const metaParts = [agent, timestamp];
+    if (wd) metaParts.push(wd);
+
+    const titleEl = el.querySelector('.conversation-item-title');
+    if (titleEl) {
+      const badgeHtml = isStreaming
+        ? '<span class="conversation-streaming-badge" title="Streaming in progress"><span class="streaming-dot"></span></span>'
+        : '';
+      titleEl.innerHTML = `${badgeHtml}${this.escapeHtml(title)}`;
+    }
+
+    const metaEl = el.querySelector('.conversation-item-meta');
+    if (metaEl) metaEl.textContent = metaParts.join(' \u2022 ');
   }
 
   createConversationItem(conv) {

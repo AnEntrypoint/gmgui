@@ -1454,64 +1454,57 @@ class StreamingRenderer {
    * Render file read event
    */
   renderFileRead(event) {
-    const div = document.createElement('div');
-    div.className = 'event-file-read card mb-3 p-4';
-    div.dataset.eventId = event.id || '';
-    div.dataset.eventType = 'file_read';
-
     const fileName = event.path ? event.path.split('/').pop() : 'unknown';
-    const size = event.size || 0;
-    const sizeStr = this.formatFileSize(size);
-
-    div.innerHTML = `
-      <div class="flex items-start justify-between gap-3 mb-3">
-        <div class="flex items-center gap-2 flex-1">
-          <svg class="w-4 h-4 text-primary flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M5.5 13a3 3 0 01.369-1.618l1.83-1.83a3 3 0 015.604 0l.83 1.83A3 3 0 0113.5 13H11V9.413l1.293 1.293a1 1 0 001.414-1.414l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13H5.5z"></path>
-          </svg>
-          <div class="flex-1 min-w-0">
-            <h4 class="font-semibold text-sm truncate">${this.escapeHtml(fileName)}</h4>
-            <p class="text-xs text-secondary truncate" title="${this.escapeHtml(event.path || '')}">${this.escapeHtml(event.path || '')}</p>
-          </div>
-        </div>
-        <span class="badge badge-sm flex-shrink-0">${this.escapeHtml(sizeStr)}</span>
-      </div>
-      ${event.content ? `
-        <pre class="bg-gray-50 dark:bg-gray-900 p-3 rounded border text-xs overflow-x-auto"><code>${this.escapeHtml(this.truncateContent(event.content, 500))}</code></pre>
-      ` : ''}
+    const details = document.createElement('details');
+    details.className = 'block-tool-use folded-tool';
+    details.dataset.eventId = event.id || '';
+    details.dataset.eventType = 'file_read';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${this.getToolIcon('Read')}</span>
+      <span class="folded-tool-name">Read</span>
+      <span class="folded-tool-desc">${this.escapeHtml(fileName)}</span>
     `;
-    return div;
+    details.appendChild(summary);
+    if (event.path || event.content) {
+      const body = document.createElement('div');
+      body.className = 'folded-tool-body';
+      let html = '';
+      if (event.path) html += this.renderFilePath(event.path);
+      if (event.content) {
+        html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(event.content, 2000))}</code></pre>`;
+      }
+      body.innerHTML = html;
+      details.appendChild(body);
+    }
+    return details;
   }
 
   /**
    * Render file write event
    */
   renderFileWrite(event) {
-    const div = document.createElement('div');
-    div.className = 'event-file-write card mb-3 p-4 border-l-4 border-yellow-500';
-    div.dataset.eventId = event.id || '';
-    div.dataset.eventType = 'file_write';
-
     const fileName = event.path ? event.path.split('/').pop() : 'unknown';
-    const size = event.size || 0;
-    const sizeStr = this.formatFileSize(size);
-
-    div.innerHTML = `
-      <div class="flex items-start justify-between gap-3 mb-3">
-        <div class="flex items-center gap-2 flex-1">
-          <svg class="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4z"></path>
-          </svg>
-          <div class="flex-1 min-w-0">
-            <h4 class="font-semibold text-sm truncate">${this.escapeHtml(fileName)}</h4>
-            <p class="text-xs text-secondary truncate" title="${this.escapeHtml(event.path || '')}">${this.escapeHtml(event.path || '')}</p>
-          </div>
-        </div>
-        <span class="badge badge-sm bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 flex-shrink-0">Written</span>
-      </div>
-      <span class="text-xs text-secondary">${this.escapeHtml(sizeStr)}</span>
+    const details = document.createElement('details');
+    details.className = 'block-tool-use folded-tool';
+    details.dataset.eventId = event.id || '';
+    details.dataset.eventType = 'file_write';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${this.getToolIcon('Write')}</span>
+      <span class="folded-tool-name">Write</span>
+      <span class="folded-tool-desc">${this.escapeHtml(fileName)}</span>
     `;
-    return div;
+    details.appendChild(summary);
+    if (event.path) {
+      const body = document.createElement('div');
+      body.className = 'folded-tool-body';
+      body.innerHTML = this.renderFilePath(event.path);
+      details.appendChild(body);
+    }
+    return details;
   }
 
   /**
@@ -1551,57 +1544,64 @@ class StreamingRenderer {
    * Render command execution event
    */
   renderCommand(event) {
-    const div = document.createElement('div');
-    div.className = 'event-command card mb-3 p-4 font-mono text-sm';
-    div.dataset.eventId = event.id || '';
-    div.dataset.eventType = 'command_execute';
-
     const command = event.command || '';
     const output = event.output || '';
     const exitCode = event.exitCode !== undefined ? event.exitCode : null;
+    const cmdPreview = command.length > 60 ? command.substring(0, 57) + '...' : command;
 
-    div.innerHTML = `
-      <div class="bg-gray-900 text-gray-100 p-3 rounded mb-2 overflow-x-auto">
-        <div class="text-green-400">$ ${this.escapeHtml(command)}</div>
-      </div>
-      ${output ? `
-        <div class="bg-gray-50 dark:bg-gray-900 p-3 rounded border text-xs overflow-x-auto">
-          <pre><code>${this.escapeHtml(this.truncateContent(output, 500))}</code></pre>
-        </div>
-      ` : ''}
-      ${exitCode !== null ? `
-        <div class="text-xs mt-2 ${exitCode === 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
-          Exit code: ${exitCode}
-        </div>
-      ` : ''}
+    const details = document.createElement('details');
+    details.className = 'block-tool-use folded-tool';
+    details.dataset.eventId = event.id || '';
+    details.dataset.eventType = 'command_execute';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${this.getToolIcon('Bash')}</span>
+      <span class="folded-tool-name">Bash</span>
+      <span class="folded-tool-desc">${this.escapeHtml(cmdPreview)}</span>
     `;
-    return div;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'folded-tool-body';
+    let html = `<div class="tool-param-command"><span class="prompt-char">$</span><span class="command-text">${this.escapeHtml(command)}</span></div>`;
+    if (output) {
+      html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(output, 2000))}</code></pre>`;
+    }
+    if (exitCode !== null && exitCode !== 0) {
+      html += `<div style="margin-top:0.375rem;font-size:0.75rem;color:#ef4444;font-weight:600">Exit code: ${exitCode}</div>`;
+    }
+    body.innerHTML = html;
+    details.appendChild(body);
+    return details;
   }
 
   /**
    * Render error event
    */
   renderError(event) {
-    const div = document.createElement('div');
-    div.className = 'event-error card mb-3 p-4 bg-red-50 dark:bg-red-900 border-l-4 border-red-500';
-    div.dataset.eventId = event.id || '';
-    div.dataset.eventType = 'error';
-
     const message = event.message || event.error || 'Unknown error';
     const severity = event.severity || 'error';
+    const msgPreview = message.length > 80 ? message.substring(0, 77) + '...' : message;
 
-    div.innerHTML = `
-      <div class="flex items-start gap-3">
-        <svg class="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
-        </svg>
-        <div class="flex-1">
-          <h4 class="font-semibold text-red-900 dark:text-red-200">Error: ${this.escapeHtml(severity)}</h4>
-          <p class="text-sm text-red-800 dark:text-red-300 mt-1">${this.escapeHtml(message)}</p>
-        </div>
-      </div>
+    const details = document.createElement('details');
+    details.className = 'folded-tool folded-tool-error';
+    details.dataset.eventId = event.id || '';
+    details.dataset.eventType = 'error';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg></span>
+      <span class="folded-tool-name">Error</span>
+      <span class="folded-tool-desc">${this.escapeHtml(msgPreview)}</span>
     `;
-    return div;
+    details.appendChild(summary);
+
+    const body = document.createElement('div');
+    body.className = 'folded-tool-body';
+    body.innerHTML = `<div style="font-size:0.8rem;white-space:pre-wrap;word-break:break-word;line-height:1.5">${this.escapeHtml(message)}</div>`;
+    details.appendChild(body);
+    return details;
   }
 
   isHtmlContent(text) {
