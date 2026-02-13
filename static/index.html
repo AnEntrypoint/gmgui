@@ -1106,6 +1106,26 @@
       border-top: 1px solid var(--color-border);
     }
 
+    .voice-reread-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      padding: 0.25rem;
+      color: var(--color-text-secondary);
+      opacity: 0;
+      transition: opacity 0.15s, background-color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .voice-block:hover .voice-reread-btn { opacity: 1; }
+    .voice-reread-btn:hover { background: var(--color-bg-primary); color: var(--color-primary); }
+
     /* ===== RESPONSIVE: TABLET ===== */
     @media (min-width: 769px) and (max-width: 1024px) {
       :root { --sidebar-width: 260px; }

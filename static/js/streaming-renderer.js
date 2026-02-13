@@ -362,10 +362,28 @@ class StreamingRenderer {
     div.className = 'block-text';
 
     const text = block.text || '';
-    const html = this.parseAndRenderMarkdown(text);
-    div.innerHTML = html;
+    if (this.containsHtmlTags(text)) {
+      div.innerHTML = this.sanitizeHtml(text);
+      div.classList.add('html-content');
+    } else {
+      div.innerHTML = this.parseAndRenderMarkdown(text);
+    }
 
     return div;
+  }
+
+  containsHtmlTags(text) {
+    const htmlPattern = /<(?:div|table|section|article|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6]|p|blockquote|pre|code|span|strong|em|a|img|br|hr|li|td|tr|th|thead|tbody|tfoot)\b[^>]*>/i;
+    return htmlPattern.test(text);
+  }
+
+  sanitizeHtml(html) {
+    const dangerous = /<\s*\/?\s*(script|iframe|object|embed|applet|form|input|button|select|textarea)\b[^>]*>/gi;
+    let cleaned = html.replace(dangerous, '');
+    cleaned = cleaned.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+    cleaned = cleaned.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+    cleaned = cleaned.replace(/javascript\s*:/gi, '');
+    return cleaned;
   }
 
   /**
@@ -1259,7 +1277,7 @@ class StreamingRenderer {
         ${cost ? `<div class="result-stat"><span class="stat-icon">&#128176;</span><span class="stat-value">${this.escapeHtml(cost)}</span><span class="stat-label">cost</span></div>` : ''}
         ${turns ? `<div class="result-stat"><span class="stat-icon">&#128260;</span><span class="stat-value">${this.escapeHtml(String(turns))}</span><span class="stat-label">turns</span></div>` : ''}
       </div>
-      ${block.result ? `<div class="result-content">${this.escapeHtml(typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2))}</div>` : ''}
+      ${block.result ? `<div class="result-content">${(() => { const r = typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2); return this.containsHtmlTags(r) ? '<div class="html-content">' + this.sanitizeHtml(r) + '</div>' : this.escapeHtml(r); })()}</div>` : ''}
     `;
 
     return div;

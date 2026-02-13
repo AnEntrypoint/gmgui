@@ -3,7 +3,6 @@
   var isRecording = false;
   var ttsEnabled = true;
   var voiceActive = false;
-  var lastSpokenBlockIndex = -1;
   var currentConversationId = null;
   var speechQueue = [];
   var isSpeaking = false;
@@ -13,6 +12,8 @@
   var scriptNode = null;
   var recordedChunks = [];
   var TARGET_SAMPLE_RATE = 16000;
+  var spokenChunks = new Set();
+  var isLoadingHistory = false;
 
   function init() {
     setupTTSToggle();
@@ -61,14 +62,28 @@
     var micBtn = document.getElementById('voiceMicBtn');
     if (micBtn) {
       micBtn.removeAttribute('disabled');
-      micBtn.title = 'Click to record';
-      micBtn.addEventListener('click', function(e) {
+      micBtn.title = 'Hold to record';
+      micBtn.addEventListener('mousedown', function(e) {
         e.preventDefault();
-        if (!isRecording) {
-          startRecording();
-        } else {
-          stopRecording();
-        }
+        startRecording();
+      });
+      micBtn.addEventListener('mouseup', function(e) {
+        e.preventDefault();
+        stopRecording();
+      });
+      micBtn.addEventListener('mouseleave', function(e) {
+        if (isRecording) stopRecording();
+      });
+      micBtn.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        startRecording();
+      });
+      micBtn.addEventListener('touchend', function(e) {
+        e.preventDefault();
+        stopRecording();
+      });
+      micBtn.addEventListener('touchcancel', function(e) {
+        if (isRecording) stopRecording();
       });
     }
     var sendBtn = document.getElementById('voiceSendBtn');
@@ -90,6 +105,35 @@
       result[i] = inputBuffer[lo] * (1 - frac) + inputBuffer[hi] * frac;
     }
     return result;
+  }
+
+  function encodeWav(float32Audio, sampleRate) {
+    var numSamples = float32Audio.length;
+    var bytesPerSample = 2;
+    var dataSize = numSamples * bytesPerSample;
+    var buffer = new ArrayBuffer(44 + dataSize);
+    var view = new DataView(buffer);
+    function writeStr(off, str) {
+      for (var i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    }
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * bytesPerSample, true);
+    view.setUint16(32, bytesPerSample, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataSize, true);
+    for (var i = 0; i < numSamples; i++) {
+      var s = Math.max(-1, Math.min(1, float32Audio[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true);
+    }
+    return buffer;
   }
 
   async function startRecording() {
@@ -146,11 +190,11 @@
     var resampled = resampleBuffer(merged, sourceSampleRate, TARGET_SAMPLE_RATE);
     if (el) el.textContent = 'Transcribing...';
     try {
-      var pcmBuffer = resampled.buffer;
+      var wavBuffer = encodeWav(resampled, TARGET_SAMPLE_RATE);
       var resp = await fetch(BASE + '/api/stt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: pcmBuffer
+        headers: { 'Content-Type': 'audio/wav' },
+        body: wavBuffer
       });
       var data = await resp.json();
       if (data.text) {
@@ -240,6 +284,10 @@
     }
   }
 
+  function stripHtml(text) {
+    return text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  }
+
   function addVoiceBlock(text, isUser) {
     var container = document.getElementById('voiceMessages');
     if (!container) return;
@@ -247,13 +295,23 @@
     if (emptyMsg) emptyMsg.remove();
     var div = document.createElement('div');
     div.className = 'voice-block' + (isUser ? ' voice-block-user' : '');
-    div.textContent = text;
+    div.textContent = isUser ? text : stripHtml(text);
+    if (!isUser) {
+      var rereadBtn = document.createElement('button');
+      rereadBtn.className = 'voice-reread-btn';
+      rereadBtn.title = 'Re-read aloud';
+      rereadBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+      rereadBtn.addEventListener('click', function() {
+        speak(text);
+      });
+      div.appendChild(rereadBtn);
+    }
     container.appendChild(div);
     scrollVoiceToBottom();
     return div;
   }
 
-  function addVoiceResultBlock(block) {
+  function addVoiceResultBlock(block, autoSpeak) {
     var container = document.getElementById('voiceMessages');
     if (!container) return;
     var emptyMsg = container.querySelector('.voice-empty');
@@ -267,9 +325,10 @@
     if (block.result) {
       resultText = typeof block.result === 'string' ? block.result : JSON.stringify(block.result);
     }
+    var displayText = stripHtml(resultText);
     var html = '';
-    if (resultText) {
-      html += '<div>' + escapeHtml(resultText) + '</div>';
+    if (displayText) {
+      html += '<div>' + escapeHtml(displayText) + '</div>';
     }
     if (duration || cost) {
       html += '<div class="voice-result-stats">';
@@ -282,9 +341,19 @@
       html = isError ? 'Execution failed' : 'Execution complete';
     }
     div.innerHTML = html;
+    if (resultText) {
+      var rereadBtn = document.createElement('button');
+      rereadBtn.className = 'voice-reread-btn';
+      rereadBtn.title = 'Re-read aloud';
+      rereadBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+      rereadBtn.addEventListener('click', function() {
+        speak(resultText);
+      });
+      div.appendChild(rereadBtn);
+    }
     container.appendChild(div);
     scrollVoiceToBottom();
-    if (ttsEnabled && resultText) {
+    if (autoSpeak && ttsEnabled && resultText) {
       speak(resultText);
     }
     return div;
@@ -305,31 +374,33 @@
       var data = e.detail;
       if (!data) return;
       if (data.type === 'streaming_progress' && data.block) {
-        handleVoiceBlock(data.block);
+        handleVoiceBlock(data.block, true);
       }
       if (data.type === 'streaming_start') {
-        lastSpokenBlockIndex = -1;
+        spokenChunks = new Set();
       }
     });
     window.addEventListener('conversation-selected', function(e) {
       currentConversationId = e.detail.conversationId;
+      stopSpeaking();
+      spokenChunks = new Set();
       if (voiceActive) {
         loadVoiceBlocks(currentConversationId);
       }
     });
   }
 
-  function handleVoiceBlock(block) {
+  function handleVoiceBlock(block, isNew) {
     if (!block || !block.type) return;
     if (block.type === 'text' && block.text) {
       var div = addVoiceBlock(block.text, false);
-      if (div && ttsEnabled) {
+      if (div && isNew && ttsEnabled) {
         div.classList.add('speaking');
         speak(block.text);
         setTimeout(function() { div.classList.remove('speaking'); }, 2000);
       }
     } else if (block.type === 'result') {
-      addVoiceResultBlock(block);
+      addVoiceResultBlock(block, isNew);
     }
   }
 
@@ -341,9 +412,11 @@
       showVoiceEmpty(container);
       return;
     }
+    isLoadingHistory = true;
     fetch(BASE + '/api/conversations/' + conversationId + '/chunks')
       .then(function(res) { return res.json(); })
       .then(function(data) {
+        isLoadingHistory = false;
         if (!data.ok || !Array.isArray(data.chunks) || data.chunks.length === 0) {
           showVoiceEmpty(container);
           return;
@@ -356,19 +429,20 @@
             addVoiceBlock(block.text, false);
             hasContent = true;
           } else if (block.type === 'result') {
-            addVoiceResultBlock(block);
+            addVoiceResultBlock(block, false);
             hasContent = true;
           }
         });
         if (!hasContent) showVoiceEmpty(container);
       })
       .catch(function() {
+        isLoadingHistory = false;
         showVoiceEmpty(container);
       });
   }
 
   function showVoiceEmpty(container) {
-    container.innerHTML = '<div class="voice-empty"><div class="voice-empty-icon"><svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><div>Tap the microphone and speak to send a message.<br>Responses will be read aloud.</div></div>';
+    container.innerHTML = '<div class="voice-empty"><div class="voice-empty-icon"><svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><div>Hold the microphone button to record.<br>Release to transcribe. Tap Send to submit.<br>New responses will be read aloud.</div></div>';
   }
 
   function activate() {

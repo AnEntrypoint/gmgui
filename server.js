@@ -15,7 +15,7 @@ const express = require('express');
 const Busboy = require('busboy');
 const fsbrowse = require('fsbrowse');
 
-const SYSTEM_PROMPT = `Always write your responses in ripple-ui enhanced HTML. Avoid overriding light/dark mode CSS variables. Use all the benefits of HTML to express technical details with proper semantic markup, tables, code blocks, headings, and lists. Write clean, well-structured HTML that respects the existing design system.`;
+const SYSTEM_PROMPT = `Write all responses as clean semantic HTML. Use tags like <h3>, <p>, <ul>, <li>, <ol>, <table>, <code>, <pre>, <strong>, <em>, <a>, <blockquote>, <details>, <summary>. Your HTML will be rendered directly in a styled container that already provides fonts, colors, spacing, and dark mode support. Do not include <html>, <head>, <body>, <style>, or <script> tags. Do not use inline styles unless necessary for layout like tables. Do not use CSS class names. Just write semantic HTML content.`;
 
 const activeExecutions = new Map();
 const messageQueues = new Map();
@@ -522,7 +522,7 @@ const server = http.createServer(async (req, res) => {
         const mimeTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
         const contentType = mimeTypes[ext] || 'application/octet-stream';
         const fileContent = fs.readFileSync(normalizedPath);
-        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=3600' });
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-cache' });
         res.end(fileContent);
       } catch (err) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -574,7 +574,7 @@ function serveFile(filePath, res) {
       res.writeHead(200, {
         'Content-Type': contentType,
         'Content-Length': stats.size,
-        'Cache-Control': 'public, max-age=3600'
+        'Cache-Control': 'no-cache, must-revalidate'
       });
       fs.createReadStream(filePath).pipe(res);
     });

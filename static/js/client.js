@@ -516,7 +516,7 @@ class AgentGUIClient {
     if (block.type === 'text' && block.text) {
       const text = block.text;
       if (this.isHtmlContent(text)) {
-        return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${text}</div>`;
+        return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(text)}</div>`;
       }
       const parts = this.parseMarkdownCodeBlocks(text);
       if (parts.length === 1 && parts[0].type === 'text') {
@@ -524,7 +524,7 @@ class AgentGUIClient {
       }
       return parts.map(part => {
         if (part.type === 'html') {
-          return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div>`;
+          return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(part.content)}</div>`;
         } else if (part.type === 'code') {
           return this.renderCodeBlock(part.language, part.code);
         }
@@ -682,9 +682,17 @@ class AgentGUIClient {
   }
 
   isHtmlContent(text) {
-    const openTag = /<(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])\b[^>]*>/i;
-    const closeTag = /<\/(?:div|table|section|article|form|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6])>/i;
-    return openTag.test(text) && closeTag.test(text);
+    const htmlPattern = /<(?:div|table|section|article|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6]|p|blockquote|pre|code|span|strong|em|a|img|br|hr|li|td|tr|th|thead|tbody|tfoot)\b[^>]*>/i;
+    return htmlPattern.test(text);
+  }
+
+  sanitizeHtml(html) {
+    const dangerous = /<\s*\/?\s*(script|iframe|object|embed|applet|form|input|button|select|textarea)\b[^>]*>/gi;
+    let cleaned = html.replace(dangerous, '');
+    cleaned = cleaned.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+    cleaned = cleaned.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+    cleaned = cleaned.replace(/javascript\s*:/gi, '');
+    return cleaned;
   }
 
   parseMarkdownCodeBlocks(text) {
@@ -735,7 +743,7 @@ class AgentGUIClient {
             Rendered HTML
           </div>
           <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-            ${code}
+            ${this.sanitizeHtml(code)}
           </div>
         </div>
       `;
@@ -751,7 +759,7 @@ class AgentGUIClient {
   renderMessageContent(content) {
     if (typeof content === 'string') {
       if (this.isHtmlContent(content)) {
-        return `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${content}</div></div>`;
+        return `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(content)}</div></div>`;
       }
       return `<div class="message-text">${this.escapeHtml(content)}</div>`;
     } else if (content && typeof content === 'object' && content.type === 'claude_execution') {
@@ -762,7 +770,7 @@ class AgentGUIClient {
             const parts = this.parseMarkdownCodeBlocks(block.text);
             parts.forEach(part => {
               if (part.type === 'html') {
-                html += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${part.content}</div></div>`;
+                html += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(part.content)}</div></div>`;
               } else if (part.type === 'text') {
                 html += `<div class="message-text">${this.escapeHtml(part.content)}</div>`;
               } else if (part.type === 'code') {
@@ -778,7 +786,7 @@ class AgentGUIClient {
                     Rendered HTML
                   </div>
                   <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
-                    ${block.code}
+                    ${this.sanitizeHtml(block.code)}
                   </div>
                 </div>
               `;
@@ -1399,7 +1407,7 @@ class AgentGUIClient {
 
       if (typeof msg.content === 'string') {
         if (this.isHtmlContent(msg.content)) {
-          contentHtml = `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${msg.content}</div></div>`;
+          contentHtml = `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(msg.content)}</div></div>`;
         } else {
           contentHtml = `<div class="message-text">${this.escapeHtml(msg.content)}</div>`;
         }
