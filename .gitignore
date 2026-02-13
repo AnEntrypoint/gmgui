@@ -16,3 +16,4 @@ bun.lock
 tmp/
 test-results/
 .prd
+data/
