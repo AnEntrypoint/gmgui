@@ -27,7 +27,6 @@ const messageQueues = new Map();
 const rateLimitState = new Map();
 const STUCK_AGENT_THRESHOLD_MS = 600000;
 const NO_PID_GRACE_PERIOD_MS = 60000;
-const STALE_SESSION_MIN_AGE_MS = 30000;
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60000;
 
 const debugLog = (msg) => {
@@ -231,10 +230,8 @@ const server = http.createServer(async (req, res) => {
         const conv = queries.getConversation(convMatch[1]);
         if (!conv) { sendJSON(req, res, 404, { error: 'Not found' }); return; }
 
-        // Check both in-memory and database for active streaming status
         const latestSession = queries.getLatestSession(convMatch[1]);
-        const isActivelyStreaming = activeExecutions.has(convMatch[1]) ||
-          (latestSession && latestSession.status === 'active');
+        const isActivelyStreaming = activeExecutions.has(convMatch[1]);
 
                 sendJSON(req, res, 200, {
           conversation: conv,
@@ -279,17 +276,41 @@ const server = http.createServer(async (req, res) => {
         const conv = queries.getConversation(conversationId);
         if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
         const body = await parseBody(req);
+        const agentId = body.agentId || conv.agentType || conv.agentId || 'claude-code';
         const idempotencyKey = body.idempotencyKey || null;
         const message = queries.createMessage(conversationId, 'user', body.content, idempotencyKey);
         queries.createEvent('message.created', { role: 'user', messageId: message.id }, conversationId);
         broadcastSync({ type: 'message_created', conversationId, message, timestamp: Date.now() });
+
+        if (activeExecutions.has(conversationId)) {
+          if (!messageQueues.has(conversationId)) messageQueues.set(conversationId, []);
+          messageQueues.get(conversationId).push({ content: body.content, agentId, messageId: message.id });
+          const queueLength = messageQueues.get(conversationId).length;
+          broadcastSync({ type: 'queue_status', conversationId, queueLength, messageId: message.id, timestamp: Date.now() });
+          sendJSON(req, res, 200, { message, queued: true, queuePosition: queueLength, idempotencyKey });
+          return;
+        }
+
         const session = queries.createSession(conversationId);
         queries.createEvent('session.created', { messageId: message.id, sessionId: session.id }, conversationId, session.id);
-                  sendJSON(req, res, 201, { message, session, idempotencyKey });
-         // Fire-and-forget with proper error handling
-         processMessage(conversationId, message.id, body.content, body.agentId)
-           .catch(err => debugLog(`[processMessage] Uncaught error: ${err.message}`));
-         return;
+
+        activeExecutions.set(conversationId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
+        queries.setIsStreaming(conversationId, true);
+
+        broadcastSync({
+          type: 'streaming_start',
+          sessionId: session.id,
+          conversationId,
+          messageId: message.id,
+          agentId,
+          timestamp: Date.now()
+        });
+
+        sendJSON(req, res, 201, { message, session, idempotencyKey });
+
+        processMessageWithStreaming(conversationId, message.id, session.id, body.content, agentId)
+          .catch(err => debugLog(`[messages] Uncaught error: ${err.message}`));
+        return;
       }
     }
 
@@ -323,7 +344,8 @@ const server = http.createServer(async (req, res) => {
       const session = queries.createSession(conversationId);
       queries.createEvent('session.created', { messageId: userMessage.id, sessionId: session.id }, conversationId, session.id);
 
-            sendJSON(req, res, 200, { message: userMessage, session, streamId: session.id });
+      activeExecutions.set(conversationId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
+      queries.setIsStreaming(conversationId, true);
 
       broadcastSync({
         type: 'streaming_start',
@@ -333,6 +355,8 @@ const server = http.createServer(async (req, res) => {
         agentId,
         timestamp: Date.now()
       });
+
+      sendJSON(req, res, 200, { message: userMessage, session, streamId: session.id });
 
       processMessageWithStreaming(conversationId, userMessage.id, session.id, prompt, agentId)
         .catch(err => debugLog(`[stream] Uncaught error: ${err.message}`));
@@ -362,8 +386,7 @@ const server = http.createServer(async (req, res) => {
       const conv = queries.getConversation(conversationId);
       if (!conv) { sendJSON(req, res, 404, { error: 'Not found' }); return; }
       const latestSession = queries.getLatestSession(conversationId);
-      const isActivelyStreaming = activeExecutions.has(conversationId) ||
-        (latestSession && latestSession.status === 'active');
+      const isActivelyStreaming = activeExecutions.has(conversationId);
 
       const url = new URL(req.url, 'http://localhost');
       const chunkLimit = Math.min(parseInt(url.searchParams.get('chunkLimit') || '500'), 5000);
@@ -896,8 +919,6 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       });
 
       batcher.drain();
-      activeExecutions.delete(conversationId);
-      queries.setIsStreaming(conversationId, false);
 
       setTimeout(() => {
         rateLimitState.delete(conversationId);
@@ -987,54 +1008,6 @@ function drainMessageQueue(conversationId) {
     .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
 }
 
-async function processMessage(conversationId, messageId, content, agentId) {
-  try {
-    debugLog(`[processMessage] Starting: conversationId=${conversationId}, agentId=${agentId}`);
-
-    const conv = queries.getConversation(conversationId);
-    const cwd = conv?.workingDirectory || STARTUP_CWD;
-    const resumeSessionId = conv?.claudeSessionId || null;
-
-    let contentStr = typeof content === 'object' ? JSON.stringify(content) : content;
-
-    const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(contentStr, cwd, agentId || 'claude-code', {
-      resumeSessionId,
-      systemPrompt: SYSTEM_PROMPT
-    });
-
-    if (claudeSessionId) {
-      queries.setClaudeSessionId(conversationId, claudeSessionId);
-    }
-
-    let allBlocks = [];
-    for (const output of outputs) {
-      if (output.type === 'assistant' && output.message?.content) {
-        allBlocks.push(...(output.message.content || []));
-      }
-    }
-
-    let messageContent = null;
-    if (allBlocks.length > 0) {
-      messageContent = JSON.stringify({ type: 'claude_execution', blocks: allBlocks, timestamp: Date.now() });
-    } else {
-      let textParts = [];
-      for (const output of outputs) {
-        if (output.type === 'result' && output.result) textParts.push(String(output.result));
-        else if (typeof output === 'string') textParts.push(output);
-      }
-      messageContent = textParts.join('\n').trim();
-    }
-
-    if (messageContent) {
-      const assistantMessage = queries.createMessage(conversationId, 'assistant', messageContent);
-      broadcastSync({ type: 'message_created', conversationId, message: assistantMessage, timestamp: Date.now() });
-    }
-  } catch (error) {
-    debugLog(`[processMessage] Error: ${error.message}`);
-    const errorMessage = queries.createMessage(conversationId, 'assistant', `Error: ${error.message}`);
-    broadcastSync({ type: 'message_created', conversationId, message: errorMessage, timestamp: Date.now() });
-  }
-}
 
 const wss = new WebSocketServer({
   server,
@@ -1128,10 +1101,10 @@ wss.on('connection', (ws, req) => {
 });
 
 const BROADCAST_TYPES = new Set([
-  'message_created', 'conversation_created', 'conversations_updated',
-  'conversation_deleted', 'queue_status', 'streaming_start',
-  'streaming_complete', 'streaming_error', 'rate_limit_hit',
-  'rate_limit_clear'
+  'message_created', 'conversation_created', 'conversation_updated',
+  'conversations_updated', 'conversation_deleted', 'queue_status',
+  'streaming_start', 'streaming_complete', 'streaming_error',
+  'rate_limit_hit', 'rate_limit_clear'
 ]);
 
 const wsBatchQueues = new Map();
@@ -1233,8 +1206,6 @@ function recoverStaleSessions() {
 
     for (const session of staleSessions) {
       if (activeExecutions.has(session.conversationId)) continue;
-      const sessionAge = now - session.started_at;
-      if (sessionAge < STALE_SESSION_MIN_AGE_MS) continue;
 
       queries.updateSession(session.id, {
         status: 'error',

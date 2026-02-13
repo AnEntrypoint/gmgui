@@ -24,7 +24,7 @@ class AgentGUIClient {
       isInitialized: false,
       currentSession: null,
       currentConversation: null,
-      isStreaming: false,
+      streamingConversations: new Map(),
       sessionEvents: [],
       conversations: [],
       agents: []
@@ -405,11 +405,12 @@ class AgentGUIClient {
     // just track the state but do not modify the DOM or start polling
     if (this.state.currentConversation?.id !== data.conversationId) {
       console.log('Streaming started for non-active conversation:', data.conversationId);
+      this.state.streamingConversations.set(data.conversationId, true);
       this.emit('streaming:start', data);
       return;
     }
 
-    this.state.isStreaming = true;
+    this.state.streamingConversations.set(data.conversationId, true);
     this.state.currentSession = {
       id: data.sessionId,
       conversationId: data.conversationId,
@@ -583,11 +584,12 @@ class AgentGUIClient {
     // If this event is for a conversation we are NOT currently viewing, just track state
     if (conversationId && this.state.currentConversation?.id !== conversationId) {
       console.log('Streaming error for non-active conversation:', conversationId);
+      this.state.streamingConversations.delete(conversationId);
       this.emit('streaming:error', data);
       return;
     }
 
-    this.state.isStreaming = false;
+    this.state.streamingConversations.delete(conversationId);
 
     // Stop polling for chunks
     this.stopChunkPolling();
@@ -613,11 +615,12 @@ class AgentGUIClient {
 
     if (conversationId && this.state.currentConversation?.id !== conversationId) {
       console.log('Streaming completed for non-active conversation:', conversationId);
+      this.state.streamingConversations.delete(conversationId);
       this.emit('streaming:complete', data);
       return;
     }
 
-    this.state.isStreaming = false;
+    this.state.streamingConversations.delete(conversationId);
 
     // Stop polling for chunks
     this.stopChunkPolling();
@@ -662,7 +665,7 @@ class AgentGUIClient {
       return;
     }
 
-    if (data.message.role === 'assistant' && this.state.isStreaming) {
+    if (data.message.role === 'assistant' && this.state.streamingConversations.has(data.conversationId)) {
       this.emit('message:created', data);
       return;
     }
@@ -707,15 +710,21 @@ class AgentGUIClient {
 
   handleRateLimitHit(data) {
     if (data.conversationId !== this.state.currentConversation?.id) return;
-    this.state.isStreaming = false;
+    this.state.streamingConversations.delete(data.conversationId);
     this.stopChunkPolling();
+    this.enableControls();
+
+    const cooldownMs = data.retryAfterMs || 60000;
+    this._rateLimitSafetyTimer = setTimeout(() => {
+      this.enableControls();
+    }, cooldownMs + 10000);
 
     const sessionId = data.sessionId || this.state.currentSession?.id;
     const streamingEl = document.getElementById(`streaming-${sessionId}`);
     if (streamingEl) {
       const indicator = streamingEl.querySelector('.streaming-indicator');
       if (indicator) {
-        const retrySeconds = Math.ceil((data.retryAfterMs || 60000) / 1000);
+        const retrySeconds = Math.ceil(cooldownMs / 1000);
         indicator.innerHTML = `<span style="color:var(--color-warning);">Rate limited. Retrying in ${retrySeconds}s...</span>`;
         let remaining = retrySeconds;
         const countdownTimer = setInterval(() => {
@@ -733,6 +742,10 @@ class AgentGUIClient {
 
   handleRateLimitClear(data) {
     if (data.conversationId !== this.state.currentConversation?.id) return;
+    if (this._rateLimitSafetyTimer) {
+      clearTimeout(this._rateLimitSafetyTimer);
+      this._rateLimitSafetyTimer = null;
+    }
     this.enableControls();
   }
 
@@ -1012,35 +1025,46 @@ class AgentGUIClient {
     pollState.lastFetchTimestamp = Date.now();
     pollState.backoffDelay = 150;
     pollState.sessionCheckCounter = 0;
+    pollState.emptyPollCount = 0;
+
+    const checkSessionStatus = async () => {
+      if (!this.state.currentSession?.id) return false;
+      const sessionResponse = await fetch(`${window.__BASE_URL}/api/sessions/${this.state.currentSession.id}`);
+      if (!sessionResponse.ok) return false;
+      const { session } = await sessionResponse.json();
+      if (session && (session.status === 'complete' || session.status === 'error')) {
+        if (session.status === 'complete') {
+          this.handleStreamingComplete({ sessionId: session.id, conversationId, timestamp: Date.now() });
+        } else {
+          this.handleStreamingError({ sessionId: session.id, conversationId, error: session.error || 'Unknown error', timestamp: Date.now() });
+        }
+        return true;
+      }
+      return false;
+    };
 
     const pollOnce = async () => {
       if (!pollState.isPolling) return;
 
       try {
         pollState.sessionCheckCounter++;
-        if (pollState.sessionCheckCounter % 10 === 0 && this.state.currentSession?.id) {
-          const sessionResponse = await fetch(`${window.__BASE_URL}/api/sessions/${this.state.currentSession.id}`);
-          if (sessionResponse.ok) {
-            const { session } = await sessionResponse.json();
-            if (session && (session.status === 'complete' || session.status === 'error')) {
-              if (session.status === 'complete') {
-                this.handleStreamingComplete({ sessionId: session.id, conversationId, timestamp: Date.now() });
-              } else {
-                this.handleStreamingError({ sessionId: session.id, conversationId, error: session.error || 'Unknown error', timestamp: Date.now() });
-              }
-              return;
-            }
-          }
+        const shouldCheckSession = pollState.sessionCheckCounter % 3 === 0 || pollState.emptyPollCount >= 3;
+        if (shouldCheckSession) {
+          const done = await checkSessionStatus();
+          if (done) return;
+          if (pollState.emptyPollCount >= 3) pollState.emptyPollCount = 0;
         }
 
         const chunks = await this.fetchChunks(conversationId, pollState.lastFetchTimestamp);
 
         if (chunks.length > 0) {
           pollState.backoffDelay = 150;
+          pollState.emptyPollCount = 0;
           const lastChunk = chunks[chunks.length - 1];
           pollState.lastFetchTimestamp = lastChunk.created_at;
           this.renderChunkBatch(chunks.filter(c => c.block && c.block.type));
         } else {
+          pollState.emptyPollCount++;
           pollState.backoffDelay = Math.min(pollState.backoffDelay + 50, 500);
         }
 
@@ -1248,7 +1272,7 @@ class AgentGUIClient {
     if (!convId) return;
     const outputEl = document.getElementById('output');
     if (!outputEl || !outputEl.firstChild) return;
-    if (this.state.isStreaming) return;
+    if (this.state.streamingConversations.has(convId)) return;
 
     this.saveScrollPosition(convId);
     const clone = outputEl.cloneNode(true);
@@ -1272,8 +1296,7 @@ class AgentGUIClient {
     try {
       this.cacheCurrentConversation();
       this.stopChunkPolling();
-      if (this.state.isStreaming && this.state.currentConversation?.id !== conversationId) {
-        this.state.isStreaming = false;
+      if (this.state.currentConversation?.id !== conversationId) {
         this.state.currentSession = null;
       }
 
@@ -1313,7 +1336,8 @@ class AgentGUIClient {
       const userMessages = (allMessages || []).filter(m => m.role === 'user');
       const hasMoreChunks = totalChunks && chunks.length < totalChunks;
 
-      const shouldResumeStreaming = isActivelyStreaming && latestSession &&
+      const clientKnowsStreaming = this.state.streamingConversations.has(conversationId);
+      const shouldResumeStreaming = (isActivelyStreaming || clientKnowsStreaming) && latestSession &&
         (latestSession.status === 'active' || latestSession.status === 'pending');
 
       const outputEl = document.getElementById('output');
@@ -1444,7 +1468,7 @@ class AgentGUIClient {
         }
 
         if (shouldResumeStreaming && latestSession) {
-          this.state.isStreaming = true;
+          this.state.streamingConversations.set(conversationId, true);
           this.state.currentSession = {
             id: latestSession.id,
             conversationId: conversationId,

@@ -26,6 +26,7 @@ class WebSocketManager {
     this.requestMap = new Map();
     this.heartbeatTimer = null;
     this.connectionState = 'disconnected';
+    this.activeSubscriptions = new Set();
 
     // Statistics
     this.stats = {
@@ -124,11 +125,10 @@ class WebSocketManager {
 
     // Flush buffered messages
     this.flushMessageBuffer();
+    this.resubscribeAll();
 
-    // Start heartbeat
     this.startHeartbeat();
 
-    // Emit connected event
     this.emit('connected', { timestamp: Date.now() });
   }
 
@@ -271,8 +271,15 @@ class WebSocketManager {
       throw new Error('Invalid message data');
     }
 
+    if (data.type === 'subscribe') {
+      const key = data.sessionId ? `session:${data.sessionId}` : `conv:${data.conversationId}`;
+      this.activeSubscriptions.add(key);
+    } else if (data.type === 'unsubscribe') {
+      const key = data.sessionId ? `session:${data.sessionId}` : `conv:${data.conversationId}`;
+      this.activeSubscriptions.delete(key);
+    }
+
     if (!this.isConnected) {
-      // Buffer message if not connected
       this.bufferMessage(data);
       return false;
     }
@@ -333,6 +340,19 @@ class WebSocketManager {
       sessionId,
       timestamp: Date.now()
     });
+  }
+
+  resubscribeAll() {
+    for (const key of this.activeSubscriptions) {
+      const [type, id] = key.split(':');
+      const msg = { type: 'subscribe', timestamp: Date.now() };
+      if (type === 'session') msg.sessionId = id;
+      else msg.conversationId = id;
+      try {
+        this.ws.send(JSON.stringify(msg));
+        this.stats.totalMessagesSent++;
+      } catch (_) {}
+    }
   }
 
   /**

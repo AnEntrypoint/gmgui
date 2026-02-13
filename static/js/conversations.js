@@ -218,10 +218,11 @@ class ConversationManager {
       const data = await res.json();
       this.conversations = data.conversations || [];
 
-      // Seed streaming state from database isStreaming flag
       for (const conv of this.conversations) {
         if (conv.isStreaming === 1 || conv.isStreaming === true) {
           this.streamingConversations.add(conv.id);
+        } else {
+          this.streamingConversations.delete(conv.id);
         }
       }
 
@@ -272,7 +273,7 @@ class ConversationManager {
     const isActive = conv.id === this.activeId;
     el.classList.toggle('active', isActive);
 
-    const isStreaming = conv.isStreaming === 1 || conv.isStreaming === true || this.streamingConversations?.has(conv.id);
+    const isStreaming = this.streamingConversations.has(conv.id);
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
     const agent = conv.agentType || 'unknown';
@@ -298,7 +299,7 @@ class ConversationManager {
     li.dataset.convId = conv.id;
     if (conv.id === this.activeId) li.classList.add('active');
 
-    const isStreaming = conv.isStreaming === 1 || conv.isStreaming === true || this.streamingConversations?.has(conv.id);
+    const isStreaming = this.streamingConversations.has(conv.id);
 
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
