@@ -23,6 +23,9 @@ const SYSTEM_PROMPT = `Write all responses as clean semantic HTML. Use tags like
 
 const activeExecutions = new Map();
 const messageQueues = new Map();
+const STUCK_AGENT_THRESHOLD_MS = 600000;
+const NO_PID_GRACE_PERIOD_MS = 60000;
+const STALE_SESSION_MIN_AGE_MS = 30000;
 
 const debugLog = (msg) => {
   const timestamp = new Date().toISOString();
@@ -648,7 +651,7 @@ function persistChunkWithRetry(sessionId, conversationId, sequence, blockType, b
 
 async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId) {
   const startTime = Date.now();
-  activeExecutions.set(conversationId, { pid: null, startTime, sessionId });
+  activeExecutions.set(conversationId, { pid: null, startTime, sessionId, lastActivity: startTime });
   queries.setIsStreaming(conversationId, true);
   queries.updateSession(sessionId, { status: 'active' });
 
@@ -665,6 +668,8 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
 
     const onEvent = (parsed) => {
       eventCount++;
+      const entry = activeExecutions.get(conversationId);
+      if (entry) entry.lastActivity = Date.now();
       debugLog(`[stream] Event ${eventCount}: type=${parsed.type}`);
 
       if (parsed.type === 'system') {
@@ -1045,25 +1050,27 @@ server.on('error', (err) => {
 function recoverStaleSessions() {
   try {
     const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
+    const now = Date.now();
     let recoveredCount = 0;
     for (const session of staleSessions) {
-      if (!activeExecutions.has(session.conversationId)) {
-        queries.updateSession(session.id, {
-          status: 'error',
-          error: 'Agent died unexpectedly (server restart)',
-          completed_at: Date.now()
-        });
-        queries.setIsStreaming(session.conversationId, false);
-        broadcastSync({
-          type: 'streaming_error',
-          sessionId: session.id,
-          conversationId: session.conversationId,
-          error: 'Agent died unexpectedly (server restart)',
-          recoverable: false,
-          timestamp: Date.now()
-        });
-        recoveredCount++;
-      }
+      if (activeExecutions.has(session.conversationId)) continue;
+      const sessionAge = now - session.started_at;
+      if (sessionAge < STALE_SESSION_MIN_AGE_MS) continue;
+      queries.updateSession(session.id, {
+        status: 'error',
+        error: 'Agent died unexpectedly (server restart)',
+        completed_at: now
+      });
+      queries.setIsStreaming(session.conversationId, false);
+      broadcastSync({
+        type: 'streaming_error',
+        sessionId: session.id,
+        conversationId: session.conversationId,
+        error: 'Agent died unexpectedly (server restart)',
+        recoverable: false,
+        timestamp: now
+      });
+      recoveredCount++;
     }
     if (recoveredCount > 0) {
       console.log(`[RECOVERY] Recovered ${recoveredCount} stale active session(s)`);
@@ -1073,31 +1080,63 @@ function recoverStaleSessions() {
   }
 }
 
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    if (err.code === 'EPERM') return true;
+    return false;
+  }
+}
+
+function markAgentDead(conversationId, entry, reason) {
+  if (!activeExecutions.has(conversationId)) return;
+  activeExecutions.delete(conversationId);
+  queries.setIsStreaming(conversationId, false);
+  if (entry.sessionId) {
+    queries.updateSession(entry.sessionId, {
+      status: 'error',
+      error: reason,
+      completed_at: Date.now()
+    });
+  }
+  broadcastSync({
+    type: 'streaming_error',
+    sessionId: entry.sessionId,
+    conversationId,
+    error: reason,
+    recoverable: false,
+    timestamp: Date.now()
+  });
+  drainMessageQueue(conversationId);
+}
+
 function performAgentHealthCheck() {
+  const now = Date.now();
   for (const [conversationId, entry] of activeExecutions) {
-    if (!entry || !entry.pid) continue;
-    try {
-      process.kill(entry.pid, 0);
-    } catch (err) {
-      debugLog(`[HEALTH] Agent PID ${entry.pid} for conv ${conversationId} is dead`);
-      activeExecutions.delete(conversationId);
-      queries.setIsStreaming(conversationId, false);
-      if (entry.sessionId) {
-        queries.updateSession(entry.sessionId, {
-          status: 'error',
-          error: 'Agent process died unexpectedly',
-          completed_at: Date.now()
+    if (!entry) continue;
+
+    if (entry.pid) {
+      if (!isProcessAlive(entry.pid)) {
+        debugLog(`[HEALTH] Agent PID ${entry.pid} for conv ${conversationId} is dead`);
+        markAgentDead(conversationId, entry, 'Agent process died unexpectedly');
+      } else if (now - entry.lastActivity > STUCK_AGENT_THRESHOLD_MS) {
+        debugLog(`[HEALTH] Agent PID ${entry.pid} for conv ${conversationId} has no activity for ${Math.round((now - entry.lastActivity) / 1000)}s`);
+        broadcastSync({
+          type: 'streaming_error',
+          sessionId: entry.sessionId,
+          conversationId,
+          error: 'Agent may be stuck (no activity for 10 minutes)',
+          recoverable: true,
+          timestamp: now
         });
       }
-      broadcastSync({
-        type: 'streaming_error',
-        sessionId: entry.sessionId,
-        conversationId,
-        error: 'Agent process died unexpectedly',
-        recoverable: false,
-        timestamp: Date.now()
-      });
-      drainMessageQueue(conversationId);
+    } else {
+      if (now - entry.startTime > NO_PID_GRACE_PERIOD_MS) {
+        debugLog(`[HEALTH] Agent for conv ${conversationId} never reported PID after ${Math.round((now - entry.startTime) / 1000)}s`);
+        markAgentDead(conversationId, entry, 'Agent failed to start (no PID reported)');
+      }
     }
   }
 }

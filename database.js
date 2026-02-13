@@ -335,14 +335,14 @@ export const queries = {
 
   getSessionsProcessingLongerThan(minutes) {
     const cutoff = Date.now() - (minutes * 60 * 1000);
-    const stmt = db.prepare('SELECT * FROM sessions WHERE status = ? AND started_at < ?');
-    return stmt.all('pending', cutoff);
+    const stmt = db.prepare("SELECT * FROM sessions WHERE status IN ('active', 'pending') AND started_at < ?");
+    return stmt.all(cutoff);
   },
 
   cleanupOrphanedSessions(days) {
     const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-    const stmt = db.prepare('DELETE FROM sessions WHERE status = ? AND started_at < ?');
-    const result = stmt.run('pending', cutoff);
+    const stmt = db.prepare("DELETE FROM sessions WHERE status IN ('active', 'pending') AND started_at < ?");
+    const result = stmt.run(cutoff);
     return result.changes || 0;
   },
 
