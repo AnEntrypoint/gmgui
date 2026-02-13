@@ -877,7 +877,11 @@ class AgentGUIClient {
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
-            html += `<div class="streaming-block-tool-result${block.is_error ? ' tool-result-error' : ''}"><div class="tool-result-header">${block.is_error ? '<span class="tool-result-error-badge">Error</span>' : '<span class="tool-result-ok-badge">Result</span>'}</div>${smartHtml}</div>`;
+            const resultPreview = content.length > 80 ? content.substring(0, 77).replace(/\n/g, ' ') + '...' : content.replace(/\n/g, ' ');
+            const resultIcon = block.is_error
+              ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
+              : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
+            html += `<details class="folded-tool${block.is_error ? ' folded-tool-error' : ''}"><summary class="folded-tool-bar"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></summary><div class="folded-tool-body">${smartHtml}</div></details>`;
           }
         });
       }

@@ -1586,6 +1586,34 @@
     .folded-tool-error > .folded-tool-body { border-top-color: #fecaca; }
     html.dark .folded-tool-error > .folded-tool-body { border-top-color: #7f1d1d; }
 
+    /* --- Info variant of folded-tool (system blocks) --- */
+    .folded-tool.folded-tool-info {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+    }
+    html.dark .folded-tool.folded-tool-info {
+      background: #15103a;
+      border-color: #3730a3;
+    }
+    .folded-tool-info > .folded-tool-bar {
+      background: #e0e7ff;
+    }
+    html.dark .folded-tool-info > .folded-tool-bar {
+      background: #1e1b4b;
+    }
+    .folded-tool-info > .folded-tool-bar::before { color: #6366f1; }
+    html.dark .folded-tool-info > .folded-tool-bar::before { color: #a5b4fc; }
+    .folded-tool-info > .folded-tool-bar:hover { background: #c7d2fe; }
+    html.dark .folded-tool-info > .folded-tool-bar:hover { background: #312e81; }
+    .folded-tool-info .folded-tool-icon { color: #6366f1; }
+    html.dark .folded-tool-info .folded-tool-icon { color: #a5b4fc; }
+    .folded-tool-info .folded-tool-name { color: #3730a3; }
+    html.dark .folded-tool-info .folded-tool-name { color: #c7d2fe; }
+    .folded-tool-info .folded-tool-desc { color: #4f46e5; }
+    html.dark .folded-tool-info .folded-tool-desc { color: #a5b4fc; }
+    .folded-tool-info > .folded-tool-body { border-top-color: #c7d2fe; }
+    html.dark .folded-tool-info > .folded-tool-body { border-top-color: #3730a3; }
+
     /* --- Collapsible Code Summary --- */
     .collapsible-code {
       margin: 0.25rem 0;
@@ -1694,13 +1722,6 @@
     .block-tool-result.result-error .result-body { color: #7f1d1d; }
     html.dark .block-tool-result.result-success .result-body { color: #bbf7d0; }
     html.dark .block-tool-result.result-error .result-body { color: #fecaca; }
-
-    .result-collapsible { margin: 0; }
-    .result-collapsible > summary { list-style: none; }
-    .result-collapsible > summary::-webkit-details-marker { display: none; }
-    .result-collapsible > summary::marker { display: none; content: ''; }
-    .result-collapsible > summary .status-label::before { content: '\25b6'; font-size: 0.6rem; margin-right: 0.375rem; display: inline-block; transition: transform 0.15s; }
-    .result-collapsible[open] > summary .status-label::before { transform: rotate(90deg); }
 
     .block-tool-result .result-body.collapsed { max-height: 150px; position: relative; }
     .block-tool-result .result-body.collapsed::after {

@@ -1157,41 +1157,35 @@ class StreamingRenderer {
    * Render tool result block with smart content display
    */
   renderBlockToolResult(block, context) {
-    const div = document.createElement('div');
     const isError = block.is_error || false;
-    div.className = `block-tool-result ${isError ? 'result-error' : 'result-success'}`;
-
     const content = block.content || '';
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-    const toolUseId = block.tool_use_id || '';
+    const preview = contentStr.length > 80 ? contentStr.substring(0, 77).replace(/\n/g, ' ') + '...' : contentStr.replace(/\n/g, ' ');
+
+    const details = document.createElement('details');
+    details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
+    details.dataset.eventType = 'tool_result';
 
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
 
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${iconSvg}</span>
+      <span class="folded-tool-name">${isError ? 'Error' : 'Success'}</span>
+      <span class="folded-tool-desc">${this.escapeHtml(preview)}</span>
+    `;
+    details.appendChild(summary);
+
     const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this));
+    const body = document.createElement('div');
+    body.className = 'folded-tool-body';
+    body.innerHTML = renderedContent;
+    details.appendChild(body);
 
-    if (isError) {
-      div.innerHTML = `
-        <div class="result-header">
-          <span class="status-label">${iconSvg} Error</span>
-          ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
-        </div>
-        ${renderedContent}
-      `;
-    } else {
-      div.innerHTML = `
-        <details class="result-collapsible">
-          <summary class="result-header" style="cursor:pointer;list-style:none;user-select:none">
-            <span class="status-label">${iconSvg} Success</span>
-            ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
-          </summary>
-          <div class="result-collapsible-body">${renderedContent}</div>
-        </details>
-      `;
-    }
-
-    return div;
+    return details;
   }
 
   /**
@@ -1247,11 +1241,21 @@ class StreamingRenderer {
    * Render system event
    */
   renderBlockSystem(block, context) {
-    const div = document.createElement('div');
-    div.className = 'block-system';
-
-    div.innerHTML = `
-      <div class="system-header">Session Information</div>
+    const details = document.createElement('details');
+    details.className = 'folded-tool folded-tool-info';
+    details.dataset.eventType = 'system';
+    const desc = block.model ? this.escapeHtml(block.model) : 'Session';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg></span>
+      <span class="folded-tool-name">Session</span>
+      <span class="folded-tool-desc">${desc}</span>
+    `;
+    details.appendChild(summary);
+    const body = document.createElement('div');
+    body.className = 'folded-tool-body block-system';
+    body.innerHTML = `
       <div class="system-body">
         ${block.model ? `<div class="sys-field"><span class="sys-label">Model</span><span class="sys-value"><code>${this.escapeHtml(block.model)}</code></span></div>` : ''}
         ${block.cwd ? `<div class="sys-field"><span class="sys-label">Directory</span><span class="sys-value"><code>${this.escapeHtml(block.cwd)}</code></span></div>` : ''}
@@ -1259,38 +1263,58 @@ class StreamingRenderer {
         ${block.tools && Array.isArray(block.tools) ? `<div class="sys-field" style="flex-direction:column;gap:0.375rem"><span class="sys-label">Tools (${block.tools.length})</span><div class="tools-list">${block.tools.map(t => `<span class="tool-badge">${this.escapeHtml(t)}</span>`).join('')}</div></div>` : ''}
       </div>
     `;
-
-    return div;
+    details.appendChild(body);
+    return details;
   }
 
   /**
    * Render result block (execution summary)
    */
   renderBlockResult(block, context) {
-    const div = document.createElement('div');
     const isError = block.is_error || false;
-    div.className = `block-result ${isError ? 'result-err' : 'result-ok'}`;
-
     const duration = block.duration_ms ? (block.duration_ms / 1000).toFixed(1) + 's' : '';
     const cost = block.total_cost_usd ? '$' + block.total_cost_usd.toFixed(4) : '';
     const turns = block.num_turns || '';
+    const statsDesc = [duration, cost, turns ? turns + ' turns' : ''].filter(Boolean).join(' / ');
 
-    div.innerHTML = `
-      <div class="result-summary-header">
-        ${isError
-          ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
-          : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>'}
-        <span class="result-title">${isError ? 'Execution Failed' : 'Execution Complete'}</span>
-      </div>
-      <div class="result-stats">
-        ${duration ? `<div class="result-stat"><span class="stat-icon">&#9202;</span><span class="stat-value">${this.escapeHtml(duration)}</span><span class="stat-label">duration</span></div>` : ''}
-        ${cost ? `<div class="result-stat"><span class="stat-icon">&#128176;</span><span class="stat-value">${this.escapeHtml(cost)}</span><span class="stat-label">cost</span></div>` : ''}
-        ${turns ? `<div class="result-stat"><span class="stat-icon">&#128260;</span><span class="stat-value">${this.escapeHtml(String(turns))}</span><span class="stat-label">turns</span></div>` : ''}
-      </div>
-      ${block.result ? `<div class="result-content">${(() => { const r = typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2); return this.containsHtmlTags(r) ? '<div class="html-content">' + this.sanitizeHtml(r) + '</div>' : this.escapeHtml(r); })()}</div>` : ''}
+    const details = document.createElement('details');
+    details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
+    details.dataset.eventType = 'result';
+
+    const iconSvg = isError
+      ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
+      : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
+
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
+    summary.innerHTML = `
+      <span class="folded-tool-icon">${iconSvg}</span>
+      <span class="folded-tool-name">${isError ? 'Failed' : 'Complete'}</span>
+      <span class="folded-tool-desc">${this.escapeHtml(statsDesc)}</span>
     `;
+    details.appendChild(summary);
 
-    return div;
+    if (block.result || duration || cost || turns) {
+      const body = document.createElement('div');
+      body.className = 'folded-tool-body';
+      let bodyHtml = '';
+      if (duration || cost || turns) {
+        bodyHtml += `<div class="block-result"><div class="result-stats">
+          ${duration ? `<div class="result-stat"><span class="stat-icon">&#9202;</span><span class="stat-value">${this.escapeHtml(duration)}</span><span class="stat-label">duration</span></div>` : ''}
+          ${cost ? `<div class="result-stat"><span class="stat-icon">&#128176;</span><span class="stat-value">${this.escapeHtml(cost)}</span><span class="stat-label">cost</span></div>` : ''}
+          ${turns ? `<div class="result-stat"><span class="stat-icon">&#128260;</span><span class="stat-value">${this.escapeHtml(String(turns))}</span><span class="stat-label">turns</span></div>` : ''}
+        </div></div>`;
+      }
+      if (block.result) {
+        const r = typeof block.result === 'string' ? block.result : JSON.stringify(block.result, null, 2);
+        const rendered = this.containsHtmlTags(r) ? '<div class="html-content">' + this.sanitizeHtml(r) + '</div>' : `<div style="font-size:0.8rem;white-space:pre-wrap;word-break:break-word;line-height:1.5">${this.escapeHtml(r)}</div>`;
+        bodyHtml += rendered;
+      }
+      body.innerHTML = bodyHtml;
+      details.appendChild(body);
+    }
+
+    return details;
   }
 
   /**
