@@ -1,7 +1,19 @@
-import { STT, TTS } from 'webtalk-sdk';
-
 (function() {
   const BASE = window.__BASE_URL || '';
+  let STT = null;
+  let TTS = null;
+
+  async function loadSDK() {
+    try {
+      const mod = await import(BASE + '/webtalk/sdk.js');
+      STT = mod.STT;
+      TTS = mod.TTS;
+      return true;
+    } catch (e) {
+      console.warn('Webtalk SDK load failed:', e.message);
+      return false;
+    }
+  }
   let stt = null;
   let tts = null;
   let isRecording = false;
@@ -19,8 +31,14 @@ import { STT, TTS } from 'webtalk-sdk';
     setupUI();
     setupStreamingListener();
     setupAgentSelector();
-    initSTT();
-    initTTS();
+    var sdkLoaded = await loadSDK();
+    if (sdkLoaded) {
+      initSTT();
+      initTTS();
+    } else {
+      sttLoadPhase = 'failed';
+      updateMicState();
+    }
   }
 
   var sttLoadPhase = 'starting';

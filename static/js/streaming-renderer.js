@@ -76,48 +76,18 @@ class StreamingRenderer {
    * Setup DOM mutation observer for external changes
    */
   setupDOMObserver() {
-    try {
-      this.observer = new MutationObserver(() => {
-        this.updateDOMNodeCount();
-      });
-
-      this.observer.observe(this.outputContainer, {
-        childList: true,
-        subtree: true,
-        characterData: false,
-        attributes: false
-      });
-    } catch (e) {
-      console.warn('DOM observer setup failed:', e.message);
-    }
   }
 
   /**
    * Setup resize observer for viewport changes
    */
   setupResizeObserver() {
-    try {
-      this.resizeObserver = new ResizeObserver(() => {
-        this.updateVirtualScroll();
-      });
-
-      if (this.scrollContainer) {
-        this.resizeObserver.observe(this.scrollContainer);
-      }
-    } catch (e) {
-      console.warn('Resize observer setup failed:', e.message);
-    }
   }
 
   /**
    * Setup scroll optimization and auto-scroll
    */
   setupScrollOptimization() {
-    if (this.scrollContainer) {
-      this.scrollContainer.addEventListener('scroll', () => {
-        this.updateVirtualScroll();
-      }, { passive: true });
-    }
   }
 
   /**
@@ -1076,13 +1046,27 @@ class StreamingRenderer {
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
 
-    div.innerHTML = `
-      <div class="result-header">
-        <span class="status-label">${iconSvg} ${isError ? 'Error' : 'Success'}</span>
-        ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
-      </div>
-      ${StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this))}
-    `;
+    const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this));
+
+    if (isError) {
+      div.innerHTML = `
+        <div class="result-header">
+          <span class="status-label">${iconSvg} Error</span>
+          ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
+        </div>
+        ${renderedContent}
+      `;
+    } else {
+      div.innerHTML = `
+        <details class="result-collapsible">
+          <summary class="result-header" style="cursor:pointer;list-style:none;user-select:none">
+            <span class="status-label">${iconSvg} Success</span>
+            ${toolUseId ? `<span class="result-id">${this.escapeHtml(toolUseId)}</span>` : ''}
+          </summary>
+          <div class="result-collapsible-body">${renderedContent}</div>
+        </details>
+      `;
+    }
 
     return div;
   }
@@ -1697,28 +1681,7 @@ class StreamingRenderer {
     }
   }
 
-  /**
-   * Update virtual scroll based on viewport
-   */
   updateVirtualScroll() {
-    if (!this.scrollContainer) return;
-
-    // Calculate visible items
-    const scrollTop = this.scrollContainer.scrollTop;
-    const viewportHeight = this.scrollContainer.clientHeight;
-    const itemHeight = 80; // Approximate item height
-
-    const firstVisible = Math.floor(scrollTop / itemHeight);
-    const lastVisible = Math.ceil((scrollTop + viewportHeight) / itemHeight);
-
-    // Update visibility of DOM nodes
-    const items = this.outputContainer?.querySelectorAll('[data-event-id]');
-    if (!items) return;
-
-    items.forEach((item, index) => {
-      const isVisible = index >= firstVisible && index <= lastVisible;
-      item.style.display = isVisible ? '' : 'none';
-    });
   }
 
   /**
