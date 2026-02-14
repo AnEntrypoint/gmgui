@@ -44,6 +44,22 @@ class AgentGUIClient {
       sendButton: null,
       agentSelector: null
     };
+
+    // Chunk polling state (must be in constructor so it exists before any event handlers fire)
+    this.chunkPollState = {
+      isPolling: false,
+      lastFetchTimestamp: 0,
+      pollTimer: null,
+      backoffDelay: 100,
+      maxBackoffDelay: 400,
+      abortController: null
+    };
+
+    // Router state
+    this.routerState = {
+      currentConversationId: null,
+      currentSessionId: null
+    };
   }
 
   /**
@@ -74,22 +90,6 @@ class AgentGUIClient {
       if (this.config.autoConnect) {
         await this.connectWebSocket();
       }
-
-      // Initialize chunk polling state
-      this.chunkPollState = {
-        isPolling: false,
-        lastFetchTimestamp: 0,
-        pollTimer: null,
-        backoffDelay: 100,
-        maxBackoffDelay: 400,
-        abortController: null
-      };
-
-      // Initialize router state
-      this.routerState = {
-        currentConversationId: null,
-        currentSessionId: null
-      };
 
       // Restore state from URL on page load
       this.restoreStateFromUrl();
