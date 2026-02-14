@@ -65,7 +65,7 @@
           selector.value = saved;
         }
       })
-      .catch(function() {});
+      .catch(function(err) { console.error('[Voice] Failed to load voices:', err); });
     selector.addEventListener('change', function() {
       selectedVoiceId = selector.value;
       localStorage.setItem('voice-selected-id', selectedVoiceId);
