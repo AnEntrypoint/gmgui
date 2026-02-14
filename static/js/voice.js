@@ -9,7 +9,7 @@
   var currentAudio = null;
   var mediaStream = null;
   var audioContext = null;
-  var scriptNode = null;
+  var workletNode = null;
   var recordedChunks = [];
   var TARGET_SAMPLE_RATE = 16000;
   var spokenChunks = new Set();
@@ -208,14 +208,13 @@
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       var source = audioContext.createMediaStreamSource(mediaStream);
-      scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
       recordedChunks = [];
-      scriptNode.onaudioprocess = function(e) {
-        var data = e.inputBuffer.getChannelData(0);
-        recordedChunks.push(new Float32Array(data));
+      await audioContext.audioWorklet.addModule(BASE + '/js/audio-recorder-processor.js');
+      workletNode = new AudioWorkletNode(audioContext, 'recorder-processor');
+      workletNode.port.onmessage = function(e) {
+        recordedChunks.push(e.data);
       };
-      source.connect(scriptNode);
-      scriptNode.connect(audioContext.destination);
+      source.connect(workletNode);
       isRecording = true;
       var micBtn = document.getElementById('voiceMicBtn');
       if (micBtn) micBtn.classList.add('recording');
@@ -231,7 +230,7 @@
     var micBtn = document.getElementById('voiceMicBtn');
     if (micBtn) micBtn.classList.remove('recording');
     var el = document.getElementById('voiceTranscript');
-    if (scriptNode) { scriptNode.disconnect(); scriptNode = null; }
+    if (workletNode) { workletNode.port.postMessage('stop'); workletNode.disconnect(); workletNode = null; }
     if (mediaStream) {
       mediaStream.getTracks().forEach(function(t) { t.stop(); });
       mediaStream = null;
@@ -321,6 +320,7 @@
   var TTS_MAX_FAILURES = 3;
   var ttsDisabledUntilReset = false;
   var streamingSupported = true;
+  var streamingFailedAt = 0;
 
   function playNextChunk() {
     if (audioChunkQueue.length === 0) {
@@ -392,7 +392,8 @@
     }
 
     function tryStreaming() {
-      if (!streamingSupported) { tryNonStreaming(text); return; }
+      if (!streamingSupported && (Date.now() - streamingFailedAt < 30000)) { tryNonStreaming(text); return; }
+      streamingSupported = true;
       fetch(BASE + '/api/tts-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -400,6 +401,7 @@
       }).then(function(resp) {
         if (!resp.ok) {
           streamingSupported = false;
+          streamingFailedAt = Date.now();
           throw new Error('TTS stream failed: ' + resp.status);
         }
         var reader = resp.body.getReader();

@@ -536,30 +536,30 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/agents' && req.method === 'GET') {
+    if (pathOnly === '/api/agents' && req.method === 'GET') {
             sendJSON(req, res, 200, { agents: discoveredAgents });
       return;
     }
 
 
-    if (routePath === '/api/import/claude-code' && req.method === 'GET') {
+    if (pathOnly === '/api/import/claude-code' && req.method === 'GET') {
       const result = queries.importClaudeCodeConversations();
             sendJSON(req, res, 200, { imported: result });
       return;
     }
 
-    if (routePath === '/api/discover/claude-code' && req.method === 'GET') {
+    if (pathOnly === '/api/discover/claude-code' && req.method === 'GET') {
       const discovered = queries.discoverClaudeCodeConversations();
             sendJSON(req, res, 200, { discovered });
       return;
     }
 
-    if (routePath === '/api/home' && req.method === 'GET') {
+    if (pathOnly === '/api/home' && req.method === 'GET') {
             sendJSON(req, res, 200, { home: os.homedir(), cwd: STARTUP_CWD });
       return;
     }
 
-    if (routePath === '/api/stt' && req.method === 'POST') {
+    if (pathOnly === '/api/stt' && req.method === 'POST') {
       try {
         const chunks = [];
         for await (const chunk of req) chunks.push(chunk);
@@ -578,7 +578,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/voices' && req.method === 'GET') {
+    if (pathOnly === '/api/voices' && req.method === 'GET') {
       try {
         const { getVoices } = await getSpeech();
         sendJSON(req, res, 200, { ok: true, voices: getVoices() });
@@ -588,7 +588,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/tts' && req.method === 'POST') {
+    if (pathOnly === '/api/tts' && req.method === 'POST') {
       try {
         const body = await parseBody(req);
         const text = body.text || '';
@@ -615,7 +615,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/tts-stream' && req.method === 'POST') {
+    if (pathOnly === '/api/tts-stream' && req.method === 'POST') {
       try {
         const body = await parseBody(req);
         const text = body.text || '';
@@ -653,7 +653,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/speech-status' && req.method === 'GET') {
+    if (pathOnly === '/api/speech-status' && req.method === 'GET') {
       try {
         const { getStatus } = await getSpeech();
         sendJSON(req, res, 200, getStatus());
@@ -663,7 +663,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (routePath === '/api/folders' && req.method === 'POST') {
+    if (pathOnly === '/api/folders' && req.method === 'POST') {
       const body = await parseBody(req);
       const folderPath = body.path || STARTUP_CWD;
       try {
