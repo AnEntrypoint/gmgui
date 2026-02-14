@@ -476,7 +476,16 @@ class AgentGUIClient {
                 mDiv.innerHTML = '<div class="message-role">Assistant</div><div class="message-blocks streaming-blocks"></div>';
                 const bEl = mDiv.querySelector('.message-blocks');
                 const bFrag = document.createDocumentFragment();
-                sList.forEach(chunk => { if (chunk.block?.type) { const el = this.renderer.renderBlock(chunk.block, chunk); if (el) bFrag.appendChild(el); } });
+                sList.forEach(chunk => {
+                  if (!chunk.block?.type) return;
+                  const el = this.renderer.renderBlock(chunk.block, chunk);
+                  if (!el) return;
+                  if (chunk.block.type === 'tool_result') {
+                    const lastInFrag = bFrag.lastElementChild;
+                    if (lastInFrag?.classList?.contains('block-tool-use')) { lastInFrag.appendChild(el); return; }
+                  }
+                  bFrag.appendChild(el);
+                });
                 bEl.appendChild(bFrag);
                 const ts = document.createElement('div'); ts.className = 'message-timestamp'; ts.textContent = new Date(sList[sList.length - 1].created_at).toLocaleString();
                 mDiv.appendChild(ts);
@@ -833,7 +842,12 @@ class AgentGUIClient {
     } else if (content && typeof content === 'object' && content.type === 'claude_execution') {
       let html = '<div class="message-blocks">';
       if (content.blocks && Array.isArray(content.blocks)) {
+        let pendingToolUseClose = false;
         content.blocks.forEach(block => {
+          if (block.type !== 'tool_result' && pendingToolUseClose) {
+            html += '</details>';
+            pendingToolUseClose = false;
+          }
           if (block.type === 'text') {
             const parts = this.parseMarkdownCodeBlocks(block.text);
             parts.forEach(part => {
@@ -873,7 +887,8 @@ class AgentGUIClient {
             const dName = hasRenderer ? StreamingRenderer.getToolDisplayName(tn) : tn;
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
-            html += `<details class="folded-tool"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}</details>`;
+            html += `<details class="block-tool-use folded-tool"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
             const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
@@ -881,9 +896,16 @@ class AgentGUIClient {
             const resultIcon = block.is_error
               ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
               : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-            html += `<details class="folded-tool${block.is_error ? ' folded-tool-error' : ''}"><summary class="folded-tool-bar"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></summary><div class="folded-tool-body">${smartHtml}</div></details>`;
+            const resultHtml = `<details class="tool-result-inline${block.is_error ? ' tool-result-error' : ''}"><summary class="tool-result-status"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></summary><div class="folded-tool-body">${smartHtml}</div></details>`;
+            if (pendingToolUseClose) {
+              html += resultHtml + '</details>';
+              pendingToolUseClose = false;
+            } else {
+              html += resultHtml;
+            }
           }
         });
+        if (pendingToolUseClose) html += '</details>';
       }
       html += '</div>';
       return html;
@@ -1116,10 +1138,15 @@ class AgentGUIClient {
     const blocksEl = streamingEl.querySelector('.streaming-blocks');
     if (!blocksEl) return;
     const element = this.renderer.renderBlock(chunk.block, chunk);
-    if (element) {
-      blocksEl.appendChild(element);
-      this.scrollToBottom();
+    if (!element) return;
+    if (chunk.block.type === 'tool_result') {
+      const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
+      const lastEl = blocksEl.lastElementChild;
+      const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
+      if (toolUseEl) { toolUseEl.appendChild(element); this.scrollToBottom(); return; }
     }
+    blocksEl.appendChild(element);
+    this.scrollToBottom();
   }
 
   renderChunkBatch(chunks) {
@@ -1136,13 +1163,20 @@ class AgentGUIClient {
       if (!streamingEl) continue;
       const blocksEl = streamingEl.querySelector('.streaming-blocks');
       if (!blocksEl) continue;
-      const frag = document.createDocumentFragment();
       for (const chunk of groups[sid]) {
         const el = this.renderer.renderBlock(chunk.block, chunk);
-        if (el) frag.appendChild(el);
-      }
-      if (frag.childNodes.length) {
-        blocksEl.appendChild(frag);
+        if (!el) continue;
+        if (chunk.block.type === 'tool_result') {
+          const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
+          const lastEl = blocksEl.lastElementChild;
+          const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
+          if (toolUseEl) {
+            toolUseEl.appendChild(el);
+            appended = true;
+            continue;
+          }
+        }
+        blocksEl.appendChild(el);
         appended = true;
       }
     }
@@ -1429,10 +1463,14 @@ class AgentGUIClient {
             const blocksEl = messageDiv.querySelector('.message-blocks');
             const blockFrag = document.createDocumentFragment();
             sessionChunkList.forEach(chunk => {
-              if (chunk.block && chunk.block.type) {
-                const element = this.renderer.renderBlock(chunk.block, chunk);
-                if (element) blockFrag.appendChild(element);
+              if (!chunk.block?.type) return;
+              const element = this.renderer.renderBlock(chunk.block, chunk);
+              if (!element) return;
+              if (chunk.block.type === 'tool_result') {
+                const lastInFrag = blockFrag.lastElementChild;
+                if (lastInFrag?.classList?.contains('block-tool-use')) { lastInFrag.appendChild(element); return; }
               }
+              blockFrag.appendChild(element);
             });
             blocksEl.appendChild(blockFrag);
 

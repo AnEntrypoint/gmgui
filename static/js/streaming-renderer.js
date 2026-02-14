@@ -703,6 +703,7 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
+    if (block.id) details.dataset.toolUseId = block.id;
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
     const displayName = this.getToolUseDisplayName(toolName);
@@ -1154,7 +1155,7 @@ class StreamingRenderer {
   }
 
   /**
-   * Render tool result block with smart content display
+   * Render tool result as inline content to be merged into preceding tool_use block
    */
   renderBlockToolResult(block, context) {
     const isError = block.is_error || false;
@@ -1163,15 +1164,16 @@ class StreamingRenderer {
     const preview = contentStr.length > 80 ? contentStr.substring(0, 77).replace(/\n/g, ' ') + '...' : contentStr.replace(/\n/g, ' ');
 
     const details = document.createElement('details');
-    details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
+    details.className = 'tool-result-inline' + (isError ? ' tool-result-error' : '');
     details.dataset.eventType = 'tool_result';
+    if (block.tool_use_id) details.dataset.toolUseId = block.tool_use_id;
 
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
 
     const summary = document.createElement('summary');
-    summary.className = 'folded-tool-bar';
+    summary.className = 'tool-result-status';
     summary.innerHTML = `
       <span class="folded-tool-icon">${iconSvg}</span>
       <span class="folded-tool-name">${isError ? 'Error' : 'Success'}</span>
