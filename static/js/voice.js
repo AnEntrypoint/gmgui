@@ -298,6 +298,9 @@
   var audioChunkQueue = [];
   var isPlayingChunk = false;
   var streamDone = false;
+  var ttsConsecutiveFailures = 0;
+  var TTS_MAX_FAILURES = 3;
+  var ttsDisabledUntilReset = false;
 
   function playNextChunk() {
     if (audioChunkQueue.length === 0) {
@@ -331,19 +334,41 @@
 
   function processQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
+    if (ttsDisabledUntilReset) {
+      speechQueue = [];
+      return;
+    }
     isSpeaking = true;
     streamDone = false;
     var text = speechQueue.shift();
     audioChunkQueue = [];
     isPlayingChunk = false;
-    
+
+    function onTtsSuccess() {
+      ttsConsecutiveFailures = 0;
+    }
+
+    function onTtsFailed() {
+      ttsConsecutiveFailures++;
+      if (ttsConsecutiveFailures >= TTS_MAX_FAILURES) {
+        console.warn('[Voice] TTS failed ' + ttsConsecutiveFailures + ' times consecutively, disabling until reset');
+        ttsDisabledUntilReset = true;
+        speechQueue = [];
+      }
+      streamDone = true;
+      isSpeaking = false;
+      if (!ttsDisabledUntilReset) {
+        processQueue();
+      }
+    }
+
     function tryStreaming() {
       fetch(BASE + '/api/tts-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text, voiceId: selectedVoiceId })
       }).then(function(resp) {
-        if (!resp.ok) throw new Error('TTS stream failed');
+        if (!resp.ok) throw new Error('TTS stream failed: ' + resp.status);
         var reader = resp.body.getReader();
         var buffer = new Uint8Array(0);
 
@@ -357,6 +382,7 @@
         function pump() {
           return reader.read().then(function(result) {
             if (result.done) {
+              onTtsSuccess();
               streamDone = true;
               if (!isPlayingChunk && audioChunkQueue.length === 0) {
                 isSpeaking = false;
@@ -384,16 +410,17 @@
         tryNonStreaming(text);
       });
     }
-    
+
     function tryNonStreaming(txt) {
       fetch(BASE + '/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: txt, voiceId: selectedVoiceId })
       }).then(function(resp) {
-        if (!resp.ok) throw new Error('TTS failed');
+        if (!resp.ok) throw new Error('TTS failed: ' + resp.status);
         return resp.arrayBuffer();
       }).then(function(buf) {
+        onTtsSuccess();
         var blob = new Blob([buf], { type: 'audio/wav' });
         audioChunkQueue.push(blob);
         if (!isPlayingChunk) playNextChunk();
@@ -401,12 +428,10 @@
         isSpeaking = false;
         processQueue();
       }).catch(function() {
-        streamDone = true;
-        isSpeaking = false;
-        processQueue();
+        onTtsFailed();
       });
     }
-    
+
     tryStreaming();
   }
 
@@ -415,6 +440,8 @@
     audioChunkQueue = [];
     isPlayingChunk = false;
     isSpeaking = false;
+    ttsConsecutiveFailures = 0;
+    ttsDisabledUntilReset = false;
     if (currentAudio) {
       currentAudio.pause();
       currentAudio = null;

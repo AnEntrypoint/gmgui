@@ -554,13 +554,20 @@ const server = http.createServer(async (req, res) => {
           sendJSON(req, res, 400, { error: 'No text provided' });
           return;
         }
-        const { synthesize } = await getSpeech();
-        const wavBuffer = await synthesize(text, voiceId);
+        const speech = await getSpeech();
+        const status = speech.getStatus();
+        if (status.ttsError) {
+          sendJSON(req, res, 503, { error: status.ttsError, retryable: false });
+          return;
+        }
+        const wavBuffer = await speech.synthesize(text, voiceId);
         res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wavBuffer.length });
         res.end(wavBuffer);
       } catch (err) {
         debugLog('[TTS] Error: ' + err.message);
-        if (!res.headersSent) sendJSON(req, res, 500, { error: err.message || 'TTS failed' });
+        const isModelError = /model.*load|pipeline.*failed|failed to load/i.test(err.message);
+        const statusCode = isModelError ? 503 : 500;
+        if (!res.headersSent) sendJSON(req, res, statusCode, { error: err.message || 'TTS failed', retryable: !isModelError });
       }
       return;
     }
@@ -574,14 +581,19 @@ const server = http.createServer(async (req, res) => {
           sendJSON(req, res, 400, { error: 'No text provided' });
           return;
         }
-        const { synthesizeStream } = await getSpeech();
+        const speech = await getSpeech();
+        const status = speech.getStatus();
+        if (status.ttsError) {
+          sendJSON(req, res, 503, { error: status.ttsError, retryable: false });
+          return;
+        }
         res.writeHead(200, {
           'Content-Type': 'application/octet-stream',
           'Transfer-Encoding': 'chunked',
           'X-Content-Type': 'audio/wav-stream',
           'Cache-Control': 'no-cache'
         });
-        for await (const wavChunk of synthesizeStream(text, voiceId)) {
+        for await (const wavChunk of speech.synthesizeStream(text, voiceId)) {
           const lenBuf = Buffer.alloc(4);
           lenBuf.writeUInt32BE(wavChunk.length, 0);
           res.write(lenBuf);
@@ -590,7 +602,9 @@ const server = http.createServer(async (req, res) => {
         res.end();
       } catch (err) {
         debugLog('[TTS-STREAM] Error: ' + err.message);
-        if (!res.headersSent) sendJSON(req, res, 500, { error: err.message || 'TTS stream failed' });
+        const isModelError = /model.*load|pipeline.*failed|failed to load/i.test(err.message);
+        const statusCode = isModelError ? 503 : 500;
+        if (!res.headersSent) sendJSON(req, res, statusCode, { error: err.message || 'TTS stream failed', retryable: !isModelError });
         else res.end();
       }
       return;
