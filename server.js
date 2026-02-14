@@ -860,6 +860,8 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       debugLog(`[stream] Event ${eventCount}: type=${parsed.type}`);
 
       if (parsed.type === 'system') {
+        if (parsed.subtype === 'task_notification') return;
+
         const systemBlock = {
           type: 'system',
           subtype: parsed.subtype,
