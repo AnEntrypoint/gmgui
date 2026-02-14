@@ -1335,7 +1335,11 @@ class AgentGUIClient {
     try {
       this.cacheCurrentConversation();
       this.stopChunkPolling();
-      if (this.state.currentConversation?.id !== conversationId) {
+      var prevId = this.state.currentConversation?.id;
+      if (prevId && prevId !== conversationId) {
+        if (this.wsManager.isConnected && !this.state.streamingConversations.has(prevId)) {
+          this.wsManager.sendMessage({ type: 'unsubscribe', conversationId: prevId });
+        }
         this.state.currentSession = null;
       }
 

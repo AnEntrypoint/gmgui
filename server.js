@@ -1172,10 +1172,18 @@ wss.on('connection', (ws, req) => {
             timestamp: Date.now()
           }));
         } else if (data.type === 'unsubscribe') {
-          ws.subscriptions.delete(data.sessionId);
-          const idx = subscriptionIndex.get(data.sessionId);
-          if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(data.sessionId); }
-          debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId}`);
+          if (data.sessionId) {
+            ws.subscriptions.delete(data.sessionId);
+            const idx = subscriptionIndex.get(data.sessionId);
+            if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(data.sessionId); }
+          }
+          if (data.conversationId) {
+            const key = `conv-${data.conversationId}`;
+            ws.subscriptions.delete(key);
+            const idx = subscriptionIndex.get(key);
+            if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(key); }
+          }
+          debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId || data.conversationId}`);
         } else if (data.type === 'get_subscriptions') {
           ws.send(JSON.stringify({
             type: 'subscriptions',

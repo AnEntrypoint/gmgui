@@ -585,9 +585,11 @@
       }
       if (!voiceActive) return;
       if (data.type === 'streaming_progress' && data.block) {
+        if (data.conversationId && data.conversationId !== currentConversationId) return;
         handleVoiceBlock(data.block, true);
       }
       if (data.type === 'streaming_start') {
+        if (data.conversationId && data.conversationId !== currentConversationId) return;
         spokenChunks = new Set();
       }
     });
