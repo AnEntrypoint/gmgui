@@ -354,6 +354,13 @@ export const queries = {
     return stmt.all();
   },
 
+  getResumableConversations() {
+    const stmt = prep(
+      "SELECT id, title, claudeSessionId, agentType, workingDirectory FROM conversations WHERE isStreaming = 1 AND claudeSessionId IS NOT NULL AND claudeSessionId != ''"
+    );
+    return stmt.all();
+  },
+
   clearAllStreamingFlags() {
     const stmt = prep('UPDATE conversations SET isStreaming = 0 WHERE isStreaming = 1');
     return stmt.run().changes;

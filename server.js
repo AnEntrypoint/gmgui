@@ -1311,31 +1311,113 @@ function recoverStaleSessions() {
   try {
     const now = Date.now();
 
+    const resumable = new Set();
+    const resumableConvs = queries.getResumableConversations ? queries.getResumableConversations() : [];
+    for (const conv of resumableConvs) {
+      if (conv.agentType === 'claude-code') {
+        resumable.add(conv.id);
+      }
+    }
+
     const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
+    let markedCount = 0;
     for (const session of staleSessions) {
       if (activeExecutions.has(session.conversationId)) continue;
+      if (resumable.has(session.conversationId)) continue;
       queries.updateSession(session.id, {
         status: 'error',
         error: 'Server restarted',
         completed_at: now
       });
+      markedCount++;
     }
-    if (staleSessions.length > 0) {
-      console.log(`[RECOVERY] Marked ${staleSessions.length} stale session(s) as error`);
+    if (markedCount > 0) {
+      console.log(`[RECOVERY] Marked ${markedCount} stale session(s) as error`);
     }
 
     const streamingConvs = queries.getStreamingConversations ? queries.getStreamingConversations() : [];
     let clearedCount = 0;
     for (const conv of streamingConvs) {
       if (activeExecutions.has(conv.id)) continue;
+      if (resumable.has(conv.id)) continue;
       queries.setIsStreaming(conv.id, false);
       clearedCount++;
     }
     if (clearedCount > 0) {
       console.log(`[RECOVERY] Cleared isStreaming flag on ${clearedCount} stale conversation(s)`);
     }
+    if (resumable.size > 0) {
+      console.log(`[RECOVERY] Found ${resumable.size} resumable conversation(s)`);
+    }
   } catch (err) {
     console.error('[RECOVERY] Stale session recovery error:', err.message);
+  }
+}
+
+async function resumeInterruptedStreams() {
+  try {
+    const resumableConvs = queries.getResumableConversations ? queries.getResumableConversations() : [];
+    const toResume = resumableConvs.filter(c => c.agentType === 'claude-code');
+
+    if (toResume.length === 0) return;
+
+    console.log(`[RESUME] Resuming ${toResume.length} interrupted conversation(s)`);
+
+    for (let i = 0; i < toResume.length; i++) {
+      const conv = toResume[i];
+      try {
+        const lastMsg = queries.getLastUserMessage(conv.id);
+        const prompt = lastMsg?.content || 'continue';
+        const promptText = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+
+        const session = queries.createSession(conv.id);
+        queries.createEvent('session.created', {
+          sessionId: session.id,
+          resumeReason: 'server_restart',
+          claudeSessionId: conv.claudeSessionId
+        }, conv.id, session.id);
+
+        activeExecutions.set(conv.id, {
+          pid: null,
+          startTime: Date.now(),
+          sessionId: session.id,
+          lastActivity: Date.now()
+        });
+
+        broadcastSync({
+          type: 'streaming_start',
+          sessionId: session.id,
+          conversationId: conv.id,
+          agentId: conv.agentType,
+          resumed: true,
+          timestamp: Date.now()
+        });
+
+        const messageId = lastMsg?.id || null;
+        console.log(`[RESUME] Resuming conv ${conv.id} (claude session: ${conv.claudeSessionId})`);
+
+        processMessageWithStreaming(conv.id, messageId, session.id, promptText, conv.agentType)
+          .catch(err => debugLog(`[RESUME] Error resuming conv ${conv.id}: ${err.message}`));
+
+        if (i < toResume.length - 1) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      } catch (err) {
+        console.error(`[RESUME] Failed to resume conv ${conv.id}: ${err.message}`);
+        queries.setIsStreaming(conv.id, false);
+        const activeSessions = queries.getSessionsByStatus(conv.id, 'active');
+        const pendingSessions = queries.getSessionsByStatus(conv.id, 'pending');
+        for (const s of [...activeSessions, ...pendingSessions]) {
+          queries.updateSession(s.id, {
+            status: 'error',
+            error: 'Resume failed: ' + err.message,
+            completed_at: Date.now()
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[RESUME] Error during stream resumption:', err.message);
   }
 }
 
@@ -1413,6 +1495,9 @@ function onServerReady() {
 
   // Recover stale active sessions from previous run
   recoverStaleSessions();
+
+  // Resume interrupted streams after recovery
+  resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
 
   getSpeech().then(s => s.preloadTTS()).catch(e => debugLog('[TTS] Preload failed: ' + e.message));
 
