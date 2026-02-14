@@ -14,12 +14,48 @@
   var TARGET_SAMPLE_RATE = 16000;
   var spokenChunks = new Set();
   var isLoadingHistory = false;
+  var selectedVoiceId = localStorage.getItem('voice-selected-id') || 'default';
 
   function init() {
     setupTTSToggle();
     setupUI();
     setupStreamingListener();
     setupAgentSelector();
+    setupVoiceSelector();
+  }
+
+  function setupVoiceSelector() {
+    var selector = document.getElementById('voiceSelector');
+    if (!selector) return;
+    var saved = localStorage.getItem('voice-selected-id');
+    if (saved) selectedVoiceId = saved;
+    fetch(BASE + '/api/voices')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data.ok || !Array.isArray(data.voices)) return;
+        selector.innerHTML = '';
+        data.voices.forEach(function(voice) {
+          var opt = document.createElement('option');
+          opt.value = voice.id;
+          var label = voice.name;
+          if (voice.gender || voice.accent) {
+            var parts = [];
+            if (voice.gender) parts.push(voice.gender);
+            if (voice.accent) parts.push(voice.accent);
+            label += ' (' + parts.join(', ') + ')';
+          }
+          opt.textContent = label;
+          selector.appendChild(opt);
+        });
+        if (saved && selector.querySelector('option[value="' + saved + '"]')) {
+          selector.value = saved;
+        }
+      })
+      .catch(function() {});
+    selector.addEventListener('change', function() {
+      selectedVoiceId = selector.value;
+      localStorage.setItem('voice-selected-id', selectedVoiceId);
+    });
   }
 
   function syncVoiceSelector() {
@@ -289,7 +325,7 @@
     fetch(BASE + '/api/tts-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text })
+      body: JSON.stringify({ text: text, voiceId: selectedVoiceId })
     }).then(function(resp) {
       if (!resp.ok) throw new Error('TTS failed');
       var reader = resp.body.getReader();

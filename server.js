@@ -535,16 +535,27 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (routePath === '/api/voices' && req.method === 'GET') {
+      try {
+        const { getVoices } = await getSpeech();
+        sendJSON(req, res, 200, { ok: true, voices: getVoices() });
+      } catch (err) {
+        sendJSON(req, res, 200, { ok: true, voices: [] });
+      }
+      return;
+    }
+
     if (routePath === '/api/tts' && req.method === 'POST') {
       try {
         const body = await parseBody(req);
         const text = body.text || '';
+        const voiceId = body.voiceId || null;
         if (!text) {
-                    sendJSON(req, res, 400, { error: 'No text provided' });
+          sendJSON(req, res, 400, { error: 'No text provided' });
           return;
         }
         const { synthesize } = await getSpeech();
-        const wavBuffer = await synthesize(text);
+        const wavBuffer = await synthesize(text, voiceId);
         res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wavBuffer.length });
         res.end(wavBuffer);
       } catch (err) {
@@ -558,6 +569,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await parseBody(req);
         const text = body.text || '';
+        const voiceId = body.voiceId || null;
         if (!text) {
           sendJSON(req, res, 400, { error: 'No text provided' });
           return;
@@ -569,7 +581,7 @@ const server = http.createServer(async (req, res) => {
           'X-Content-Type': 'audio/wav-stream',
           'Cache-Control': 'no-cache'
         });
-        for await (const wavChunk of synthesizeStream(text)) {
+        for await (const wavChunk of synthesizeStream(text, voiceId)) {
           const lenBuf = Buffer.alloc(4);
           lenBuf.writeUInt32BE(wavChunk.length, 0);
           res.write(lenBuf);
@@ -589,7 +601,7 @@ const server = http.createServer(async (req, res) => {
         const { getStatus } = await getSpeech();
         sendJSON(req, res, 200, getStatus());
       } catch (err) {
-                sendJSON(req, res, 200, { sttReady: false, ttsReady: false, sttLoading: false, ttsLoading: false });
+        sendJSON(req, res, 200, { sttReady: false, ttsReady: false, sttLoading: false, ttsLoading: false });
       }
       return;
     }
