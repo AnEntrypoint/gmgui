@@ -392,8 +392,7 @@
     }
 
     function tryStreaming() {
-      if (!streamingSupported && (Date.now() - streamingFailedAt < 30000)) { tryNonStreaming(text); return; }
-      streamingSupported = true;
+      if (!streamingSupported) { tryNonStreaming(text); return; }
       fetch(BASE + '/api/tts-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -458,10 +457,8 @@
         onTtsSuccess();
         var blob = new Blob([buf], { type: 'audio/wav' });
         audioChunkQueue.push(blob);
-        if (!isPlayingChunk) playNextChunk();
         streamDone = true;
-        isSpeaking = false;
-        processQueue();
+        if (!isPlayingChunk) playNextChunk();
       }).catch(function() {
         onTtsFailed();
       });
