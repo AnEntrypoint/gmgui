@@ -410,6 +410,46 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const queueMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/queue$/);
+    if (queueMatch && req.method === 'GET') {
+      const conversationId = queueMatch[1];
+      const conv = queries.getConversation(conversationId);
+      if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
+      const queue = messageQueues.get(conversationId) || [];
+      sendJSON(req, res, 200, { queue });
+      return;
+    }
+
+    const queueItemMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/queue\/([^/]+)$/);
+    if (queueItemMatch && req.method === 'DELETE') {
+      const conversationId = queueItemMatch[1];
+      const messageId = queueItemMatch[2];
+      const queue = messageQueues.get(conversationId);
+      if (!queue) { sendJSON(req, res, 404, { error: 'Queue not found' }); return; }
+      const index = queue.findIndex(q => q.messageId === messageId);
+      if (index === -1) { sendJSON(req, res, 404, { error: 'Queued message not found' }); return; }
+      queue.splice(index, 1);
+      if (queue.length === 0) messageQueues.delete(conversationId);
+      broadcastSync({ type: 'queue_status', conversationId, queueLength: queue?.length || 0, timestamp: Date.now() });
+      sendJSON(req, res, 200, { deleted: true });
+      return;
+    }
+
+    if (queueItemMatch && req.method === 'PATCH') {
+      const conversationId = queueItemMatch[1];
+      const messageId = queueItemMatch[2];
+      const body = await parseBody(req);
+      const queue = messageQueues.get(conversationId);
+      if (!queue) { sendJSON(req, res, 404, { error: 'Queue not found' }); return; }
+      const item = queue.find(q => q.messageId === messageId);
+      if (!item) { sendJSON(req, res, 404, { error: 'Queued message not found' }); return; }
+      if (body.content !== undefined) item.content = body.content;
+      if (body.agentId !== undefined) item.agentId = body.agentId;
+      broadcastSync({ type: 'queue_updated', conversationId, messageId, content: item.content, agentId: item.agentId, timestamp: Date.now() });
+      sendJSON(req, res, 200, { updated: true, item });
+      return;
+    }
+
     const messageMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/messages\/([^/]+)$/);
     if (messageMatch && req.method === 'GET') {
       const msg = queries.getMessage(messageMatch[2]);
@@ -620,6 +660,100 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/agents/auth-status' && req.method === 'GET') {
+      const statuses = discoveredAgents.map(agent => {
+        const status = { id: agent.id, name: agent.name, authenticated: false, detail: '' };
+        try {
+          if (agent.id === 'claude-code') {
+            const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
+            if (fs.existsSync(credFile)) {
+              const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
+              if (creds.claudeAiOauth && creds.claudeAiOauth.expiresAt > Date.now()) {
+                status.authenticated = true;
+                status.detail = creds.claudeAiOauth.subscriptionType || 'authenticated';
+              } else {
+                status.detail = 'expired';
+              }
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else if (agent.id === 'gemini') {
+            const acctFile = path.join(os.homedir(), '.gemini', 'google_accounts.json');
+            if (fs.existsSync(acctFile)) {
+              const accts = JSON.parse(fs.readFileSync(acctFile, 'utf-8'));
+              if (accts.active) {
+                status.authenticated = true;
+                status.detail = accts.active;
+              } else {
+                status.detail = 'logged out';
+              }
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else if (agent.id === 'opencode') {
+            const out = execSync('opencode auth list 2>&1', { encoding: 'utf-8', timeout: 5000 });
+            const countMatch = out.match(/(\d+)\s+credentials?/);
+            if (countMatch && parseInt(countMatch[1], 10) > 0) {
+              status.authenticated = true;
+              status.detail = countMatch[1] + ' credential(s)';
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else {
+            status.detail = 'unknown';
+          }
+        } catch (e) {
+          status.detail = 'check failed';
+        }
+        return status;
+      });
+      sendJSON(req, res, 200, { agents: statuses });
+      return;
+    }
+
+    const agentAuthMatch = pathOnly.match(/^\/api\/agents\/([^/]+)\/auth$/);
+    if (agentAuthMatch && req.method === 'POST') {
+      const agentId = agentAuthMatch[1];
+      const agent = discoveredAgents.find(a => a.id === agentId);
+      if (!agent) { sendJSON(req, res, 404, { error: 'Agent not found' }); return; }
+
+      const authCommands = {
+        'claude-code': { cmd: 'claude', args: ['setup-token'] },
+        'opencode': { cmd: 'opencode', args: ['auth', 'login'] },
+        'gemini': { cmd: 'gemini', args: [] }
+      };
+      const authCmd = authCommands[agentId];
+      if (!authCmd) { sendJSON(req, res, 400, { error: 'No auth command for this agent' }); return; }
+
+      const conversationId = '__agent_auth__';
+      if (activeScripts.has(conversationId)) {
+        sendJSON(req, res, 409, { error: 'Auth process already running' });
+        return;
+      }
+
+      const child = spawn(authCmd.cmd, authCmd.args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, FORCE_COLOR: '1' }
+      });
+      activeScripts.set(conversationId, { process: child, script: 'auth-' + agentId, startTime: Date.now() });
+      broadcastSync({ type: 'script_started', conversationId, script: 'auth-' + agentId, agentId, timestamp: Date.now() });
+
+      const onData = (stream) => (chunk) => {
+        broadcastSync({ type: 'script_output', conversationId, data: chunk.toString(), stream, timestamp: Date.now() });
+      };
+      child.stdout.on('data', onData('stdout'));
+      child.stderr.on('data', onData('stderr'));
+      child.on('error', (err) => {
+        activeScripts.delete(conversationId);
+        broadcastSync({ type: 'script_stopped', conversationId, code: 1, error: err.message, timestamp: Date.now() });
+      });
+      child.on('close', (code) => {
+        activeScripts.delete(conversationId);
+        broadcastSync({ type: 'script_stopped', conversationId, code: code || 0, timestamp: Date.now() });
+      });
+      sendJSON(req, res, 200, { ok: true, agentId, pid: child.pid });
+      return;
+    }
 
     if (pathOnly === '/api/import/claude-code' && req.method === 'GET') {
       const result = queries.importClaudeCodeConversations();
@@ -1382,7 +1516,7 @@ wss.on('connection', (ws, req) => {
 
 const BROADCAST_TYPES = new Set([
   'message_created', 'conversation_created', 'conversation_updated',
-  'conversations_updated', 'conversation_deleted', 'queue_status',
+  'conversations_updated', 'conversation_deleted', 'queue_status', 'queue_updated',
   'streaming_start', 'streaming_complete', 'streaming_error',
   'rate_limit_hit', 'rate_limit_clear',
   'script_started', 'script_stopped', 'script_output'

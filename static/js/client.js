@@ -372,6 +372,9 @@ class AgentGUIClient {
         case 'queue_status':
           this.handleQueueStatus(data);
           break;
+        case 'queue_updated':
+          this.handleQueueUpdated(data);
+          break;
         case 'rate_limit_hit':
           this.handleRateLimitHit(data);
           break;
@@ -478,7 +481,7 @@ class AgentGUIClient {
                 const bFrag = document.createDocumentFragment();
                 sList.forEach(chunk => {
                   if (!chunk.block?.type) return;
-                  const el = this.renderer.renderBlock(chunk.block, chunk);
+                  const el = this.renderer.renderBlock(chunk.block, chunk, bFrag);
                   if (!el) return;
                   if (chunk.block.type === 'tool_result') {
                     const lastInFrag = bFrag.lastElementChild;
@@ -699,21 +702,68 @@ class AgentGUIClient {
 
   handleQueueStatus(data) {
     if (data.conversationId !== this.state.currentConversation?.id) return;
+    this.fetchAndRenderQueue(data.conversationId);
+  }
 
+  handleQueueUpdated(data) {
+    if (data.conversationId !== this.state.currentConversation?.id) return;
+    this.fetchAndRenderQueue(data.conversationId);
+  }
+
+  async fetchAndRenderQueue(conversationId) {
     const outputEl = document.querySelector('.conversation-messages');
     if (!outputEl) return;
 
-    let queueEl = outputEl.querySelector('.queue-indicator');
-    if (data.queueLength > 0) {
+    try {
+      const response = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue`);
+      const { queue } = await response.json();
+
+      let queueEl = outputEl.querySelector('.queue-indicator');
+      if (!queue || queue.length === 0) {
+        if (queueEl) queueEl.remove();
+        return;
+      }
+
       if (!queueEl) {
         queueEl = document.createElement('div');
         queueEl.className = 'queue-indicator';
-        queueEl.style.cssText = 'padding:0.5rem 1rem;margin:0.5rem 0;border-radius:0.375rem;background:var(--color-warning);color:#000;font-size:0.875rem;text-align:center;';
         outputEl.appendChild(queueEl);
       }
-      queueEl.textContent = `${data.queueLength} message${data.queueLength > 1 ? 's' : ''} queued`;
-    } else if (queueEl) {
-      queueEl.remove();
+
+      queueEl.innerHTML = queue.map((q, i) => `
+        <div class="queue-item" data-message-id="${q.messageId}" style="padding:0.5rem 1rem;margin:0.5rem 0;border-radius:0.375rem;background:var(--color-warning);color:#000;font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${i + 1}. ${this.escapeHtml(q.content)}</span>
+          <button class="queue-edit-btn" data-index="${i}" style="padding:0.25rem 0.5rem;background:transparent;border:1px solid #000;border-radius:0.25rem;cursor:pointer;font-size:0.75rem;">Edit</button>
+          <button class="queue-delete-btn" data-index="${i}" style="padding:0.25rem 0.5rem;background:transparent;border:1px solid #000;border-radius:0.25rem;cursor:pointer;font-size:0.75rem;">Delete</button>
+        </div>
+      `).join('');
+
+      queueEl.querySelectorAll('.queue-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const index = parseInt(e.target.dataset.index);
+          const msgId = queue[index].messageId;
+          if (confirm('Delete this queued message?')) {
+            await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${msgId}`, { method: 'DELETE' });
+          }
+        });
+      });
+
+      queueEl.querySelectorAll('.queue-edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          const q = queue[index];
+          const newContent = prompt('Edit message:', q.content);
+          if (newContent !== null && newContent !== q.content) {
+            fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${q.messageId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: newContent })
+            });
+          }
+        });
+      });
+    } catch (err) {
+      console.error('Failed to fetch queue:', err);
     }
   }
 
@@ -1160,8 +1210,8 @@ class AgentGUIClient {
     if (!streamingEl) return;
     const blocksEl = streamingEl.querySelector('.streaming-blocks');
     if (!blocksEl) return;
-    const element = this.renderer.renderBlock(chunk.block, chunk);
-    if (!element) return;
+    const element = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
+    if (!element) { this.scrollToBottom(); return; }
     if (chunk.block.type === 'tool_result') {
       const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
       const lastEl = blocksEl.lastElementChild;
@@ -1187,8 +1237,8 @@ class AgentGUIClient {
       const blocksEl = streamingEl.querySelector('.streaming-blocks');
       if (!blocksEl) continue;
       for (const chunk of groups[sid]) {
-        const el = this.renderer.renderBlock(chunk.block, chunk);
-        if (!el) continue;
+        const el = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
+        if (!el) { appended = true; continue; }
         if (chunk.block.type === 'tool_result') {
           const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
           const lastEl = blocksEl.lastElementChild;
@@ -1271,7 +1321,6 @@ class AgentGUIClient {
    */
   disableControls() {
     if (this.ui.sendButton) this.ui.sendButton.disabled = true;
-    if (this.ui.agentSelector) this.ui.agentSelector.disabled = true;
   }
 
   /**
@@ -1279,7 +1328,6 @@ class AgentGUIClient {
    */
   enableControls() {
     if (this.ui.sendButton) this.ui.sendButton.disabled = false;
-    if (this.ui.agentSelector) this.ui.agentSelector.disabled = false;
   }
 
   /**
@@ -1501,7 +1549,7 @@ class AgentGUIClient {
             const blockFrag = document.createDocumentFragment();
             sessionChunkList.forEach(chunk => {
               if (!chunk.block?.type) return;
-              const element = this.renderer.renderBlock(chunk.block, chunk);
+              const element = this.renderer.renderBlock(chunk.block, chunk, blockFrag);
               if (!element) return;
               if (chunk.block.type === 'tool_result') {
                 const lastInFrag = blockFrag.lastElementChild;

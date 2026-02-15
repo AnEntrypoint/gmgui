@@ -328,13 +328,13 @@ class StreamingRenderer {
   /**
    * Render Claude message blocks with beautiful styling
    */
-  renderBlock(block, context = {}) {
+  renderBlock(block, context = {}, targetContainer = null) {
     if (!block || !block.type) return null;
 
     try {
       switch (block.type) {
         case 'text':
-          return this.renderBlockText(block, context);
+          return this.renderBlockText(block, context, targetContainer);
         case 'code':
           return this.renderBlockCode(block, context);
         case 'thinking':
@@ -363,7 +363,7 @@ class StreamingRenderer {
   /**
    * Render text block with semantic HTML
    */
-  renderBlockText(block, context) {
+  renderBlockText(block, context, targetContainer = null) {
     const text = block.text || '';
     const isHtml = this.containsHtmlTags(text);
     const cached = this.renderCache.get(text);
@@ -373,7 +373,8 @@ class StreamingRenderer {
       this.renderCache.set(text, html);
     }
 
-    const lastChild = this.outputContainer && this.outputContainer.lastElementChild;
+    const container = targetContainer || this.outputContainer;
+    const lastChild = container && container.lastElementChild;
     if (lastChild && lastChild.classList.contains('block-text') && !isHtml && !lastChild.classList.contains('html-content')) {
       lastChild.innerHTML += html;
       return null;
