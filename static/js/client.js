@@ -977,6 +977,29 @@ class AgentGUIClient {
         body: JSON.stringify({ content: prompt, agentId })
       });
 
+      if (response.status === 404) {
+        console.warn('Conversation not found, recreating:', conversationId);
+        const conv = this.state.currentConversation;
+        const createResp = await fetch(window.__BASE_URL + '/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            agentId,
+            title: conv?.title || prompt.substring(0, 50),
+            workingDirectory: conv?.workingDirectory || null
+          })
+        });
+        if (!createResp.ok) throw new Error(`Failed to recreate conversation: HTTP ${createResp.status}`);
+        const { conversation: newConv } = await createResp.json();
+        this.state.currentConversation = newConv;
+        if (window.conversationManager) {
+          window.conversationManager.loadConversations();
+          window.conversationManager.select(newConv.id);
+        }
+        this.updateUrlForConversation(newConv.id);
+        return this.streamToConversation(newConv.id, prompt, agentId);
+      }
+
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const result = await response.json();
@@ -1367,6 +1390,17 @@ class AgentGUIClient {
       this.conversationCache.delete(conversationId);
 
       const resp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/full`);
+      if (resp.status === 404) {
+        console.warn('Conversation no longer exists:', conversationId);
+        this.state.currentConversation = null;
+        if (window.conversationManager) {
+          window.conversationManager.loadConversations();
+        }
+        const outputEl = document.getElementById('output');
+        if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
+        this.enableControls();
+        return;
+      }
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = await resp.json();
 
