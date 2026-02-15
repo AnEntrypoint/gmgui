@@ -139,6 +139,9 @@
         authRunning = true; showTerminalTab(); switchToTerminalView();
         var term = getTerminal();
         if (term) { term.clear(); term.writeln('\x1b[36m[authenticating ' + agentId + ']\x1b[0m\r\n'); }
+        if (data.authUrl) {
+          window.open(data.authUrl, '_blank');
+        }
       }
     }).catch(function() {});
   }
