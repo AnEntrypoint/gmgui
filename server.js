@@ -352,7 +352,10 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 201, { message, session, idempotencyKey });
 
         processMessageWithStreaming(conversationId, message.id, session.id, body.content, agentId)
-          .catch(err => debugLog(`[messages] Uncaught error: ${err.message}`));
+          .catch(err => {
+            console.error(`[messages] Uncaught error for conv ${conversationId}:`, err.message);
+            debugLog(`[messages] Uncaught error: ${err.message}`);
+          });
         return;
       }
     }
@@ -837,6 +840,15 @@ function createChunkBatcher() {
 
 async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId) {
   const startTime = Date.now();
+  
+  const conv = queries.getConversation(conversationId);
+  if (!conv) {
+    console.error(`[stream] Conversation ${conversationId} not found, aborting`);
+    queries.updateSession(sessionId, { status: 'error', error: 'Conversation not found' });
+    queries.setIsStreaming(conversationId, false);
+    return;
+  }
+  
   activeExecutions.set(conversationId, { pid: null, startTime, sessionId, lastActivity: startTime });
   queries.setIsStreaming(conversationId, true);
   queries.updateSession(sessionId, { status: 'active' });
@@ -845,7 +857,6 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   try {
     debugLog(`[stream] Starting: conversationId=${conversationId}, sessionId=${sessionId}`);
 
-    const conv = queries.getConversation(conversationId);
     const cwd = conv?.workingDirectory || STARTUP_CWD;
     const resumeSessionId = conv?.claudeSessionId || null;
 
@@ -1035,6 +1046,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
           message: errorMessage,
           timestamp: Date.now()
         });
+        queries.setIsStreaming(conversationId, false);
         return;
       }
 
@@ -1055,7 +1067,10 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
 
       batcher.drain();
 
+      debugLog(`[rate-limit] Scheduling retry for conv ${conversationId} in ${cooldownMs}ms (attempt ${retryCount + 1})`);
+      
       setTimeout(() => {
+        debugLog(`[rate-limit] Timeout fired for conv ${conversationId}, calling scheduleRetry`);
         rateLimitState.delete(conversationId);
         debugLog(`[rate-limit] Conv ${conversationId} cooldown expired, restarting (attempt ${retryCount + 1})`);
         broadcastSync({
@@ -1087,17 +1102,27 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   } finally {
     batcher.drain();
     activeExecutions.delete(conversationId);
-    queries.setIsStreaming(conversationId, false);
     if (!rateLimitState.has(conversationId)) {
+      queries.setIsStreaming(conversationId, false);
       drainMessageQueue(conversationId);
     }
   }
 }
 
 function scheduleRetry(conversationId, messageId, content, agentId) {
+  debugLog(`[rate-limit] scheduleRetry called for conv ${conversationId}, messageId=${messageId}`);
+  
+  if (!content) {
+    const conv = queries.getConversation(conversationId);
+    const lastMsg = queries.getLastUserMessage(conversationId);
+    content = lastMsg?.content || 'continue';
+    debugLog(`[rate-limit] Recovered content from last message: ${content?.substring?.(0, 50)}...`);
+  }
+  
   const newSession = queries.createSession(conversationId);
   queries.createEvent('session.created', { messageId, sessionId: newSession.id, retryReason: 'rate_limit' }, conversationId, newSession.id);
 
+  debugLog(`[rate-limit] Broadcasting streaming_start for retry session ${newSession.id}`);
   broadcastSync({
     type: 'streaming_start',
     sessionId: newSession.id,
@@ -1107,8 +1132,12 @@ function scheduleRetry(conversationId, messageId, content, agentId) {
     timestamp: Date.now()
   });
 
+  debugLog(`[rate-limit] Calling processMessageWithStreaming for retry`);
   processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId)
-    .catch(err => debugLog(`[retry] Error: ${err.message}`));
+    .catch(err => {
+      debugLog(`[rate-limit] Retry failed: ${err.message}`);
+      console.error(`[rate-limit] Retry error for conv ${conversationId}:`, err);
+    });
 }
 
 function drainMessageQueue(conversationId) {
