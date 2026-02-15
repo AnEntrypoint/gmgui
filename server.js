@@ -189,36 +189,55 @@ const GEMINI_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
-function getGeminiOAuthCreds() {
+function extractOAuthFromFile(oauth2Path) {
   try {
-    const geminiPath = execSync('which gemini', { encoding: 'utf8' }).trim();
-    const realPath = fs.realpathSync(geminiPath);
-    const pkgRoot = path.resolve(path.dirname(realPath), '..');
-    const oauth2Path = path.join(pkgRoot, 'node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js');
     const src = fs.readFileSync(oauth2Path, 'utf8');
     const idMatch = src.match(/OAUTH_CLIENT_ID\s*=\s*['"]([^'"]+)['"]/);
     const secretMatch = src.match(/OAUTH_CLIENT_SECRET\s*=\s*['"]([^'"]+)['"]/);
     if (idMatch && secretMatch) return { clientId: idMatch[1], clientSecret: secretMatch[1] };
   } catch {}
+  return null;
+}
+
+function getGeminiOAuthCreds() {
+  const oauthRelPath = path.join('node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js');
   try {
-    const npmCacheDirs = [
-      path.join(os.homedir(), '.npm', '_npx'),
-      path.join(os.homedir(), '.cache', '.npm', '_npx'),
-      process.env.NPM_CACHE ? path.join(process.env.NPM_CACHE, '_npx') : null,
-    ].filter(Boolean);
+    const geminiPath = execSync('which gemini', { encoding: 'utf8' }).trim();
+    const realPath = fs.realpathSync(geminiPath);
+    const pkgRoot = path.resolve(path.dirname(realPath), '..');
+    const result = extractOAuthFromFile(path.join(pkgRoot, oauthRelPath));
+    if (result) return result;
+  } catch (e) {
+    console.error('[gemini-oauth] which gemini lookup failed:', e.message);
+  }
+  try {
+    const npmCacheDirs = new Set();
+    const addDir = (d) => { if (d) npmCacheDirs.add(path.join(d, '_npx')); };
+    addDir(path.join(os.homedir(), '.npm'));
+    addDir(path.join(os.homedir(), '.cache', '.npm'));
+    if (process.env.NPM_CACHE) addDir(process.env.NPM_CACHE);
+    if (process.env.npm_config_cache) addDir(process.env.npm_config_cache);
+    try { addDir(execSync('npm config get cache', { encoding: 'utf8', timeout: 5000 }).trim()); } catch {}
     for (const cacheDir of npmCacheDirs) {
       if (!fs.existsSync(cacheDir)) continue;
       for (const d of fs.readdirSync(cacheDir).filter(d => !d.startsWith('.'))) {
-        const oauth2Path = path.join(cacheDir, d, 'node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js');
-        if (fs.existsSync(oauth2Path)) {
-          const src = fs.readFileSync(oauth2Path, 'utf8');
-          const idMatch = src.match(/OAUTH_CLIENT_ID\s*=\s*['"]([^'"]+)['"]/);
-          const secretMatch = src.match(/OAUTH_CLIENT_SECRET\s*=\s*['"]([^'"]+)['"]/);
-          if (idMatch && secretMatch) return { clientId: idMatch[1], clientSecret: secretMatch[1] };
-        }
+        const result = extractOAuthFromFile(path.join(cacheDir, d, oauthRelPath));
+        if (result) return result;
       }
     }
-  } catch {}
+  } catch (e) {
+    console.error('[gemini-oauth] npm cache scan failed:', e.message);
+  }
+  try {
+    const found = execSync('find / -path "*/gemini-cli-core/dist/src/code_assist/oauth2.js" -maxdepth 10 2>/dev/null | head -1', { encoding: 'utf8', timeout: 10000 }).trim();
+    if (found) {
+      const result = extractOAuthFromFile(found);
+      if (result) return result;
+    }
+  } catch (e) {
+    console.error('[gemini-oauth] filesystem search failed:', e.message);
+  }
+  console.error('[gemini-oauth] Could not find Gemini CLI OAuth credentials in any known location');
   return null;
 }
 const GEMINI_DIR = path.join(os.homedir(), '.gemini');
@@ -1077,6 +1096,7 @@ const server = http.createServer(async (req, res) => {
         const authUrl = await startGeminiOAuth();
         sendJSON(req, res, 200, { authUrl });
       } catch (e) {
+        console.error('[gemini-oauth] /api/gemini-oauth/start failed:', e);
         sendJSON(req, res, 500, { error: e.message });
       }
       return;
@@ -1118,6 +1138,7 @@ const server = http.createServer(async (req, res) => {
           sendJSON(req, res, 200, { ok: true, agentId, authUrl });
           return;
         } catch (e) {
+          console.error('[gemini-oauth] /api/agents/gemini/auth failed:', e);
           sendJSON(req, res, 500, { error: e.message });
           return;
         }
