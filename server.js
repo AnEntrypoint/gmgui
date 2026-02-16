@@ -2168,6 +2168,7 @@ wss.on('connection', (ws, req) => {
         } else if (data.type === 'latency_report') {
           ws.latencyTier = data.quality || 'good';
           ws.latencyAvg = data.avg || 0;
+          ws.latencyTrend = data.trend || 'stable';
         } else if (data.type === 'ping') {
           ws.send(JSON.stringify({
             type: 'pong',
@@ -2207,8 +2208,16 @@ const BROADCAST_TYPES = new Set([
 const wsBatchQueues = new Map();
 const BATCH_BY_TIER = { excellent: 16, good: 32, fair: 50, poor: 100, bad: 200 };
 
+const TIER_ORDER = ['excellent', 'good', 'fair', 'poor', 'bad'];
 function getBatchInterval(ws) {
-  return BATCH_BY_TIER[ws.latencyTier] || 32;
+  const tier = ws.latencyTier || 'good';
+  const trend = ws.latencyTrend;
+  if (trend === 'rising' || trend === 'falling') {
+    const idx = TIER_ORDER.indexOf(tier);
+    if (trend === 'rising' && idx < TIER_ORDER.length - 1) return BATCH_BY_TIER[TIER_ORDER[idx + 1]] || 32;
+    if (trend === 'falling' && idx > 0) return BATCH_BY_TIER[TIER_ORDER[idx - 1]] || 32;
+  }
+  return BATCH_BY_TIER[tier] || 32;
 }
 
 function flushWsBatch(ws) {

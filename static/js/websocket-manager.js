@@ -31,9 +31,17 @@ class WebSocketManager {
       avg: 0,
       jitter: 0,
       quality: 'unknown',
+      predicted: 0,
+      predictedNext: 0,
+      trend: 'stable',
       missedPongs: 0,
       pingCounter: 0
     };
+
+    this._latencyKalman = typeof KalmanFilter !== 'undefined' ? new KalmanFilter({ processNoise: 1, measurementNoise: 10 }) : null;
+    this._trendHistory = [];
+    this._trendCount = 0;
+    this._reconnectedAt = 0;
 
     this.stats = {
       totalConnections: 0,
@@ -106,6 +114,7 @@ class WebSocketManager {
     this.isConnected = true;
     this.isConnecting = false;
     this.connectionEstablishedAt = Date.now();
+    this._reconnectedAt = this.stats.totalConnections > 0 ? Date.now() : 0;
     this.stats.totalConnections++;
     this.stats.lastConnectedTime = Date.now();
     this.latency.missedPongs = 0;
@@ -162,21 +171,47 @@ class WebSocketManager {
     if (samples.length > this.config.latencyWindowSize) samples.shift();
 
     this.latency.current = rtt;
-    this.latency.avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+
+    if (this._latencyKalman && samples.length > 3) {
+      if (this._reconnectedAt && Date.now() - this._reconnectedAt < 5000) {
+        this._latencyKalman.setMeasurementNoise(50);
+      } else {
+        this._latencyKalman.setMeasurementNoise(10);
+      }
+      const result = this._latencyKalman.update(rtt);
+      this.latency.predicted = result.estimate;
+      this.latency.predictedNext = this._latencyKalman.predict();
+      this.latency.avg = result.estimate;
+    } else {
+      this.latency.avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+      this.latency.predicted = this.latency.avg;
+      this.latency.predictedNext = this.latency.avg;
+    }
 
     if (samples.length > 1) {
-      const mean = this.latency.avg;
+      const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
       const variance = samples.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / samples.length;
       this.latency.jitter = Math.sqrt(variance);
     }
 
-    const prev = this.latency.quality;
+    this._trendHistory.push(this.latency.predicted);
+    if (this._trendHistory.length > 3) this._trendHistory.shift();
+    if (this._trendHistory.length >= 3) {
+      const [a, b, c] = this._trendHistory;
+      const rising = b > a * 1.05 && c > b * 1.05;
+      const falling = b < a * 0.95 && c < b * 0.95;
+      this.latency.trend = rising ? 'rising' : falling ? 'falling' : 'stable';
+    }
+
     this.latency.quality = this._qualityTier(this.latency.avg);
     this.stats.avgLatency = this.latency.avg;
 
     this.emit('latency_update', {
       latency: rtt,
       avg: this.latency.avg,
+      predicted: this.latency.predicted,
+      predictedNext: this.latency.predictedNext,
+      trend: this.latency.trend,
       jitter: this.latency.jitter,
       quality: this.latency.quality
     });
@@ -184,6 +219,37 @@ class WebSocketManager {
     if (rtt > this.latency.avg * 3 && samples.length >= 3) {
       this.emit('latency_spike', { latency: rtt, avg: this.latency.avg });
     }
+
+    this.emit('latency_prediction', {
+      predicted: this.latency.predicted,
+      predictedNext: this.latency.predictedNext,
+      trend: this.latency.trend,
+      gain: this._latencyKalman ? this._latencyKalman.getState().gain : 0
+    });
+
+    this._checkDegradation();
+  }
+
+  _checkDegradation() {
+    if (this.latency.trend === 'rising') {
+      this._trendCount = (this._trendCount || 0) + 1;
+    } else {
+      if (this._trendCount >= 5 && (this.latency.trend === 'stable' || this.latency.trend === 'falling')) {
+        this.emit('connection_recovering', { currentTier: this.latency.quality });
+      }
+      this._trendCount = 0;
+      return;
+    }
+    if (this._trendCount < 5) return;
+    const currentTier = this.latency.quality;
+    const predictedTier = this._qualityTier(this.latency.predictedNext);
+    if (predictedTier === currentTier) return;
+    const thresholds = { excellent: 50, good: 150, fair: 300, poor: 500 };
+    const threshold = thresholds[currentTier];
+    if (!threshold) return;
+    const rate = this._trendHistory.length >= 2 ? this._trendHistory[this._trendHistory.length - 1] - this._trendHistory[0] : 0;
+    const timeToChange = rate > 0 ? Math.round((threshold - this.latency.predicted) / rate * 1000) : Infinity;
+    this.emit('connection_degrading', { currentTier, predictedTier, predictedLatency: this.latency.predictedNext, timeToChange });
   }
 
   _qualityTier(avg) {
@@ -283,13 +349,24 @@ class WebSocketManager {
         type: 'latency_report',
         avg: Math.round(this.latency.avg),
         jitter: Math.round(this.latency.jitter),
-        quality: this.latency.quality
+        quality: this.latency.quality,
+        trend: this.latency.trend,
+        predictedNext: Math.round(this.latency.predictedNext)
       });
     }
   }
 
   _handleVisibilityChange() {
-    if (typeof document !== 'undefined' && document.hidden) return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      this._hiddenAt = Date.now();
+      return;
+    }
+    if (this._hiddenAt && this._latencyKalman && Date.now() - this._hiddenAt > 30000) {
+      this._latencyKalman.reset();
+      this._trendHistory = [];
+      this.latency.trend = 'stable';
+    }
+    this._hiddenAt = 0;
     if (!this.isConnected && !this.isConnecting && !this.isManuallyDisconnected) {
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);

@@ -62,6 +62,22 @@ class AgentGUIClient {
     this._inflightRequests = new Map();
     this._previousConvAbort = null;
 
+    this._scrollKalman = typeof KalmanFilter !== 'undefined' ? new KalmanFilter({ processNoise: 50, measurementNoise: 100 }) : null;
+    this._scrollTarget = 0;
+    this._scrollAnimating = false;
+    this._scrollLerpFactor = config.scrollAnimationSpeed || 0.15;
+
+    this._chunkTimingKalman = typeof KalmanFilter !== 'undefined' ? new KalmanFilter({ processNoise: 10, measurementNoise: 200 }) : null;
+    this._lastChunkArrival = 0;
+    this._chunkTimingUpdateCount = 0;
+    this._chunkMissedPredictions = 0;
+
+    this._consolidator = typeof EventConsolidator !== 'undefined' ? new EventConsolidator() : null;
+
+    this._serverProcessingEstimate = 2000;
+    this._lastSendTime = 0;
+    this._countdownTimer = null;
+
     // Router state
     this.routerState = {
       currentConversationId: null,
@@ -103,6 +119,7 @@ class AgentGUIClient {
 
       this.state.isInitialized = true;
       this.emit('initialized');
+      this._setupDebugHooks();
 
       console.log('AgentGUI client initialized');
       return this;
@@ -146,6 +163,16 @@ class AgentGUIClient {
 
     this.wsManager.on('latency_update', (data) => {
       this._updateConnectionIndicator(data.quality);
+    });
+
+    this.wsManager.on('connection_degrading', () => {
+      const dot = document.querySelector('.connection-dot');
+      if (dot) dot.classList.add('degrading');
+    });
+
+    this.wsManager.on('connection_recovering', () => {
+      const dot = document.querySelector('.connection-dot');
+      if (dot) dot.classList.remove('degrading');
     });
   }
 
@@ -409,6 +436,13 @@ class AgentGUIClient {
 
   async handleStreamingStart(data) {
     console.log('Streaming started:', data);
+    this._clearThinkingCountdown();
+    if (this._lastSendTime > 0) {
+      const actual = Date.now() - this._lastSendTime;
+      const predicted = this.wsManager?.latency?.predicted || 0;
+      const serverTime = Math.max(500, actual - predicted);
+      this._serverProcessingEstimate = 0.7 * this._serverProcessingEstimate + 0.3 * serverTime;
+    }
 
     // If this streaming event is for a different conversation than what we are viewing,
     // just track the state but do not modify the DOM or start polling
@@ -585,21 +619,54 @@ class AgentGUIClient {
   }
 
   scrollToBottom() {
-    if (this._scrollRafPending) return;
-    this._scrollRafPending = true;
-    requestAnimationFrame(() => {
-      this._scrollRafPending = false;
-      const scrollContainer = document.getElementById('output-scroll');
-      if (!scrollContainer) return;
-      const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-      if (distFromBottom < 150) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    const scrollContainer = document.getElementById('output-scroll');
+    if (!scrollContainer) return;
+    const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+
+    if (distFromBottom > 150) {
+      this._unseenCount = (this._unseenCount || 0) + 1;
+      this._showNewContentPill();
+      return;
+    }
+
+    const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+    const isStreaming = this.state.streamingConversations.size > 0;
+
+    if (!isStreaming || !this._scrollKalman || Math.abs(maxScroll - scrollContainer.scrollTop) > 2000) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      this._removeNewContentPill();
+      this._scrollAnimating = false;
+      return;
+    }
+
+    this._scrollKalman.update(maxScroll);
+    this._scrollTarget = this._scrollKalman.predict();
+
+    const conf = this._chunkArrivalConfidence();
+    if (conf > 0.5) {
+      const estHeight = this._estimatedBlockHeight('text') * 0.5 * conf;
+      this._scrollTarget += estHeight;
+      const trueMax = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+      if (this._scrollTarget > trueMax + 100) this._scrollTarget = trueMax + 100;
+    }
+
+    if (!this._scrollAnimating) {
+      this._scrollAnimating = true;
+      const animate = () => {
+        if (!this._scrollAnimating) return;
+        const sc = document.getElementById('output-scroll');
+        if (!sc) { this._scrollAnimating = false; return; }
+        const diff = this._scrollTarget - sc.scrollTop;
+        if (Math.abs(diff) < 1) {
+          sc.scrollTop = this._scrollTarget;
+          if (this.state.streamingConversations.size === 0) { this._scrollAnimating = false; return; }
+        }
+        sc.scrollTop += diff * this._scrollLerpFactor;
         this._removeNewContentPill();
-      } else {
-        this._unseenCount = (this._unseenCount || 0) + 1;
-        this._showNewContentPill();
-      }
-    });
+        requestAnimationFrame(animate);
+      };
+      requestAnimationFrame(animate);
+    }
   }
 
   _showNewContentPill() {
@@ -627,6 +694,7 @@ class AgentGUIClient {
 
   handleStreamingError(data) {
     console.error('Streaming error:', data);
+    this._clearThinkingCountdown();
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
 
@@ -658,6 +726,7 @@ class AgentGUIClient {
 
   handleStreamingComplete(data) {
     console.log('Streaming completed:', data);
+    this._clearThinkingCountdown();
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
     if (conversationId) this.invalidateCache(conversationId);
@@ -1157,7 +1226,130 @@ class AgentGUIClient {
 
   _getAdaptivePollInterval() {
     const quality = this.wsManager?.latency?.quality || 'unknown';
-    return this._pollIntervalByTier[quality] || 200;
+    const base = this._pollIntervalByTier[quality] || 200;
+    const trend = this.wsManager?.latency?.trend;
+    if (!trend || trend === 'stable') return base;
+    const tiers = ['excellent', 'good', 'fair', 'poor', 'bad'];
+    const idx = tiers.indexOf(quality);
+    if (trend === 'rising' && idx < tiers.length - 1) return this._pollIntervalByTier[tiers[idx + 1]];
+    if (trend === 'falling' && idx > 0) return this._pollIntervalByTier[tiers[idx - 1]];
+    return base;
+  }
+
+  _chunkArrivalConfidence() {
+    if (this._chunkTimingUpdateCount < 2) return 0;
+    const base = Math.min(1, this._chunkTimingUpdateCount / 8);
+    const penalty = Math.min(1, this._chunkMissedPredictions * 0.33);
+    return Math.max(0, base - penalty);
+  }
+
+  _predictedNextChunkArrival() {
+    if (!this._chunkTimingKalman || this._chunkTimingUpdateCount < 2) return 0;
+    return this._lastChunkArrival + Math.min(this._chunkTimingKalman.predict(), 5000);
+  }
+
+  _schedulePreAllocation(sessionId) {
+    if (this._placeholderTimer) clearTimeout(this._placeholderTimer);
+    if (this._chunkArrivalConfidence() < 0.5) return;
+    const scrollContainer = document.getElementById('output-scroll');
+    if (!scrollContainer) return;
+    const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+    if (distFromBottom > 150) return;
+    const nextArrival = this._predictedNextChunkArrival();
+    if (!nextArrival) return;
+    const delay = Math.max(0, nextArrival - performance.now() - 100);
+    this._placeholderTimer = setTimeout(() => {
+      this._placeholderTimer = null;
+      this._insertPlaceholder(sessionId);
+    }, delay);
+  }
+
+  _insertPlaceholder(sessionId) {
+    this._removePlaceholder();
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (!streamingEl) return;
+    const blocksEl = streamingEl.querySelector('.streaming-blocks');
+    if (!blocksEl) return;
+    const ph = document.createElement('div');
+    ph.className = 'chunk-placeholder';
+    ph.id = 'chunk-placeholder-active';
+    blocksEl.appendChild(ph);
+    this._placeholderAutoRemove = setTimeout(() => this._removePlaceholder(), 500);
+  }
+
+  _removePlaceholder() {
+    if (this._placeholderAutoRemove) { clearTimeout(this._placeholderAutoRemove); this._placeholderAutoRemove = null; }
+    const ph = document.getElementById('chunk-placeholder-active');
+    if (ph && ph.parentNode) ph.remove();
+  }
+
+  _trackBlockHeight(block, element) {
+    if (!element || !block?.type) return;
+    const h = element.offsetHeight;
+    if (h <= 0) return;
+    if (!this._blockHeightAvg) this._blockHeightAvg = {};
+    const t = block.type;
+    if (!this._blockHeightAvg[t]) this._blockHeightAvg[t] = { sum: 0, count: 0 };
+    this._blockHeightAvg[t].sum += h;
+    this._blockHeightAvg[t].count++;
+  }
+
+  _estimatedBlockHeight(type) {
+    const defaults = { text: 40, tool_use: 60, tool_result: 40 };
+    if (this._blockHeightAvg?.[type]?.count >= 3) {
+      return this._blockHeightAvg[type].sum / this._blockHeightAvg[type].count;
+    }
+    return defaults[type] || 40;
+  }
+
+  _startThinkingCountdown() {
+    this._clearThinkingCountdown();
+    if (!this._lastSendTime) return;
+    const predicted = this.wsManager?.latency?.predicted || 0;
+    const estimatedWait = predicted + this._serverProcessingEstimate;
+    if (estimatedWait < 1000) return;
+    let remaining = Math.ceil(estimatedWait / 1000);
+    const update = () => {
+      const indicator = document.querySelector('.streaming-indicator');
+      if (!indicator) return;
+      if (remaining > 0) {
+        indicator.textContent = `Thinking... (~${remaining}s)`;
+        remaining--;
+        this._countdownTimer = setTimeout(update, 1000);
+      } else {
+        indicator.textContent = 'Thinking... (taking longer than expected)';
+      }
+    };
+    this._countdownTimer = setTimeout(update, 100);
+  }
+
+  _clearThinkingCountdown() {
+    if (this._countdownTimer) { clearTimeout(this._countdownTimer); this._countdownTimer = null; }
+  }
+
+  _setupDebugHooks() {
+    if (typeof window === 'undefined') return;
+    const kalmanHistory = { latency: [], scroll: [], chunkTiming: [] };
+    const self = this;
+    window.__kalman = {
+      latency: this.wsManager?._latencyKalman || null,
+      scroll: this._scrollKalman || null,
+      chunkTiming: this._chunkTimingKalman || null,
+      history: kalmanHistory,
+      getState: () => ({
+        latency: self.wsManager?._latencyKalman?.getState() || null,
+        scroll: self._scrollKalman?.getState() || null,
+        chunkTiming: self._chunkTimingKalman?.getState() || null,
+        serverProcessingEstimate: self._serverProcessingEstimate,
+        chunkConfidence: self._chunkArrivalConfidence(),
+        latencyTrend: self.wsManager?.latency?.trend || null
+      })
+    };
+
+    this.wsManager.on('latency_prediction', (data) => {
+      kalmanHistory.latency.push({ time: Date.now(), ...data });
+      if (kalmanHistory.latency.length > 100) kalmanHistory.latency.shift();
+    });
   }
 
   _showSkeletonLoading(conversationId) {
@@ -1230,6 +1422,8 @@ class AgentGUIClient {
         this.wsManager.subscribeToSession(result.session.id);
       }
 
+      this._lastSendTime = Date.now();
+      this._startThinkingCountdown();
       this.emit('execution:started', result);
     } catch (error) {
       console.error('Stream execution error:', error);
@@ -1334,14 +1528,38 @@ class AgentGUIClient {
           pollState.emptyPollCount = 0;
           const lastChunk = chunks[chunks.length - 1];
           pollState.lastFetchTimestamp = lastChunk.created_at;
+
+          const now = performance.now();
+          if (this._lastChunkArrival > 0 && this._chunkTimingKalman) {
+            const delta = now - this._lastChunkArrival;
+            this._chunkTimingKalman.update(delta);
+            this._chunkTimingUpdateCount++;
+            this._chunkMissedPredictions = 0;
+          }
+          this._lastChunkArrival = now;
+
           this.renderChunkBatch(chunks.filter(c => c.block && c.block.type));
+          if (this.state.currentSession?.id) this._schedulePreAllocation(this.state.currentSession.id);
         } else {
           pollState.emptyPollCount++;
+          if (this._chunkTimingUpdateCount > 0) this._chunkMissedPredictions++;
           pollState.backoffDelay = Math.min(pollState.backoffDelay + 50, 500);
         }
 
         if (pollState.isPolling) {
-          pollState.pollTimer = setTimeout(pollOnce, pollState.backoffDelay);
+          let nextDelay = pollState.backoffDelay;
+          if (this._chunkArrivalConfidence() >= 0.3 && this._chunkTimingKalman) {
+            const predicted = this._chunkTimingKalman.predict();
+            const elapsed = performance.now() - this._lastChunkArrival;
+            const untilNext = predicted - elapsed - 20;
+            nextDelay = Math.max(50, Math.min(2000, untilNext));
+            if (this._chunkMissedPredictions >= 3) {
+              this._chunkTimingKalman.setProcessNoise(20);
+            } else {
+              this._chunkTimingKalman.setProcessNoise(10);
+            }
+          }
+          pollState.pollTimer = setTimeout(pollOnce, nextDelay);
         }
       } catch (error) {
         console.warn('Chunk poll error:', error.message);
@@ -1372,6 +1590,13 @@ class AgentGUIClient {
     }
 
     pollState.isPolling = false;
+    this._scrollAnimating = false;
+    if (this._scrollKalman) this._scrollKalman.reset();
+    if (this._chunkTimingKalman) this._chunkTimingKalman.reset();
+    this._chunkTimingUpdateCount = 0;
+    this._chunkMissedPredictions = 0;
+    this._lastChunkArrival = 0;
+    if (this._placeholderTimer) { clearTimeout(this._placeholderTimer); this._placeholderTimer = null; }
   }
 
   /**
@@ -1397,13 +1622,36 @@ class AgentGUIClient {
 
   renderChunkBatch(chunks) {
     if (!chunks.length) return;
-    const groups = {};
+    const deduped = [];
     for (const chunk of chunks) {
       const sid = chunk.sessionId;
       if (!this._renderedSeqs.has(sid)) this._renderedSeqs.set(sid, new Set());
       const seqSet = this._renderedSeqs.get(sid);
       if (chunk.sequence !== undefined && seqSet.has(chunk.sequence)) continue;
       if (chunk.sequence !== undefined) seqSet.add(chunk.sequence);
+      deduped.push(chunk);
+    }
+    if (!deduped.length) return;
+
+    let toRender = deduped;
+    if (this._consolidator) {
+      const { consolidated, stats } = this._consolidator.consolidate(deduped);
+      toRender = consolidated;
+      for (const c of consolidated) {
+        if (c._mergedSequences) {
+          const seqSet = this._renderedSeqs.get(c.sessionId);
+          if (seqSet) c._mergedSequences.forEach(s => seqSet.add(s));
+        }
+      }
+      if (stats.textMerged || stats.toolsCollapsed || stats.systemSuperseded) {
+        console.log('Consolidation:', stats);
+      }
+    }
+
+    this._removePlaceholder();
+    const groups = {};
+    for (const chunk of toRender) {
+      const sid = chunk.sessionId;
       if (!groups[sid]) groups[sid] = [];
       groups[sid].push(chunk);
     }
@@ -1542,6 +1790,8 @@ class AgentGUIClient {
     tooltip.innerHTML = [
       `<div>State: ${state}</div>`,
       `<div>Latency: ${Math.round(latency.avg || 0)}ms</div>`,
+      `<div>Predicted: ${Math.round(latency.predicted || 0)}ms (Kalman)</div>`,
+      `<div>Trend: ${latency.trend || 'unknown'}</div>`,
       `<div>Jitter: ${Math.round(latency.jitter || 0)}ms</div>`,
       `<div>Quality: ${latency.quality || 'unknown'}</div>`,
       `<div>Reconnects: ${stats.totalReconnects || 0}</div>`,
