@@ -228,7 +228,8 @@ try {
     lastSyncedAt: 'INTEGER',
     workingDirectory: 'TEXT',
     claudeSessionId: 'TEXT',
-    isStreaming: 'INTEGER DEFAULT 0'
+    isStreaming: 'INTEGER DEFAULT 0',
+    model: 'TEXT'
   };
 
   let addedColumns = false;
@@ -270,19 +271,20 @@ function generateId(prefix) {
 
 export const queries = {
   _db: db,
-  createConversation(agentType, title = null, workingDirectory = null) {
+  createConversation(agentType, title = null, workingDirectory = null, model = null) {
     const id = generateId('conv');
     const now = Date.now();
     const stmt = prep(
-      `INSERT INTO conversations (id, agentId, agentType, title, created_at, updated_at, status, workingDirectory) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO conversations (id, agentId, agentType, title, created_at, updated_at, status, workingDirectory, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    stmt.run(id, agentType, agentType, title, now, now, 'active', workingDirectory);
+    stmt.run(id, agentType, agentType, title, now, now, 'active', workingDirectory, model);
 
     return {
       id,
       agentType,
       title,
       workingDirectory,
+      model,
       created_at: now,
       updated_at: now,
       status: 'active'
@@ -301,7 +303,7 @@ export const queries = {
 
   getConversationsList() {
     const stmt = prep(
-      'SELECT id, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming FROM conversations WHERE status != ? ORDER BY updated_at DESC'
+      'SELECT id, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming, model FROM conversations WHERE status != ? ORDER BY updated_at DESC'
     );
     return stmt.all('deleted');
   },

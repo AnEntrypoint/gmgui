@@ -93,6 +93,7 @@ class ConversationManager {
   }
 
   async openFolderBrowser() {
+    window.dispatchEvent(new CustomEvent('preparing-new-conversation'));
     if (!this.folderBrowser.modal) {
       this.createNew();
       return;
@@ -375,8 +376,9 @@ class ConversationManager {
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
     const agent = conv.agentType || 'unknown';
+    const modelLabel = conv.model ? ` (${conv.model})` : '';
     const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
-    const metaParts = [agent, timestamp];
+    const metaParts = [agent + modelLabel, timestamp];
     if (wd) metaParts.push(wd);
 
     const titleEl = el.querySelector('.conversation-item-title');
@@ -402,8 +404,9 @@ class ConversationManager {
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
     const agent = conv.agentType || 'unknown';
+    const modelLabel = conv.model ? ` (${conv.model})` : '';
     const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
-    const metaParts = [agent, timestamp];
+    const metaParts = [agent + modelLabel, timestamp];
     if (wd) metaParts.push(wd);
 
     const streamingBadge = isStreaming
@@ -466,6 +469,7 @@ class ConversationManager {
   }
 
   createNew() {
+    window.dispatchEvent(new CustomEvent('preparing-new-conversation'));
     window.dispatchEvent(new CustomEvent('create-new-conversation'));
   }
 

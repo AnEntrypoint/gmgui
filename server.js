@@ -202,6 +202,44 @@ function discoverAgents() {
 
 const discoveredAgents = discoverAgents();
 
+const modelCache = new Map();
+
+async function getModelsForAgent(agentId) {
+  if (agentId === 'claude-code') {
+    return [
+      { id: '', label: 'Default' },
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'opus', label: 'Opus' },
+      { id: 'haiku', label: 'Haiku' },
+      { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
+      { id: 'claude-opus-4-6', label: 'Opus 4.6' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
+    ];
+  }
+  if (agentId === 'opencode') {
+    try {
+      const result = execSync('opencode models 2>/dev/null', { encoding: 'utf-8', timeout: 10000 });
+      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
+      const models = [{ id: '', label: 'Default' }];
+      for (const line of lines) {
+        models.push({ id: line, label: line });
+      }
+      return models;
+    } catch (_) {
+      return [{ id: '', label: 'Default' }];
+    }
+  }
+  if (agentId === 'gemini') {
+    return [
+      { id: '', label: 'Default' },
+      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
+    ];
+  }
+  return [];
+}
+
 const GEMINI_SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -722,8 +760,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/conversations' && req.method === 'POST') {
       const body = await parseBody(req);
-      const conversation = queries.createConversation(body.agentId, body.title, body.workingDirectory || null);
-      queries.createEvent('conversation.created', { agentId: body.agentId, workingDirectory: conversation.workingDirectory }, conversation.id);
+      const conversation = queries.createConversation(body.agentId, body.title, body.workingDirectory || null, body.model || null);
+      queries.createEvent('conversation.created', { agentId: body.agentId, workingDirectory: conversation.workingDirectory, model: conversation.model }, conversation.id);
       broadcastSync({ type: 'conversation_created', conversation });
             sendJSON(req, res, 201, { conversation });
       return;
@@ -782,6 +820,7 @@ const server = http.createServer(async (req, res) => {
         if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
         const body = await parseBody(req);
         const agentId = body.agentId || conv.agentType || conv.agentId || 'claude-code';
+        const model = body.model || conv.model || null;
         const idempotencyKey = body.idempotencyKey || null;
         const message = queries.createMessage(conversationId, 'user', body.content, idempotencyKey);
         queries.createEvent('message.created', { role: 'user', messageId: message.id }, conversationId);
@@ -789,7 +828,7 @@ const server = http.createServer(async (req, res) => {
 
         if (activeExecutions.has(conversationId)) {
           if (!messageQueues.has(conversationId)) messageQueues.set(conversationId, []);
-          messageQueues.get(conversationId).push({ content: body.content, agentId, messageId: message.id });
+          messageQueues.get(conversationId).push({ content: body.content, agentId, model, messageId: message.id });
           const queueLength = messageQueues.get(conversationId).length;
           broadcastSync({ type: 'queue_status', conversationId, queueLength, messageId: message.id, timestamp: Date.now() });
           sendJSON(req, res, 200, { message, queued: true, queuePosition: queueLength, idempotencyKey });
@@ -813,7 +852,7 @@ const server = http.createServer(async (req, res) => {
 
         sendJSON(req, res, 201, { message, session, idempotencyKey });
 
-        processMessageWithStreaming(conversationId, message.id, session.id, body.content, agentId)
+        processMessageWithStreaming(conversationId, message.id, session.id, body.content, agentId, model)
           .catch(err => {
             console.error(`[messages] Uncaught error for conv ${conversationId}:`, err.message);
             debugLog(`[messages] Uncaught error: ${err.message}`);
@@ -831,6 +870,7 @@ const server = http.createServer(async (req, res) => {
 
       const prompt = body.content || body.message || '';
       const agentId = body.agentId || conv.agentType || conv.agentId || 'claude-code';
+      const model = body.model || conv.model || null;
 
       const userMessage = queries.createMessage(conversationId, 'user', prompt);
       queries.createEvent('message.created', { role: 'user', messageId: userMessage.id }, conversationId);
@@ -840,7 +880,7 @@ const server = http.createServer(async (req, res) => {
       if (activeExecutions.has(conversationId)) {
         debugLog(`[stream] Conversation ${conversationId} is busy, queuing message`);
         if (!messageQueues.has(conversationId)) messageQueues.set(conversationId, []);
-        messageQueues.get(conversationId).push({ content: prompt, agentId, messageId: userMessage.id });
+        messageQueues.get(conversationId).push({ content: prompt, agentId, model, messageId: userMessage.id });
 
         const queueLength = messageQueues.get(conversationId).length;
         broadcastSync({ type: 'queue_status', conversationId, queueLength, messageId: userMessage.id, timestamp: Date.now() });
@@ -866,7 +906,7 @@ const server = http.createServer(async (req, res) => {
 
       sendJSON(req, res, 200, { message: userMessage, session, streamId: session.id });
 
-      processMessageWithStreaming(conversationId, userMessage.id, session.id, prompt, agentId)
+      processMessageWithStreaming(conversationId, userMessage.id, session.id, prompt, agentId, model)
         .catch(err => debugLog(`[stream] Uncaught error: ${err.message}`));
       return;
     }
@@ -1124,6 +1164,24 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/agents' && req.method === 'GET') {
             sendJSON(req, res, 200, { agents: discoveredAgents });
+      return;
+    }
+
+    const modelsMatch = pathOnly.match(/^\/api\/agents\/([^/]+)\/models$/);
+    if (modelsMatch && req.method === 'GET') {
+      const agentId = modelsMatch[1];
+      const cached = modelCache.get(agentId);
+      if (cached && (Date.now() - cached.ts) < 300000) {
+        sendJSON(req, res, 200, { models: cached.models });
+        return;
+      }
+      try {
+        const models = await getModelsForAgent(agentId);
+        modelCache.set(agentId, { models, ts: Date.now() });
+        sendJSON(req, res, 200, { models });
+      } catch (err) {
+        sendJSON(req, res, 200, { models: [] });
+      }
       return;
     }
 
@@ -1707,7 +1765,7 @@ function createChunkBatcher() {
   return { add, drain };
 }
 
-async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId) {
+async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId, model) {
   const startTime = Date.now();
   
   const conv = queries.getConversation(conversationId);
@@ -1844,6 +1902,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       }
     };
 
+    const resolvedModel = model || conv?.model || null;
     const config = {
       verbose: true,
       outputFormat: 'stream-json',
@@ -1851,6 +1910,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       print: true,
       resumeSessionId,
       systemPrompt: SYSTEM_PROMPT,
+      model: resolvedModel || undefined,
       onEvent,
       onPid: (pid) => {
         const entry = activeExecutions.get(conversationId);
@@ -1952,7 +2012,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
           conversationId,
           timestamp: Date.now()
         });
-        scheduleRetry(conversationId, messageId, content, agentId);
+        scheduleRetry(conversationId, messageId, content, agentId, model);
       }, cooldownMs);
       return;
     }
@@ -1983,16 +2043,16 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   }
 }
 
-function scheduleRetry(conversationId, messageId, content, agentId) {
+function scheduleRetry(conversationId, messageId, content, agentId, model) {
   debugLog(`[rate-limit] scheduleRetry called for conv ${conversationId}, messageId=${messageId}`);
-  
+
   if (!content) {
     const conv = queries.getConversation(conversationId);
     const lastMsg = queries.getLastUserMessage(conversationId);
     content = lastMsg?.content || 'continue';
     debugLog(`[rate-limit] Recovered content from last message: ${content?.substring?.(0, 50)}...`);
   }
-  
+
   const newSession = queries.createSession(conversationId);
   queries.createEvent('session.created', { messageId, sessionId: newSession.id, retryReason: 'rate_limit' }, conversationId, newSession.id);
 
@@ -2007,7 +2067,7 @@ function scheduleRetry(conversationId, messageId, content, agentId) {
   });
 
   debugLog(`[rate-limit] Calling processMessageWithStreaming for retry`);
-  processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId)
+  processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId, model)
     .catch(err => {
       debugLog(`[rate-limit] Retry failed: ${err.message}`);
       console.error(`[rate-limit] Retry error for conv ${conversationId}:`, err);
@@ -2042,7 +2102,7 @@ function drainMessageQueue(conversationId) {
     timestamp: Date.now()
   });
 
-  processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId)
+  processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.model)
     .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
 }
 
@@ -2356,7 +2416,7 @@ async function resumeInterruptedStreams() {
         const messageId = lastMsg?.id || null;
         console.log(`[RESUME] Resuming conv ${conv.id} (claude session: ${conv.claudeSessionId})`);
 
-        processMessageWithStreaming(conv.id, messageId, session.id, promptText, conv.agentType)
+        processMessageWithStreaming(conv.id, messageId, session.id, promptText, conv.agentType, conv.model)
           .catch(err => debugLog(`[RESUME] Error resuming conv ${conv.id}: ${err.message}`));
 
         if (i < toResume.length - 1) {

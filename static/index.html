@@ -816,6 +816,28 @@
       flex-shrink: 0;
     }
 
+    .agent-selector:disabled, .model-selector:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background-color: var(--color-bg-secondary);
+    }
+
+    .model-selector {
+      padding: 0.5rem;
+      border: none;
+      border-radius: 0.375rem;
+      background-color: var(--color-bg-secondary);
+      color: var(--color-text-primary);
+      font-size: 0.8rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      max-width: 160px;
+    }
+
+    .model-selector:empty, .model-selector[data-empty="true"] {
+      display: none;
+    }
+
     .message-textarea {
       flex: 1;
       padding: 0.625rem 0.875rem;
@@ -1005,6 +1027,7 @@
       .messages-wrapper { padding: 0.375rem 0.5rem; }
       .input-section { padding: 0.5rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
       .agent-selector { display: none; }
+      .model-selector { display: none; }
     }
 
     /* ===== SCROLLBAR STYLING ===== */
@@ -2456,6 +2479,7 @@
       <div class="input-section">
         <div class="input-wrapper">
           <select class="agent-selector" data-agent-selector title="Select agent"></select>
+          <select class="model-selector" data-model-selector title="Select model" data-empty="true"></select>
           <textarea
             class="message-textarea"
             data-message-input

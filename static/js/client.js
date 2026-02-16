@@ -42,8 +42,12 @@ class AgentGUIClient {
       statusIndicator: null,
       messageInput: null,
       sendButton: null,
-      agentSelector: null
+      agentSelector: null,
+      modelSelector: null
     };
+
+    this._agentLocked = false;
+    this._modelCache = new Map();
 
     this.chunkPollState = {
       isPolling: false,
@@ -322,6 +326,15 @@ class AgentGUIClient {
     this.ui.messageInput = document.querySelector('[data-message-input]');
     this.ui.sendButton = document.querySelector('[data-send-button]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
+    this.ui.modelSelector = document.querySelector('[data-model-selector]');
+
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.addEventListener('change', () => {
+        if (!this._agentLocked) {
+          this.loadModelsForAgent(this.ui.agentSelector.value);
+        }
+      });
+    }
 
     // Setup event listeners
     if (this.ui.sendButton) {
@@ -352,8 +365,13 @@ class AgentGUIClient {
     this.setupScrollTracking();
 
     window.addEventListener('create-new-conversation', (event) => {
+      this.unlockAgentAndModel();
       const detail = event.detail || {};
       this.createNewConversation(detail.workingDirectory, detail.title);
+    });
+
+    window.addEventListener('preparing-new-conversation', () => {
+      this.unlockAgentAndModel();
     });
 
     // Listen for conversation selection
@@ -479,7 +497,7 @@ class AgentGUIClient {
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conv?.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conv?.agentType || 'unknown'} - ${new Date(conv?.created_at || Date.now()).toLocaleDateString()}${wdInfo}</p>
+            <p class="text-secondary">${conv?.agentType || 'unknown'}${conv?.model ? ' (' + this.escapeHtml(conv.model) + ')' : ''} - ${new Date(conv?.created_at || Date.now()).toLocaleDateString()}${wdInfo}</p>
           </div>
           <div class="conversation-messages"></div>
         `;
@@ -1098,7 +1116,9 @@ class AgentGUIClient {
 
   async startExecution() {
     const prompt = this.ui.messageInput?.value || '';
-    const agentId = this.ui.agentSelector?.value || 'claude-code';
+    const conv = this.state.currentConversation;
+    const agentId = conv?.agentType || this.ui.agentSelector?.value || 'claude-code';
+    const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
       this.showError('Please enter a prompt');
@@ -1116,24 +1136,27 @@ class AgentGUIClient {
     this.disableControls();
 
     try {
-      if (this.state.currentConversation?.id) {
-        await this.streamToConversation(this.state.currentConversation.id, savedPrompt, agentId);
+      if (conv?.id) {
+        await this.streamToConversation(conv.id, savedPrompt, agentId, model);
         this._confirmOptimisticMessage(pendingId);
       } else {
+        const body = { agentId, title: savedPrompt.substring(0, 50) };
+        if (model) body.model = model;
         const response = await fetch(window.__BASE_URL + '/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId, title: savedPrompt.substring(0, 50) })
+          body: JSON.stringify(body)
         });
         const { conversation } = await response.json();
         this.state.currentConversation = conversation;
+        this.lockAgentAndModel(agentId, model);
 
         if (window.conversationManager) {
           window.conversationManager.loadConversations();
           window.conversationManager.select(conversation.id);
         }
 
-        await this.streamToConversation(conversation.id, savedPrompt, agentId);
+        await this.streamToConversation(conversation.id, savedPrompt, agentId, model);
         this._confirmOptimisticMessage(pendingId);
       }
     } catch (error) {
@@ -1361,7 +1384,7 @@ class AgentGUIClient {
     outputEl.innerHTML = `
       <div class="conversation-header">
         <h2>${this.escapeHtml(title)}</h2>
-        <p class="text-secondary">${conv?.agentType || 'unknown'} - ${conv ? new Date(conv.created_at).toLocaleDateString() : ''}${wdInfo}</p>
+        <p class="text-secondary">${conv?.agentType || 'unknown'}${conv?.model ? ' (' + this.escapeHtml(conv.model) + ')' : ''} - ${conv ? new Date(conv.created_at).toLocaleDateString() : ''}${wdInfo}</p>
       </div>
       <div class="conversation-messages">
         <div class="skeleton-loading">
@@ -1374,29 +1397,33 @@ class AgentGUIClient {
     `;
   }
 
-  async streamToConversation(conversationId, prompt, agentId) {
+  async streamToConversation(conversationId, prompt, agentId, model) {
     try {
       if (this.wsManager.isConnected) {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
 
+      const streamBody = { content: prompt, agentId };
+      if (model) streamBody.model = model;
       const response = await fetch(`${window.__BASE_URL}/api/conversations/${conversationId}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: prompt, agentId })
+        body: JSON.stringify(streamBody)
       });
 
       if (response.status === 404) {
         console.warn('Conversation not found, recreating:', conversationId);
         const conv = this.state.currentConversation;
+        const createBody = {
+          agentId,
+          title: conv?.title || prompt.substring(0, 50),
+          workingDirectory: conv?.workingDirectory || null
+        };
+        if (model) createBody.model = model;
         const createResp = await fetch(window.__BASE_URL + '/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            agentId,
-            title: conv?.title || prompt.substring(0, 50),
-            workingDirectory: conv?.workingDirectory || null
-          })
+          body: JSON.stringify(createBody)
         });
         if (!createResp.ok) throw new Error(`Failed to recreate conversation: HTTP ${createResp.status}`);
         const { conversation: newConv } = await createResp.json();
@@ -1406,7 +1433,7 @@ class AgentGUIClient {
           window.conversationManager.select(newConv.id);
         }
         this.updateUrlForConversation(newConv.id);
-        return this.streamToConversation(newConv.id, prompt, agentId);
+        return this.streamToConversation(newConv.id, prompt, agentId, model);
       }
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -1698,12 +1725,70 @@ class AgentGUIClient {
         }
 
         window.dispatchEvent(new CustomEvent('agents-loaded', { detail: { agents } }));
+        if (agents.length > 0 && !this._agentLocked) {
+          this.loadModelsForAgent(agents[0].id);
+        }
         return agents;
       } catch (error) {
         console.error('Failed to load agents:', error);
         return [];
       }
     });
+  }
+
+  async loadModelsForAgent(agentId) {
+    if (!agentId || !this.ui.modelSelector) return;
+    const cached = this._modelCache.get(agentId);
+    if (cached) {
+      this._populateModelSelector(cached);
+      return;
+    }
+    try {
+      const response = await fetch(window.__BASE_URL + `/api/agents/${agentId}/models`);
+      const { models } = await response.json();
+      this._modelCache.set(agentId, models || []);
+      this._populateModelSelector(models || []);
+    } catch (error) {
+      console.error('Failed to load models:', error);
+      this._populateModelSelector([]);
+    }
+  }
+
+  _populateModelSelector(models) {
+    if (!this.ui.modelSelector) return;
+    if (!models || models.length === 0) {
+      this.ui.modelSelector.innerHTML = '';
+      this.ui.modelSelector.setAttribute('data-empty', 'true');
+      return;
+    }
+    this.ui.modelSelector.removeAttribute('data-empty');
+    this.ui.modelSelector.innerHTML = models
+      .map(m => `<option value="${m.id}">${this.escapeHtml(m.label)}</option>`)
+      .join('');
+  }
+
+  lockAgentAndModel(agentId, model) {
+    this._agentLocked = true;
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.value = agentId;
+      this.ui.agentSelector.disabled = true;
+    }
+    this.loadModelsForAgent(agentId).then(() => {
+      if (this.ui.modelSelector) {
+        if (model) this.ui.modelSelector.value = model;
+        this.ui.modelSelector.disabled = true;
+      }
+    });
+  }
+
+  unlockAgentAndModel() {
+    this._agentLocked = false;
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.disabled = false;
+    }
+    if (this.ui.modelSelector) {
+      this.ui.modelSelector.disabled = false;
+    }
   }
 
   /**
@@ -1840,9 +1925,11 @@ class AgentGUIClient {
   async createNewConversation(workingDirectory, title) {
     try {
       const agentId = this.ui.agentSelector?.value || 'claude-code';
+      const model = this.ui.modelSelector?.value || null;
       const convTitle = title || 'New Conversation';
       const body = { agentId, title: convTitle };
       if (workingDirectory) body.workingDirectory = workingDirectory;
+      if (model) body.model = model;
 
       const response = await fetch(window.__BASE_URL + '/api/conversations', {
         method: 'POST',
@@ -1855,6 +1942,7 @@ class AgentGUIClient {
       }
 
       const { conversation } = await response.json();
+      this.lockAgentAndModel(agentId, model);
 
       await this.loadConversations();
 
@@ -1930,6 +2018,7 @@ class AgentGUIClient {
             outputEl.appendChild(cached.dom.firstChild);
           }
           this.state.currentConversation = cached.conversation;
+          this.lockAgentAndModel(cached.conversation.agentType || 'claude-code', cached.conversation.model || null);
           this.conversationCache.delete(conversationId);
           this.restoreScrollPosition(conversationId);
           this.enableControls();
@@ -1957,6 +2046,7 @@ class AgentGUIClient {
       const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = await resp.json();
 
       this.state.currentConversation = conversation;
+      this.lockAgentAndModel(conversation.agentType || 'claude-code', conversation.model || null);
 
       const chunks = (rawChunks || []).map(chunk => ({
         ...chunk,
@@ -1975,7 +2065,7 @@ class AgentGUIClient {
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conversation.agentType || 'unknown'} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
+            <p class="text-secondary">${conversation.agentType || 'unknown'}${conversation.model ? ' (' + this.escapeHtml(conversation.model) + ')' : ''} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
           </div>
           <div class="conversation-messages"></div>
         `;
