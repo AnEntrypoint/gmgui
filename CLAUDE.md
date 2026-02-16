@@ -89,3 +89,53 @@ Server broadcasts:
 - `streaming_complete` - Execution finished
 - `streaming_error` - Execution failed
 - `conversation_created`, `conversation_updated`, `conversation_deleted`
+- `tts_setup_progress` - Windows pocket-tts setup progress (step, status, message)
+
+## Pocket-TTS Windows Setup (Reliability for Slow/Bad Internet)
+
+On Windows, text-to-speech uses pocket-tts which requires Python and pip install. The setup process is now resilient to slow/unreliable connections:
+
+### Features
+- **Extended timeouts**: 120s for pip install (accommodates slow connections)
+- **Retry logic**: 3 attempts with exponential backoff (1s, 2s delays)
+- **Progress reporting**: Real-time updates via WebSocket to UI
+- **Partial install cleanup**: Failed venvs are removed to allow retry
+- **Installation verification**: Binary validation via `--version` check
+- **Concurrent waiting**: Multiple simultaneous requests wait for single setup (600s timeout)
+
+### Configuration (lib/windows-pocket-tts-setup.js)
+```javascript
+const CONFIG = {
+  PIP_TIMEOUT: 120000,           // 2 minutes
+  VENV_CREATION_TIMEOUT: 30000,  // 30 seconds
+  MAX_RETRIES: 3,                 // 3 attempts
+  RETRY_DELAY_MS: 1000,          // 1 second initial
+  RETRY_BACKOFF_MULTIPLIER: 2,   // 2x exponential
+};
+```
+
+### Network Requirements
+- **Minimum**: 50 kbps sustained, < 5s latency, < 10% packet loss
+- **Recommended**: 256+ kbps, < 2s latency, < 1% packet loss
+- **Expected time on slow connection**: 2-6 minutes with retries
+
+### Progress Messages
+During TTS setup on first use, WebSocket broadcasts:
+```json
+{
+  "type": "tts_setup_progress",
+  "step": "detecting-python|creating-venv|installing|verifying",
+  "status": "in-progress|success|error",
+  "message": "descriptive status message with retry count if applicable"
+}
+```
+
+### Recovery Behavior
+1. Network timeout → auto-retry with backoff
+2. Partial venv → auto-cleanup before retry
+3. Failed verification → auto-cleanup and error
+4. Concurrent requests → first starts setup, others wait up to 600s
+5. Interrupted setup → cleanup allows fresh retry
+
+### Testing
+Setup validates by running pocket-tts binary with `--version` flag to confirm functional installation, not just file existence.

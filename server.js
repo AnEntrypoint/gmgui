@@ -27,7 +27,8 @@ async function ensurePocketTtsSetup(onProgress) {
 
   if (pocketTtsSetupState.inProgress) {
     let waited = 0;
-    while (pocketTtsSetupState.inProgress && waited < 30000) {
+    const MAX_WAIT = 600000;
+    while (pocketTtsSetupState.inProgress && waited < MAX_WAIT) {
       await new Promise(r => setTimeout(r, 100));
       waited += 100;
     }
