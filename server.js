@@ -1438,11 +1438,6 @@ const server = http.createServer(async (req, res) => {
         }
 
         const speech = await getSpeech();
-        const status = speech.getStatus();
-        if (status.ttsError) {
-          sendJSON(req, res, 503, { error: status.ttsError, retryable: false });
-          return;
-        }
         const wavBuffer = await speech.synthesize(text, voiceId);
         res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wavBuffer.length });
         res.end(wavBuffer);
@@ -1465,11 +1460,6 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const speech = await getSpeech();
-        const status = speech.getStatus();
-        if (status.ttsError) {
-          sendJSON(req, res, 503, { error: status.ttsError, retryable: false });
-          return;
-        }
         res.writeHead(200, {
           'Content-Type': 'application/octet-stream',
           'Transfer-Encoding': 'chunked',
