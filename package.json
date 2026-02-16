@@ -1,6 +1,6 @@
 {
   "name": "agentgui",
-  "version": "1.0.203",
+  "version": "1.0.205",
   "description": "Multi-agent ACP client with real-time communication",
   "type": "module",
   "main": "server.js",
@@ -27,7 +27,7 @@
     "better-sqlite3": "^12.6.2",
     "busboy": "^1.6.0",
     "express": "^5.2.1",
-    "fsbrowse": "^0.2.17",
+    "fsbrowse": "^0.2.18",
     "google-auth-library": "^10.5.0",
     "onnxruntime-node": "^1.24.1",
     "webtalk": "github:AnEntrypoint/webtalk",
