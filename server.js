@@ -154,6 +154,21 @@ expressApp.use(BASE_URL + '/files/:conversationId', (req, res, next) => {
   router(req, res, next);
 });
 
+function findCommand(cmd) {
+  const isWindows = os.platform() === 'win32';
+  try {
+    if (isWindows) {
+      const result = execSync(`where ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      return result.split('\n')[0].trim();
+    } else {
+      const result = execSync(`which ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      return result;
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
 function discoverAgents() {
   const agents = [];
   const binaries = [
@@ -172,10 +187,8 @@ function discoverAgents() {
     { cmd: 'fast-agent', id: 'fast-agent', name: 'fast-agent', icon: 'F' },
   ];
   for (const bin of binaries) {
-    try {
-      const result = execSync(`which ${bin.cmd} 2>/dev/null`, { encoding: 'utf-8' }).trim();
-      if (result) agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result });
-    } catch (_) {}
+    const result = findCommand(bin.cmd);
+    if (result) agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result });
   }
   return agents;
 }
@@ -201,13 +214,15 @@ function extractOAuthFromFile(oauth2Path) {
 function getGeminiOAuthCreds() {
   const oauthRelPath = path.join('node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js');
   try {
-    const geminiPath = execSync('which gemini', { encoding: 'utf8' }).trim();
-    const realPath = fs.realpathSync(geminiPath);
-    const pkgRoot = path.resolve(path.dirname(realPath), '..');
-    const result = extractOAuthFromFile(path.join(pkgRoot, oauthRelPath));
-    if (result) return result;
+    const geminiPath = findCommand('gemini');
+    if (geminiPath) {
+      const realPath = fs.realpathSync(geminiPath);
+      const pkgRoot = path.resolve(path.dirname(realPath), '..');
+      const result = extractOAuthFromFile(path.join(pkgRoot, oauthRelPath));
+      if (result) return result;
+    }
   } catch (e) {
-    console.error('[gemini-oauth] which gemini lookup failed:', e.message);
+    console.error('[gemini-oauth] gemini lookup failed:', e.message);
   }
   try {
     const npmCacheDirs = new Set();
@@ -226,15 +241,6 @@ function getGeminiOAuthCreds() {
     }
   } catch (e) {
     console.error('[gemini-oauth] npm cache scan failed:', e.message);
-  }
-  try {
-    const found = execSync('find / -path "*/gemini-cli-core/dist/src/code_assist/oauth2.js" -maxdepth 10 2>/dev/null | head -1', { encoding: 'utf8', timeout: 10000 }).trim();
-    if (found) {
-      const result = extractOAuthFromFile(found);
-      if (result) return result;
-    }
-  } catch (e) {
-    console.error('[gemini-oauth] filesystem search failed:', e.message);
   }
   console.error('[gemini-oauth] Could not find Gemini CLI OAuth credentials in any known location');
   return null;
