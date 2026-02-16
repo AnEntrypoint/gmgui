@@ -246,6 +246,9 @@ function extractOAuthFromFile(oauth2Path) {
 }
 
 function getGeminiOAuthCreds() {
+  if (process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+    return { clientId: process.env.GOOGLE_OAUTH_CLIENT_ID, clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET, custom: true };
+  }
   const oauthRelPath = path.join('node_modules', '@google', 'gemini-cli-core', 'dist', 'src', 'code_assist', 'oauth2.js');
   try {
     const geminiPath = findCommand('gemini');
@@ -333,13 +336,24 @@ function geminiOAuthResultPage(title, message, success) {
 </div></body></html>`;
 }
 
-async function startGeminiOAuth() {
+function isRemoteRequest(req) {
+  return !!(req && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-forwarded-proto']));
+}
+
+async function startGeminiOAuth(req) {
   const creds = getGeminiOAuthCreds();
   if (!creds) throw new Error('Could not find Gemini CLI OAuth credentials. Install gemini CLI first.');
 
-  const redirectUri = `http://localhost:${PORT}${BASE_URL}/oauth2callback`;
-  const state = crypto.randomBytes(32).toString('hex');
+  const useCustomClient = !!creds.custom;
+  const remote = isRemoteRequest(req);
+  let redirectUri;
+  if (useCustomClient && req) {
+    redirectUri = `${buildBaseUrl(req)}${BASE_URL}/oauth2callback`;
+  } else {
+    redirectUri = `http://localhost:${PORT}${BASE_URL}/oauth2callback`;
+  }
 
+  const state = crypto.randomBytes(32).toString('hex');
   const client = new OAuth2Client({
     clientId: creds.clientId,
     clientSecret: creds.clientSecret,
@@ -352,6 +366,7 @@ async function startGeminiOAuth() {
     state,
   });
 
+  const mode = useCustomClient ? 'custom' : (remote ? 'cli-remote' : 'cli-local');
   geminiOAuthPending = { client, redirectUri, state };
   geminiOAuthState = { status: 'pending', error: null, email: null };
 
@@ -362,7 +377,7 @@ async function startGeminiOAuth() {
     }
   }, 5 * 60 * 1000);
 
-  return authUrl;
+  return { authUrl, mode };
 }
 
 async function exchangeGeminiOAuthCode(code, state) {
@@ -1130,8 +1145,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/gemini-oauth/start' && req.method === 'POST') {
       try {
-        const authUrl = await startGeminiOAuth();
-        sendJSON(req, res, 200, { authUrl });
+        const result = await startGeminiOAuth(req);
+        sendJSON(req, res, 200, { authUrl: result.authUrl, mode: result.mode });
       } catch (e) {
         console.error('[gemini-oauth] /api/gemini-oauth/start failed:', e);
         sendJSON(req, res, 500, { error: e.message });
@@ -1188,10 +1203,10 @@ const server = http.createServer(async (req, res) => {
 
       if (agentId === 'gemini') {
         try {
-          const authUrl = await startGeminiOAuth();
+          const result = await startGeminiOAuth(req);
           const conversationId = '__agent_auth__';
           broadcastSync({ type: 'script_started', conversationId, script: 'auth-gemini', agentId: 'gemini', timestamp: Date.now() });
-          broadcastSync({ type: 'script_output', conversationId, data: `\x1b[36mOpening Google OAuth in your browser...\x1b[0m\r\n\r\nIf it doesn't open automatically, visit:\r\n${authUrl}\r\n`, stream: 'stdout', timestamp: Date.now() });
+          broadcastSync({ type: 'script_output', conversationId, data: `\x1b[36mOpening Google OAuth in your browser...\x1b[0m\r\n\r\nIf it doesn't open automatically, visit:\r\n${result.authUrl}\r\n`, stream: 'stdout', timestamp: Date.now() });
 
           const pollId = setInterval(() => {
             if (geminiOAuthState.status === 'success') {
@@ -1208,7 +1223,7 @@ const server = http.createServer(async (req, res) => {
 
           setTimeout(() => clearInterval(pollId), 5 * 60 * 1000);
 
-          sendJSON(req, res, 200, { ok: true, agentId, authUrl });
+          sendJSON(req, res, 200, { ok: true, agentId, authUrl: result.authUrl, mode: result.mode });
           return;
         } catch (e) {
           console.error('[gemini-oauth] /api/agents/gemini/auth failed:', e);

@@ -217,7 +217,8 @@
         if (data.authUrl) {
           window.open(data.authUrl, '_blank');
           if (agentId === 'gemini') {
-            showOAuthPasteModal();
+            var needsPaste = data.mode === 'cli-remote';
+            if (needsPaste) showOAuthPasteModal();
             cleanupOAuthPolling();
             oauthPollInterval = setInterval(function() {
               fetch(BASE + '/api/gemini-oauth/status').then(function(r) { return r.json(); }).then(function(status) {
