@@ -130,6 +130,81 @@
 
   function closeDropdown() { dropdown.classList.remove('open'); editingProvider = null; }
 
+  var oauthPollInterval = null, oauthPollTimeout = null;
+
+  function cleanupOAuthPolling() {
+    if (oauthPollInterval) { clearInterval(oauthPollInterval); oauthPollInterval = null; }
+    if (oauthPollTimeout) { clearTimeout(oauthPollTimeout); oauthPollTimeout = null; }
+  }
+
+  function showOAuthPasteModal() {
+    removeOAuthPasteModal();
+    var overlay = document.createElement('div');
+    overlay.id = 'oauthPasteModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    var s = function(c) { return 'font-size:0.8rem;color:var(--color-text-secondary,#d1d5db);margin:0 0 ' + (c ? '0' : '0.5rem') + ';'; };
+    overlay.innerHTML = '<div style="background:var(--color-bg-secondary,#1f2937);border-radius:1rem;padding:2rem;max-width:28rem;width:calc(100% - 2rem);box-shadow:0 25px 50px rgba(0,0,0,0.5);color:var(--color-text-primary,white);font-family:system-ui,sans-serif;" onclick="event.stopPropagation()">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">' +
+      '<h2 style="font-size:1.125rem;font-weight:700;margin:0;">Complete Google Sign-In</h2>' +
+      '<button id="oauthPasteClose" style="background:none;border:none;color:var(--color-text-secondary,#9ca3af);font-size:1.5rem;cursor:pointer;padding:0;line-height:1;">\u00d7</button></div>' +
+      '<div style="margin-bottom:1rem;padding:1rem;background:var(--color-bg-tertiary,rgba(255,255,255,0.05));border-radius:0.5rem;">' +
+      '<p style="' + s() + '">1. A Google sign-in page has opened in a new tab.</p>' +
+      '<p style="' + s() + '">2. Complete the sign-in process with Google.</p>' +
+      '<p style="' + s() + '">3. After signing in, you will be redirected to a page that <span style="color:#facc15;font-weight:600;">may not load</span> (this is expected).</p>' +
+      '<p style="' + s(1) + '">4. Copy the <span style="color:white;font-weight:600;">entire URL</span> from the address bar and paste it below.</p></div>' +
+      '<label style="display:block;font-size:0.8rem;color:var(--color-text-secondary,#d1d5db);margin-bottom:0.5rem;">Paste the redirect URL here:</label>' +
+      '<input type="text" id="oauthPasteInput" placeholder="http://localhost:3000/gm/oauth2callback?code=..." style="width:100%;box-sizing:border-box;padding:0.75rem 1rem;background:var(--color-bg-primary,#374151);border:1px solid var(--color-border,#4b5563);border-radius:0.5rem;color:var(--color-text-primary,white);font-size:0.8rem;font-family:monospace;outline:none;" />' +
+      '<p id="oauthPasteError" style="font-size:0.75rem;color:#ef4444;margin:0.5rem 0 0;display:none;"></p>' +
+      '<div style="display:flex;gap:0.75rem;margin-top:1.25rem;">' +
+      '<button id="oauthPasteCancel" style="flex:1;padding:0.625rem;border-radius:0.5rem;border:1px solid var(--color-border,#4b5563);background:transparent;color:var(--color-text-primary,white);font-size:0.8rem;cursor:pointer;font-weight:600;">Cancel</button>' +
+      '<button id="oauthPasteSubmit" style="flex:1;padding:0.625rem;border-radius:0.5rem;border:none;background:var(--color-primary,#3b82f6);color:white;font-size:0.8rem;cursor:pointer;font-weight:600;">Complete Sign-In</button></div>' +
+      '<p style="font-size:0.7rem;color:var(--color-text-secondary,#6b7280);margin-top:1rem;text-align:center;">If the redirect page loaded successfully, this dialog will close automatically.</p></div>';
+    document.body.appendChild(overlay);
+    var dismiss = function() { cleanupOAuthPolling(); authRunning = false; removeOAuthPasteModal(); };
+    document.getElementById('oauthPasteClose').addEventListener('click', dismiss);
+    document.getElementById('oauthPasteCancel').addEventListener('click', dismiss);
+    document.getElementById('oauthPasteSubmit').addEventListener('click', submitOAuthPasteUrl);
+    document.getElementById('oauthPasteInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') submitOAuthPasteUrl(); });
+    setTimeout(function() { var i = document.getElementById('oauthPasteInput'); if (i) i.focus(); }, 100);
+  }
+
+  function removeOAuthPasteModal() {
+    var el = document.getElementById('oauthPasteModal');
+    if (el) el.remove();
+  }
+
+  function submitOAuthPasteUrl() {
+    var input = document.getElementById('oauthPasteInput');
+    var errorEl = document.getElementById('oauthPasteError');
+    var submitBtn = document.getElementById('oauthPasteSubmit');
+    if (!input) return;
+    var url = input.value.trim();
+    if (!url) {
+      if (errorEl) { errorEl.textContent = 'Please paste the URL from the redirected page.'; errorEl.style.display = 'block'; }
+      return;
+    }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Verifying...'; }
+    if (errorEl) errorEl.style.display = 'none';
+
+    fetch(BASE + '/api/gemini-oauth/complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    }).then(function(r) { return r.json(); }).then(function(data) {
+      if (data.success) {
+        cleanupOAuthPolling();
+        authRunning = false;
+        removeOAuthPasteModal();
+        refresh();
+      } else {
+        if (errorEl) { errorEl.textContent = data.error || 'Failed to complete authentication.'; errorEl.style.display = 'block'; }
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Complete Sign-In'; }
+      }
+    }).catch(function(e) {
+      if (errorEl) { errorEl.textContent = e.message; errorEl.style.display = 'block'; }
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Complete Sign-In'; }
+    });
+  }
+
   function triggerAuth(agentId) {
     if (authRunning) return;
     fetch(BASE + '/api/agents/' + agentId + '/auth', {
@@ -141,6 +216,28 @@
         if (term) { term.clear(); term.writeln('\x1b[36m[authenticating ' + agentId + ']\x1b[0m\r\n'); }
         if (data.authUrl) {
           window.open(data.authUrl, '_blank');
+          if (agentId === 'gemini') {
+            showOAuthPasteModal();
+            cleanupOAuthPolling();
+            oauthPollInterval = setInterval(function() {
+              fetch(BASE + '/api/gemini-oauth/status').then(function(r) { return r.json(); }).then(function(status) {
+                if (status.status === 'success') {
+                  cleanupOAuthPolling();
+                  authRunning = false;
+                  removeOAuthPasteModal();
+                  refresh();
+                } else if (status.status === 'error') {
+                  cleanupOAuthPolling();
+                  authRunning = false;
+                  removeOAuthPasteModal();
+                }
+              }).catch(function() {});
+            }, 1500);
+            oauthPollTimeout = setTimeout(function() {
+              cleanupOAuthPolling();
+              if (authRunning) { authRunning = false; removeOAuthPasteModal(); }
+            }, 5 * 60 * 1000);
+          }
         }
       }
     }).catch(function() {});
@@ -159,6 +256,8 @@
       if (term) term.write(data.data);
     } else if (data.type === 'script_stopped') {
       authRunning = false;
+      removeOAuthPasteModal();
+      cleanupOAuthPolling();
       var term = getTerminal();
       var msg = data.error ? data.error : ('exited with code ' + (data.code || 0));
       if (term) term.writeln('\r\n\x1b[90m[auth ' + msg + ']\x1b[0m');
