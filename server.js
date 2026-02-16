@@ -336,6 +336,67 @@ function geminiOAuthResultPage(title, message, success) {
 </div></body></html>`;
 }
 
+function encodeOAuthState(csrfToken, relayUrl) {
+  const payload = JSON.stringify({ t: csrfToken, r: relayUrl });
+  return Buffer.from(payload).toString('base64url');
+}
+
+function decodeOAuthState(stateStr) {
+  try {
+    const payload = JSON.parse(Buffer.from(stateStr, 'base64url').toString());
+    return { csrfToken: payload.t, relayUrl: payload.r };
+  } catch (_) {
+    return { csrfToken: stateStr, relayUrl: null };
+  }
+}
+
+function geminiOAuthRelayPage(code, state, error) {
+  const stateData = decodeOAuthState(state || '');
+  const relayUrl = stateData.relayUrl || '';
+  const escapedCode = (code || '').replace(/['"\\]/g, '');
+  const escapedState = (state || '').replace(/['"\\]/g, '');
+  const escapedError = (error || '').replace(/['"\\]/g, '');
+  const escapedRelay = relayUrl.replace(/['"\\]/g, '');
+  return `<!DOCTYPE html><html><head><title>Completing sign-in...</title></head>
+<body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#111827;font-family:system-ui,sans-serif;color:white;">
+<div id="status" style="text-align:center;max-width:400px;padding:2rem;">
+<div id="spinner" style="font-size:2rem;margin-bottom:1rem;">&#8987;</div>
+<h1 id="title" style="font-size:1.5rem;margin-bottom:0.5rem;">Completing sign-in...</h1>
+<p id="msg" style="color:#9ca3af;">Relaying authentication to server...</p>
+</div>
+<script>
+(function() {
+  var code = '${escapedCode}';
+  var state = '${escapedState}';
+  var error = '${escapedError}';
+  var relayUrl = '${escapedRelay}';
+  function show(icon, title, msg, color) {
+    document.getElementById('spinner').textContent = icon;
+    document.getElementById('spinner').style.color = color;
+    document.getElementById('title').textContent = title;
+    document.getElementById('msg').textContent = msg;
+  }
+  if (error) { show('\\u2717', 'Authentication Failed', error, '#ef4444'); return; }
+  if (!code) { show('\\u2717', 'Authentication Failed', 'No authorization code received.', '#ef4444'); return; }
+  if (!relayUrl) { show('\\u2713', 'Authentication Successful', 'Credentials saved. You can close this tab.', '#10b981'); return; }
+  fetch(relayUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: code, state: state })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.success) {
+      show('\\u2713', 'Authentication Successful', data.email ? 'Signed in as ' + data.email + '. You can close this tab.' : 'Credentials saved. You can close this tab.', '#10b981');
+    } else {
+      show('\\u2717', 'Authentication Failed', data.error || 'Unknown error', '#ef4444');
+    }
+  }).catch(function(e) {
+    show('\\u2717', 'Relay Failed', 'Could not reach server: ' + e.message + '. You may need to paste the URL manually.', '#ef4444');
+  });
+})();
+</script>
+</body></html>`;
+}
+
 function isRemoteRequest(req) {
   return !!(req && (req.headers['x-forwarded-for'] || req.headers['x-forwarded-host'] || req.headers['x-forwarded-proto']));
 }
@@ -353,7 +414,10 @@ async function startGeminiOAuth(req) {
     redirectUri = `http://localhost:${PORT}${BASE_URL}/oauth2callback`;
   }
 
-  const state = crypto.randomBytes(32).toString('hex');
+  const csrfToken = crypto.randomBytes(32).toString('hex');
+  const relayUrl = req ? `${buildBaseUrl(req)}${BASE_URL}/api/gemini-oauth/relay` : null;
+  const state = encodeOAuthState(csrfToken, relayUrl);
+
   const client = new OAuth2Client({
     clientId: creds.clientId,
     clientSecret: creds.clientSecret,
@@ -367,7 +431,7 @@ async function startGeminiOAuth(req) {
   });
 
   const mode = useCustomClient ? 'custom' : (remote ? 'cli-remote' : 'cli-local');
-  geminiOAuthPending = { client, redirectUri, state };
+  geminiOAuthPending = { client, redirectUri, state: csrfToken };
   geminiOAuthState = { status: 'pending', error: null, email: null };
 
   setTimeout(() => {
@@ -380,12 +444,13 @@ async function startGeminiOAuth(req) {
   return { authUrl, mode };
 }
 
-async function exchangeGeminiOAuthCode(code, state) {
+async function exchangeGeminiOAuthCode(code, stateParam) {
   if (!geminiOAuthPending) throw new Error('No pending OAuth flow. Please start authentication again.');
 
-  const { client, redirectUri, state: expectedState } = geminiOAuthPending;
+  const { client, redirectUri, state: expectedCsrf } = geminiOAuthPending;
+  const { csrfToken } = decodeOAuthState(stateParam);
 
-  if (state !== expectedState) {
+  if (csrfToken !== expectedCsrf) {
     geminiOAuthState = { status: 'error', error: 'State mismatch', email: null };
     geminiOAuthPending = null;
     throw new Error('State mismatch - possible CSRF attack.');
@@ -423,6 +488,23 @@ async function exchangeGeminiOAuthCode(code, state) {
 
 async function handleGeminiOAuthCallback(req, res) {
   const reqUrl = new URL(req.url, `http://localhost:${PORT}`);
+  const code = reqUrl.searchParams.get('code');
+  const state = reqUrl.searchParams.get('state');
+  const error = reqUrl.searchParams.get('error');
+  const errorDesc = reqUrl.searchParams.get('error_description');
+
+  if (error) {
+    const desc = errorDesc || error;
+    geminiOAuthState = { status: 'error', error: desc, email: null };
+    geminiOAuthPending = null;
+  }
+
+  const stateData = decodeOAuthState(state || '');
+  if (stateData.relayUrl) {
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(geminiOAuthRelayPage(code, state, errorDesc || error));
+    return;
+  }
 
   if (!geminiOAuthPending) {
     res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -431,20 +513,8 @@ async function handleGeminiOAuthCallback(req, res) {
   }
 
   try {
-    const error = reqUrl.searchParams.get('error');
-    if (error) {
-      const desc = reqUrl.searchParams.get('error_description') || error;
-      geminiOAuthState = { status: 'error', error: desc, email: null };
-      geminiOAuthPending = null;
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(geminiOAuthResultPage('Authentication Failed', desc, false));
-      return;
-    }
-
-    const code = reqUrl.searchParams.get('code');
-    const state = reqUrl.searchParams.get('state');
+    if (error) throw new Error(errorDesc || error);
     const email = await exchangeGeminiOAuthCode(code, state);
-
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(geminiOAuthResultPage('Authentication Successful', email ? `Signed in as ${email}` : 'Gemini CLI credentials saved.', true));
   } catch (e) {
@@ -1162,6 +1232,24 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/gemini-oauth/status' && req.method === 'GET') {
       sendJSON(req, res, 200, geminiOAuthState);
+      return;
+    }
+
+    if (pathOnly === '/api/gemini-oauth/relay' && req.method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const { code, state: stateParam } = body;
+        if (!code || !stateParam) {
+          sendJSON(req, res, 400, { error: 'Missing code or state' });
+          return;
+        }
+        const email = await exchangeGeminiOAuthCode(code, stateParam);
+        sendJSON(req, res, 200, { success: true, email });
+      } catch (e) {
+        geminiOAuthState = { status: 'error', error: e.message, email: null };
+        geminiOAuthPending = null;
+        sendJSON(req, res, 400, { error: e.message });
+      }
       return;
     }
 
