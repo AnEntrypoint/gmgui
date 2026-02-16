@@ -149,7 +149,7 @@ expressApp.use(BASE_URL + '/files/:conversationId', (req, res, next) => {
     return res.status(404).json({ error: 'Conversation not found or no working directory' });
   }
   // Create a fresh fsbrowse router for this conversation's directory
-  const router = fsbrowse({ baseDir: conv.workingDirectory });
+  const router = fsbrowse({ baseDir: conv.workingDirectory, name: 'Files' });
   // Strip the conversationId param from the path before passing to fsbrowse
   req.baseUrl = BASE_URL + '/files/' + req.params.conversationId;
   router(req, res, next);
