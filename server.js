@@ -941,9 +941,15 @@ const server = http.createServer(async (req, res) => {
       if (!sess) { sendJSON(req, res, 404, { error: 'Session not found' }); return; }
 
       const url = new URL(req.url, 'http://localhost');
+      const sinceSeq = parseInt(url.searchParams.get('sinceSeq') || '-1');
       const since = parseInt(url.searchParams.get('since') || '0');
 
-      const chunks = queries.getChunksSince(sessionId, since);
+      let chunks;
+      if (sinceSeq >= 0) {
+        chunks = queries.getChunksSinceSeq(sessionId, sinceSeq);
+      } else {
+        chunks = queries.getChunksSince(sessionId, since);
+      }
             sendJSON(req, res, 200, { ok: true, chunks });
       return;
     }
@@ -1711,6 +1717,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
           conversationId,
           block: systemBlock,
           blockIndex: allBlocks.length,
+          seq: currentSequence,
           timestamp: Date.now()
         });
       } else if (parsed.type === 'assistant' && parsed.message?.content) {
@@ -1726,6 +1733,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
             conversationId,
             block,
             blockIndex: allBlocks.length - 1,
+            seq: currentSequence,
             timestamp: Date.now()
           });
 
@@ -1752,6 +1760,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
               conversationId,
               block: toolResultBlock,
               blockIndex: allBlocks.length,
+              seq: currentSequence,
               timestamp: Date.now()
             });
           }
@@ -1777,6 +1786,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
           block: resultBlock,
           blockIndex: allBlocks.length,
           isResult: true,
+          seq: currentSequence,
           timestamp: Date.now()
         });
 
@@ -1827,6 +1837,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       sessionId,
       conversationId,
       eventCount,
+      seq: currentSequence,
       timestamp: Date.now()
     });
 
@@ -2066,9 +2077,13 @@ wss.on('connection', (ws, req) => {
           }));
         } else if (data.type === 'set_voice') {
           ws.ttsVoiceId = data.voiceId || 'default';
+        } else if (data.type === 'latency_report') {
+          ws.latencyTier = data.quality || 'good';
+          ws.latencyAvg = data.avg || 0;
         } else if (data.type === 'ping') {
           ws.send(JSON.stringify({
             type: 'pong',
+            requestId: data.requestId,
             timestamp: Date.now()
           }));
         }
@@ -2097,13 +2112,16 @@ wss.on('connection', (ws, req) => {
 const BROADCAST_TYPES = new Set([
   'message_created', 'conversation_created', 'conversation_updated',
   'conversations_updated', 'conversation_deleted', 'queue_status', 'queue_updated',
-  'streaming_start', 'streaming_complete', 'streaming_error',
   'rate_limit_hit', 'rate_limit_clear',
   'script_started', 'script_stopped', 'script_output'
 ]);
 
 const wsBatchQueues = new Map();
-const WS_BATCH_INTERVAL = 16;
+const BATCH_BY_TIER = { excellent: 16, good: 32, fair: 50, poor: 100, bad: 200 };
+
+function getBatchInterval(ws) {
+  return BATCH_BY_TIER[ws.latencyTier] || 32;
+}
 
 function flushWsBatch(ws) {
   const queue = wsBatchQueues.get(ws);
@@ -2124,7 +2142,7 @@ function sendToClient(ws, data) {
   if (!queue) { queue = { msgs: [], timer: null }; wsBatchQueues.set(ws, queue); }
   queue.msgs.push(data);
   if (!queue.timer) {
-    queue.timer = setTimeout(() => flushWsBatch(ws), WS_BATCH_INTERVAL);
+    queue.timer = setTimeout(() => flushWsBatch(ws), getBatchInterval(ws));
   }
 }
 

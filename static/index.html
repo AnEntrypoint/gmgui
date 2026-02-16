@@ -2213,6 +2213,85 @@
     }
 
     html.dark .event-streaming-complete { background: linear-gradient(135deg, #0a1f0f, #0f2b1a); }
+
+    @keyframes skeleton-pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.15; }
+    }
+    .skeleton-pulse { animation: skeleton-pulse 1.5s ease-in-out infinite; }
+    .skeleton-loading { padding: 1rem; }
+
+    .message-sending { opacity: 0.6; transition: opacity 0.3s ease; }
+    .message-send-failed { border-left: 3px solid var(--color-error); }
+
+    .connection-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      transition: background-color 0.5s ease;
+    }
+    .connection-dot.excellent { background: #10b981; }
+    .connection-dot.good { background: #10b981; }
+    .connection-dot.fair { background: #f59e0b; }
+    .connection-dot.poor { background: #f97316; }
+    .connection-dot.bad { background: #ef4444; }
+    .connection-dot.unknown { background: #6b7280; }
+    .connection-dot.disconnected { background: #ef4444; animation: pulse 1.5s ease-in-out infinite; }
+    .connection-dot.reconnecting { background: #f59e0b; animation: pulse 1s ease-in-out infinite; }
+
+    .connection-tooltip {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.5rem;
+      padding: 0.75rem;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      white-space: nowrap;
+      z-index: 100;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .new-content-pill {
+      position: sticky;
+      bottom: 0.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.375rem 1rem;
+      background: var(--color-primary);
+      color: white;
+      border: none;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      z-index: 50;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      transition: opacity 0.2s ease;
+    }
+    .new-content-pill:hover { opacity: 0.9; }
+
+    @keyframes block-appear {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .streaming-blocks > * {
+      animation: block-appear 0.2s ease-out both;
+    }
+    .streaming-blocks > details.block-tool-use {
+      transition: max-height 0.3s ease;
+    }
   </style>
 </head>
 <body>

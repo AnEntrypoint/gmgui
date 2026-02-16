@@ -1,34 +1,40 @@
-/**
- * WebSocket Manager
- * Handles WebSocket connection, auto-reconnect, message buffering,
- * and event distribution for streaming events
- */
-
 class WebSocketManager {
   constructor(config = {}) {
-    // Configuration
     this.config = {
       url: config.url || this.getWebSocketURL(),
-      reconnectDelays: config.reconnectDelays || [1000, 2000, 4000, 8000, 16000],
+      reconnectDelays: config.reconnectDelays || [500, 1000, 2000, 4000, 8000, 15000, 30000],
       maxReconnectDelay: config.maxReconnectDelay || 30000,
-      heartbeatInterval: config.heartbeatInterval || 30000,
+      heartbeatInterval: config.heartbeatInterval || 15000,
       messageTimeout: config.messageTimeout || 60000,
       maxBufferedMessages: config.maxBufferedMessages || 1000,
+      pongTimeout: config.pongTimeout || 5000,
+      latencyWindowSize: config.latencyWindowSize || 10,
       ...config
     };
 
-    // State
     this.ws = null;
     this.isConnected = false;
     this.isConnecting = false;
+    this.isManuallyDisconnected = false;
     this.reconnectCount = 0;
+    this.reconnectTimer = null;
     this.messageBuffer = [];
     this.requestMap = new Map();
     this.heartbeatTimer = null;
     this.connectionState = 'disconnected';
     this.activeSubscriptions = new Set();
+    this.connectionEstablishedAt = 0;
 
-    // Statistics
+    this.latency = {
+      samples: [],
+      current: 0,
+      avg: 0,
+      jitter: 0,
+      quality: 'unknown',
+      missedPongs: 0,
+      pingCounter: 0
+    };
+
     this.stats = {
       totalConnections: 0,
       totalReconnects: 0,
@@ -41,100 +47,77 @@ class WebSocketManager {
       connectionDuration: 0
     };
 
-    // Event listeners
+    this.lastSeqBySession = {};
     this.listeners = {};
+
+    this._onVisibilityChange = this._handleVisibilityChange.bind(this);
+    this._onOnline = this._handleOnline.bind(this);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', this._onVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', this._onOnline);
+    }
   }
 
-  /**
-   * Get WebSocket URL from current window location
-   */
   getWebSocketURL() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const baseURL = window.__BASE_URL || '/gm';
     return `${protocol}//${window.location.host}${baseURL}/sync`;
   }
 
-  /**
-   * Connect to WebSocket server
-   */
   async connect() {
-    if (this.isConnected || this.isConnecting) {
-      return this.ws;
-    }
-
+    if (this.isConnected || this.isConnecting) return this.ws;
+    this.isManuallyDisconnected = false;
     this.isConnecting = true;
     this.setConnectionState('connecting');
 
     try {
-      console.log('WebSocket connecting to:', this.config.url);
-
       this.ws = new WebSocket(this.config.url);
-
       this.ws.onopen = () => this.onOpen();
       this.ws.onmessage = (event) => this.onMessage(event);
       this.ws.onerror = (error) => this.onError(error);
       this.ws.onclose = () => this.onClose();
-
-      // Wait for connection with timeout
       return await this.waitForConnection(this.config.messageTimeout);
     } catch (error) {
-      console.error('WebSocket connection error:', error);
       this.isConnecting = false;
       this.stats.totalErrors++;
-      await this.scheduleReconnect();
+      this.scheduleReconnect();
       throw error;
     }
   }
 
-  /**
-   * Wait for connection to establish
-   */
   waitForConnection(timeout = 5000) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('WebSocket connection timeout'));
-      }, timeout);
-
-      const checkConnection = () => {
-        if (this.isConnected) {
-          clearTimeout(timer);
-          resolve(this.ws);
-        } else if (this.ws?.readyState === WebSocket.OPEN) {
+      const timer = setTimeout(() => reject(new Error('WebSocket connection timeout')), timeout);
+      const check = () => {
+        if (this.isConnected || this.ws?.readyState === WebSocket.OPEN) {
           clearTimeout(timer);
           resolve(this.ws);
         } else {
-          setTimeout(checkConnection, 50);
+          setTimeout(check, 50);
         }
       };
-
-      checkConnection();
+      check();
     });
   }
 
-  /**
-   * Handle WebSocket open
-   */
   onOpen() {
-    console.log('WebSocket connected');
     this.isConnected = true;
     this.isConnecting = false;
-    this.reconnectCount = 0;
+    this.connectionEstablishedAt = Date.now();
     this.stats.totalConnections++;
     this.stats.lastConnectedTime = Date.now();
+    this.latency.missedPongs = 0;
     this.setConnectionState('connected');
 
-    // Flush buffered messages
     this.flushMessageBuffer();
     this.resubscribeAll();
-
     this.startHeartbeat();
 
     this.emit('connected', { timestamp: Date.now() });
   }
 
-  /**
-   * Handle WebSocket message
-   */
   onMessage(event) {
     try {
       const parsed = JSON.parse(event.data);
@@ -143,139 +126,221 @@ class WebSocketManager {
 
       for (const data of messages) {
         if (data.type === 'pong') {
-          const requestId = data.requestId;
-          if (requestId && this.requestMap.has(requestId)) {
-            const request = this.requestMap.get(requestId);
-            request.resolve({ latency: Date.now() - request.sentTime });
-            this.requestMap.delete(requestId);
-          }
+          this._handlePong(data);
           continue;
         }
 
+        if (data.seq !== undefined && data.sessionId) {
+          this.lastSeqBySession[data.sessionId] = Math.max(
+            this.lastSeqBySession[data.sessionId] || -1, data.seq
+          );
+        }
+
         this.emit('message', data);
-        if (data.type) this.emit(`message:${data.type}`, data);
+        if (data.type) this.emit('message:' + data.type, data);
       }
     } catch (error) {
-      console.error('WebSocket message parse error:', error);
       this.stats.totalErrors++;
     }
   }
 
-  /**
-   * Handle WebSocket error
-   */
+  _handlePong(data) {
+    this.latency.missedPongs = 0;
+    const requestId = data.requestId;
+    if (requestId && this.requestMap.has(requestId)) {
+      const request = this.requestMap.get(requestId);
+      const rtt = Date.now() - request.sentTime;
+      this.requestMap.delete(requestId);
+      this._recordLatency(rtt);
+      if (request.resolve) request.resolve({ latency: rtt });
+    }
+  }
+
+  _recordLatency(rtt) {
+    const samples = this.latency.samples;
+    samples.push(rtt);
+    if (samples.length > this.config.latencyWindowSize) samples.shift();
+
+    this.latency.current = rtt;
+    this.latency.avg = samples.reduce((a, b) => a + b, 0) / samples.length;
+
+    if (samples.length > 1) {
+      const mean = this.latency.avg;
+      const variance = samples.reduce((sum, s) => sum + Math.pow(s - mean, 2), 0) / samples.length;
+      this.latency.jitter = Math.sqrt(variance);
+    }
+
+    const prev = this.latency.quality;
+    this.latency.quality = this._qualityTier(this.latency.avg);
+    this.stats.avgLatency = this.latency.avg;
+
+    this.emit('latency_update', {
+      latency: rtt,
+      avg: this.latency.avg,
+      jitter: this.latency.jitter,
+      quality: this.latency.quality
+    });
+
+    if (rtt > this.latency.avg * 3 && samples.length >= 3) {
+      this.emit('latency_spike', { latency: rtt, avg: this.latency.avg });
+    }
+  }
+
+  _qualityTier(avg) {
+    if (avg < 50) return 'excellent';
+    if (avg < 150) return 'good';
+    if (avg < 300) return 'fair';
+    if (avg < 500) return 'poor';
+    return 'bad';
+  }
+
   onError(error) {
-    console.error('WebSocket error:', error);
     this.stats.totalErrors++;
     this.emit('error', { error, timestamp: Date.now() });
   }
 
-  /**
-   * Handle WebSocket close
-   */
   onClose() {
-    console.log('WebSocket disconnected');
     this.isConnected = false;
     this.isConnecting = false;
     this.setConnectionState('disconnected');
+    this.stopHeartbeat();
 
-    // Stop heartbeat
-    if (this.heartbeatTimer) {
-      clearTimeout(this.heartbeatTimer);
-    }
-
-    // Update connection duration
     if (this.stats.lastConnectedTime) {
       this.stats.connectionDuration = Date.now() - this.stats.lastConnectedTime;
     }
 
     this.emit('disconnected', { timestamp: Date.now() });
 
-    // Attempt reconnect
     if (!this.isManuallyDisconnected) {
       this.scheduleReconnect();
     }
   }
 
-  /**
-   * Schedule reconnection with exponential backoff
-   */
-  async scheduleReconnect() {
-    if (this.reconnectCount >= this.config.reconnectDelays.length) {
-      this.setConnectionState('reconnect_failed');
-      console.error('Max reconnection attempts reached');
-      this.emit('reconnect_failed', { attempts: this.reconnectCount });
-      return;
-    }
+  scheduleReconnect() {
+    if (this.isManuallyDisconnected) return;
+    if (this.reconnectTimer) return;
 
-    const delay = this.config.reconnectDelays[this.reconnectCount];
+    const delays = this.config.reconnectDelays;
+    const baseDelay = this.reconnectCount < delays.length
+      ? delays[this.reconnectCount]
+      : this.config.maxReconnectDelay;
+
+    const jitter = Math.random() * 0.3 * baseDelay;
+    const delay = Math.round(baseDelay + jitter);
+
     this.reconnectCount++;
     this.stats.totalReconnects++;
     this.setConnectionState('reconnecting');
 
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectCount}/${this.config.reconnectDelays.length})`);
-
-    this.emit('reconnecting', { delay, attempt: this.reconnectCount });
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        this.connect().catch((error) => {
-          console.error('Reconnection attempt failed:', error);
-        });
-        resolve();
-      }, delay);
+    this.emit('reconnecting', {
+      delay,
+      attempt: this.reconnectCount,
+      nextAttemptAt: Date.now() + delay
     });
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect().catch(() => {});
+    }, delay);
   }
 
-  /**
-   * Start heartbeat/keepalive
-   */
   startHeartbeat() {
-    if (this.heartbeatTimer) clearTimeout(this.heartbeatTimer);
+    this.stopHeartbeat();
+    const tick = () => {
+      if (!this.isConnected) return;
+      if (typeof document !== 'undefined' && document.hidden) {
+        this.heartbeatTimer = setTimeout(tick, this.config.heartbeatInterval);
+        return;
+      }
+      this.latency.pingCounter++;
+      this.ping().catch(() => {
+        this.latency.missedPongs++;
+        if (this.latency.missedPongs >= 3) {
+          this.latency.missedPongs = 0;
+          if (this.ws) {
+            try { this.ws.close(); } catch (_) {}
+          }
+        }
+      });
+      if (this.latency.pingCounter % 10 === 0) {
+        this._reportLatency();
+      }
+      this.heartbeatTimer = setTimeout(tick, this.config.heartbeatInterval);
+    };
+    this.heartbeatTimer = setTimeout(tick, this.config.heartbeatInterval);
   }
 
-  /**
-   * Send ping message
-   */
-  ping() {
-    const requestId = `ping-${Date.now()}-${Math.random()}`;
-    const request = {
-      sentTime: Date.now(),
-      resolve: null
-    };
+  stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
 
-    const promise = new Promise((resolve) => {
+  _reportLatency() {
+    if (this.latency.avg > 0) {
+      this.sendMessage({
+        type: 'latency_report',
+        avg: Math.round(this.latency.avg),
+        jitter: Math.round(this.latency.jitter),
+        quality: this.latency.quality
+      });
+    }
+  }
+
+  _handleVisibilityChange() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (!this.isConnected && !this.isConnecting && !this.isManuallyDisconnected) {
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.connect().catch(() => {});
+    }
+    if (this.isConnected) {
+      const stableFor = Date.now() - this.connectionEstablishedAt;
+      if (stableFor > 10000) this.reconnectCount = 0;
+    }
+  }
+
+  _handleOnline() {
+    if (!this.isConnected && !this.isConnecting && !this.isManuallyDisconnected) {
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.connect().catch(() => {});
+    }
+  }
+
+  ping() {
+    const requestId = 'ping-' + Date.now() + '-' + Math.random();
+    const request = { sentTime: Date.now(), resolve: null };
+
+    const promise = new Promise((resolve, reject) => {
       request.resolve = resolve;
+      setTimeout(() => {
+        if (this.requestMap.has(requestId)) {
+          this.stats.totalTimeouts++;
+          this.requestMap.delete(requestId);
+          reject(new Error('ping timeout'));
+        }
+      }, this.config.pongTimeout);
     });
 
     this.requestMap.set(requestId, request);
-
-    // Timeout if no response
-    setTimeout(() => {
-      if (this.requestMap.has(requestId)) {
-        this.stats.totalTimeouts++;
-        this.requestMap.delete(requestId);
-        this.emit('ping_timeout', { requestId });
-      }
-    }, 5000);
-
     this.sendMessage({ type: 'ping', requestId });
     return promise;
   }
 
-  /**
-   * Send message through WebSocket
-   */
   sendMessage(data) {
-    if (!data || typeof data !== 'object') {
-      throw new Error('Invalid message data');
-    }
+    if (!data || typeof data !== 'object') throw new Error('Invalid message data');
 
     if (data.type === 'subscribe') {
-      const key = data.sessionId ? `session:${data.sessionId}` : `conv:${data.conversationId}`;
+      const key = data.sessionId ? 'session:' + data.sessionId : 'conv:' + data.conversationId;
       this.activeSubscriptions.add(key);
     } else if (data.type === 'unsubscribe') {
-      const key = data.sessionId ? `session:${data.sessionId}` : `conv:${data.conversationId}`;
+      const key = data.sessionId ? 'session:' + data.sessionId : 'conv:' + data.conversationId;
       this.activeSubscriptions.delete(key);
     }
 
@@ -289,57 +354,37 @@ class WebSocketManager {
       this.stats.totalMessagesSent++;
       return true;
     } catch (error) {
-      console.error('WebSocket send error:', error);
       this.stats.totalErrors++;
       this.bufferMessage(data);
       return false;
     }
   }
 
-  /**
-   * Buffer message for sending when connected
-   */
   bufferMessage(data) {
     if (this.messageBuffer.length >= this.config.maxBufferedMessages) {
-      console.warn('Message buffer full, dropping oldest message');
       this.messageBuffer.shift();
     }
     this.messageBuffer.push(data);
     this.emit('message_buffered', { bufferLength: this.messageBuffer.length });
   }
 
-  /**
-   * Flush buffered messages
-   */
   flushMessageBuffer() {
     if (this.messageBuffer.length === 0) return;
-
-    console.log(`Flushing ${this.messageBuffer.length} buffered messages`);
     const messages = [...this.messageBuffer];
     this.messageBuffer = [];
-
     for (const message of messages) {
       try {
         this.ws.send(JSON.stringify(message));
         this.stats.totalMessagesSent++;
       } catch (error) {
-        console.error('Error sending buffered message:', error);
         this.bufferMessage(message);
       }
     }
-
     this.emit('buffer_flushed', { count: messages.length });
   }
 
-  /**
-   * Subscribe to streaming session
-   */
   subscribeToSession(sessionId) {
-    return this.sendMessage({
-      type: 'subscribe',
-      sessionId,
-      timestamp: Date.now()
-    });
+    return this.sendMessage({ type: 'subscribe', sessionId, timestamp: Date.now() });
   }
 
   resubscribeAll() {
@@ -355,24 +400,13 @@ class WebSocketManager {
     }
   }
 
-  /**
-   * Unsubscribe from streaming session
-   */
   unsubscribeFromSession(sessionId) {
-    return this.sendMessage({
-      type: 'unsubscribe',
-      sessionId,
-      timestamp: Date.now()
-    });
+    return this.sendMessage({ type: 'unsubscribe', sessionId, timestamp: Date.now() });
   }
 
-  /**
-   * Request session history
-   */
   requestSessionHistory(sessionId, limit = 1000, offset = 0) {
     return new Promise((resolve, reject) => {
-      const requestId = `history-${Date.now()}-${Math.random()}`;
-
+      const requestId = 'history-' + Date.now() + '-' + Math.random();
       const timeout = setTimeout(() => {
         this.requestMap.delete(requestId);
         this.stats.totalTimeouts++;
@@ -381,55 +415,39 @@ class WebSocketManager {
 
       this.requestMap.set(requestId, {
         type: 'history',
-        resolve: (data) => {
-          clearTimeout(timeout);
-          resolve(data);
-        },
+        resolve: (d) => { clearTimeout(timeout); resolve(d); },
         reject
       });
 
       this.sendMessage({
-        type: 'request_history',
-        requestId,
-        sessionId,
-        limit,
-        offset,
-        timestamp: Date.now()
+        type: 'request_history', requestId, sessionId, limit, offset, timestamp: Date.now()
       });
     });
   }
 
-  /**
-   * Set connection state
-   */
+  getLastSeq(sessionId) {
+    return this.lastSeqBySession[sessionId] || -1;
+  }
+
   setConnectionState(state) {
     this.connectionState = state;
     this.emit('state_change', { state, timestamp: Date.now() });
   }
 
-  /**
-   * Disconnect manually
-   */
   disconnect() {
     this.isManuallyDisconnected = true;
     this.reconnectCount = 0;
-
-    if (this.heartbeatTimer) {
-      clearTimeout(this.heartbeatTimer);
+    this.stopHeartbeat();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-
-    if (this.ws) {
-      this.ws.close();
-    }
-
+    if (this.ws) this.ws.close();
     this.messageBuffer = [];
     this.requestMap.clear();
     this.setConnectionState('disconnected');
   }
 
-  /**
-   * Get connection status
-   */
   getStatus() {
     return {
       isConnected: this.isConnected,
@@ -437,55 +455,41 @@ class WebSocketManager {
       connectionState: this.connectionState,
       reconnectCount: this.reconnectCount,
       bufferLength: this.messageBuffer.length,
+      latency: { ...this.latency, samples: undefined },
       stats: { ...this.stats }
     };
   }
 
-  /**
-   * Add event listener
-   */
   on(event, callback) {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
   }
 
-  /**
-   * Remove event listener
-   */
   off(event, callback) {
     if (!this.listeners[event]) return;
     const index = this.listeners[event].indexOf(callback);
-    if (index > -1) {
-      this.listeners[event].splice(index, 1);
-    }
+    if (index > -1) this.listeners[event].splice(index, 1);
   }
 
-  /**
-   * Emit event
-   */
   emit(event, data) {
     if (!this.listeners[event]) return;
-    this.listeners[event].forEach((callback) => {
-      try {
-        callback(data);
-      } catch (error) {
-        console.error(`Listener error for event ${event}:`, error);
-      }
+    this.listeners[event].forEach((cb) => {
+      try { cb(data); } catch (error) {}
     });
   }
 
-  /**
-   * Cleanup resources
-   */
   destroy() {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this._onVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this._onOnline);
+    }
     this.disconnect();
     this.listeners = {};
   }
 }
 
-// Export for use in browser
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = WebSocketManager;
 }

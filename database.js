@@ -1120,6 +1120,24 @@ export const queries = {
     });
   },
 
+  getChunksSinceSeq(sessionId, sinceSeq) {
+    const stmt = prep(
+      `SELECT id, sessionId, conversationId, sequence, type, data, created_at
+       FROM chunks WHERE sessionId = ? AND sequence > ? ORDER BY sequence ASC`
+    );
+    const rows = stmt.all(sessionId, sinceSeq);
+    return rows.map(row => {
+      try {
+        return {
+          ...row,
+          data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data
+        };
+      } catch (e) {
+        return row;
+      }
+    });
+  },
+
   deleteSessionChunks(sessionId) {
     const stmt = prep('DELETE FROM chunks WHERE sessionId = ?');
     const result = stmt.run(sessionId);

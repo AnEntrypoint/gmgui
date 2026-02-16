@@ -45,7 +45,6 @@ class AgentGUIClient {
       agentSelector: null
     };
 
-    // Chunk polling state (must be in constructor so it exists before any event handlers fire)
     this.chunkPollState = {
       isPolling: false,
       lastFetchTimestamp: 0,
@@ -54,6 +53,14 @@ class AgentGUIClient {
       maxBackoffDelay: 400,
       abortController: null
     };
+
+    this._pollIntervalByTier = {
+      excellent: 100, good: 200, fair: 400, poor: 800, bad: 1500, unknown: 200
+    };
+
+    this._renderedSeqs = new Map();
+    this._inflightRequests = new Map();
+    this._previousConvAbort = null;
 
     // Router state
     this.routerState = {
@@ -113,6 +120,7 @@ class AgentGUIClient {
     this.wsManager.on('connected', () => {
       console.log('WebSocket connected');
       this.updateConnectionStatus('connected');
+      this._recoverMissedChunks();
       this.emit('ws:connected');
     });
 
@@ -136,10 +144,8 @@ class AgentGUIClient {
       this.showError('Connection error: ' + (data.error?.message || 'unknown'));
     });
 
-    this.wsManager.on('reconnect_failed', (data) => {
-      console.error('WebSocket reconnection failed:', data);
-      this.updateConnectionStatus('error');
-      this.showError('Failed to reconnect to server after ' + data.attempts + ' attempts');
+    this.wsManager.on('latency_update', (data) => {
+      this._updateConnectionIndicator(data.quality);
     });
   }
 
@@ -584,8 +590,39 @@ class AgentGUIClient {
     requestAnimationFrame(() => {
       this._scrollRafPending = false;
       const scrollContainer = document.getElementById('output-scroll');
-      if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      if (!scrollContainer) return;
+      const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+      if (distFromBottom < 150) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        this._removeNewContentPill();
+      } else {
+        this._unseenCount = (this._unseenCount || 0) + 1;
+        this._showNewContentPill();
+      }
     });
+  }
+
+  _showNewContentPill() {
+    let pill = document.getElementById('new-content-pill');
+    const scrollContainer = document.getElementById('output-scroll');
+    if (!scrollContainer) return;
+    if (!pill) {
+      pill = document.createElement('button');
+      pill.id = 'new-content-pill';
+      pill.className = 'new-content-pill';
+      pill.addEventListener('click', () => {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        this._removeNewContentPill();
+      });
+      scrollContainer.appendChild(pill);
+    }
+    pill.textContent = (this._unseenCount || 1) + ' new';
+  }
+
+  _removeNewContentPill() {
+    this._unseenCount = 0;
+    const pill = document.getElementById('new-content-pill');
+    if (pill) pill.remove();
   }
 
   handleStreamingError(data) {
@@ -686,6 +723,22 @@ class AgentGUIClient {
     if (!outputEl) {
       this.emit('message:created', data);
       return;
+    }
+
+    if (data.message.role === 'user') {
+      const pending = outputEl.querySelector('.message-sending');
+      if (pending) {
+        pending.id = '';
+        pending.setAttribute('data-msg-id', data.message.id);
+        pending.classList.remove('message-sending');
+        const ts = pending.querySelector('.message-timestamp');
+        if (ts) {
+          ts.style.opacity = '1';
+          ts.textContent = new Date(data.message.created_at).toLocaleString();
+        }
+        this.emit('message:created', data);
+        return;
+      }
     }
 
     const messageHtml = `
@@ -983,20 +1036,25 @@ class AgentGUIClient {
       return;
     }
 
+    const savedPrompt = prompt;
     if (this.ui.messageInput) {
       this.ui.messageInput.value = '';
       this.ui.messageInput.style.height = 'auto';
     }
 
+    const pendingId = 'pending-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+    this._showOptimisticMessage(pendingId, savedPrompt);
+    this.disableControls();
+
     try {
       if (this.state.currentConversation?.id) {
-        await this.streamToConversation(this.state.currentConversation.id, prompt, agentId);
+        await this.streamToConversation(this.state.currentConversation.id, savedPrompt, agentId);
+        this._confirmOptimisticMessage(pendingId);
       } else {
-        this.disableControls();
         const response = await fetch(window.__BASE_URL + '/api/conversations', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId, title: prompt.substring(0, 50) })
+          body: JSON.stringify({ agentId, title: savedPrompt.substring(0, 50) })
         });
         const { conversation } = await response.json();
         this.state.currentConversation = conversation;
@@ -1006,13 +1064,122 @@ class AgentGUIClient {
           window.conversationManager.select(conversation.id);
         }
 
-        await this.streamToConversation(conversation.id, prompt, agentId);
+        await this.streamToConversation(conversation.id, savedPrompt, agentId);
+        this._confirmOptimisticMessage(pendingId);
       }
     } catch (error) {
       console.error('Execution error:', error);
-      this.showError('Failed to start execution: ' + error.message);
+      this._failOptimisticMessage(pendingId, savedPrompt, error.message);
       this.enableControls();
     }
+  }
+
+  _showOptimisticMessage(pendingId, content) {
+    const messagesEl = document.querySelector('.conversation-messages');
+    if (!messagesEl) return;
+    const div = document.createElement('div');
+    div.className = 'message message-user message-sending';
+    div.id = pendingId;
+    div.innerHTML = `<div class="message-role">User</div><div class="message-text">${this.escapeHtml(content)}</div><div class="message-timestamp" style="opacity:0.5">Sending...</div>`;
+    messagesEl.appendChild(div);
+    this.scrollToBottom();
+  }
+
+  _confirmOptimisticMessage(pendingId) {
+    const el = document.getElementById(pendingId);
+    if (!el) return;
+    el.classList.remove('message-sending');
+    const ts = el.querySelector('.message-timestamp');
+    if (ts) {
+      ts.style.opacity = '1';
+      ts.textContent = new Date().toLocaleString();
+    }
+  }
+
+  _failOptimisticMessage(pendingId, content, errorMsg) {
+    const el = document.getElementById(pendingId);
+    if (!el) return;
+    el.classList.remove('message-sending');
+    el.classList.add('message-send-failed');
+    const ts = el.querySelector('.message-timestamp');
+    if (ts) {
+      ts.style.opacity = '1';
+      ts.innerHTML = `<span style="color:var(--color-error)">Failed: ${this.escapeHtml(errorMsg)}</span>`;
+    }
+    if (this.ui.messageInput) {
+      this.ui.messageInput.value = content;
+    }
+  }
+
+  async _recoverMissedChunks() {
+    if (!this.state.currentSession?.id) return;
+    if (!this.state.streamingConversations.has(this.state.currentConversation?.id)) return;
+
+    const sessionId = this.state.currentSession.id;
+    const lastSeq = this.wsManager.getLastSeq(sessionId);
+    if (lastSeq < 0) return;
+
+    try {
+      const url = `${window.__BASE_URL}/api/sessions/${sessionId}/chunks?sinceSeq=${lastSeq}`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const { chunks: rawChunks } = await resp.json();
+      if (!rawChunks || rawChunks.length === 0) return;
+
+      const chunks = rawChunks.map(c => ({
+        ...c,
+        block: typeof c.data === 'string' ? JSON.parse(c.data) : c.data
+      })).filter(c => c.block && c.block.type);
+
+      const dedupedChunks = chunks.filter(c => {
+        const seqSet = this._renderedSeqs.get(sessionId);
+        return !seqSet || !seqSet.has(c.sequence);
+      });
+
+      if (dedupedChunks.length > 0) {
+        this.renderChunkBatch(dedupedChunks);
+      }
+    } catch (e) {
+      console.warn('Chunk recovery failed:', e.message);
+    }
+  }
+
+  _dedupedFetch(key, fetchFn) {
+    if (this._inflightRequests.has(key)) {
+      return this._inflightRequests.get(key);
+    }
+    const promise = fetchFn().finally(() => {
+      this._inflightRequests.delete(key);
+    });
+    this._inflightRequests.set(key, promise);
+    return promise;
+  }
+
+  _getAdaptivePollInterval() {
+    const quality = this.wsManager?.latency?.quality || 'unknown';
+    return this._pollIntervalByTier[quality] || 200;
+  }
+
+  _showSkeletonLoading(conversationId) {
+    const outputEl = document.getElementById('output');
+    if (!outputEl) return;
+    const conv = this.state.conversations.find(c => c.id === conversationId);
+    const title = conv?.title || 'Conversation';
+    const wdInfo = conv?.workingDirectory ? ` - ${this.escapeHtml(conv.workingDirectory)}` : '';
+    outputEl.innerHTML = `
+      <div class="conversation-header">
+        <h2>${this.escapeHtml(title)}</h2>
+        <p class="text-secondary">${conv?.agentType || 'unknown'} - ${conv ? new Date(conv.created_at).toLocaleDateString() : ''}${wdInfo}</p>
+      </div>
+      <div class="conversation-messages">
+        <div class="skeleton-loading">
+          <div class="skeleton-block skeleton-pulse" style="height:3rem;margin-bottom:0.75rem;border-radius:0.5rem;background:var(--color-bg-secondary);"></div>
+          <div class="skeleton-block skeleton-pulse" style="height:6rem;margin-bottom:0.75rem;border-radius:0.5rem;background:var(--color-bg-secondary);"></div>
+          <div class="skeleton-block skeleton-pulse" style="height:2rem;margin-bottom:0.75rem;border-radius:0.5rem;background:var(--color-bg-secondary);"></div>
+          <div class="skeleton-block skeleton-pulse" style="height:5rem;margin-bottom:0.75rem;border-radius:0.5rem;background:var(--color-bg-secondary);"></div>
+        </div>
+      </div>
+    `;
   }
 
   async streamToConversation(conversationId, prompt, agentId) {
@@ -1078,6 +1245,12 @@ class AgentGUIClient {
   async fetchChunks(conversationId, since = 0) {
     if (!conversationId) return [];
 
+    if (this.chunkPollState.abortController) {
+      this.chunkPollState.abortController.abort();
+    }
+    this.chunkPollState.abortController = new AbortController();
+    const signal = this.chunkPollState.abortController.signal;
+
     try {
       const params = new URLSearchParams();
       if (since > 0) {
@@ -1085,7 +1258,7 @@ class AgentGUIClient {
       }
 
       const url = `${window.__BASE_URL}/api/conversations/${conversationId}/chunks?${params.toString()}`;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal });
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -1096,7 +1269,6 @@ class AgentGUIClient {
         throw new Error('Invalid chunks response');
       }
 
-      // Parse JSON data field for each chunk
       const chunks = data.chunks.map(chunk => ({
         ...chunk,
         block: typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data
@@ -1104,6 +1276,7 @@ class AgentGUIClient {
 
       return chunks;
     } catch (error) {
+      if (error.name === 'AbortError') return [];
       console.error('Error fetching chunks:', error);
       throw error;
     }
@@ -1122,7 +1295,7 @@ class AgentGUIClient {
 
     pollState.isPolling = true;
     pollState.lastFetchTimestamp = Date.now();
-    pollState.backoffDelay = 150;
+    pollState.backoffDelay = this._getAdaptivePollInterval();
     pollState.sessionCheckCounter = 0;
     pollState.emptyPollCount = 0;
 
@@ -1157,7 +1330,7 @@ class AgentGUIClient {
         const chunks = await this.fetchChunks(conversationId, pollState.lastFetchTimestamp);
 
         if (chunks.length > 0) {
-          pollState.backoffDelay = 150;
+          pollState.backoffDelay = this._getAdaptivePollInterval();
           pollState.emptyPollCount = 0;
           const lastChunk = chunks[chunks.length - 1];
           pollState.lastFetchTimestamp = lastChunk.created_at;
@@ -1227,6 +1400,10 @@ class AgentGUIClient {
     const groups = {};
     for (const chunk of chunks) {
       const sid = chunk.sessionId;
+      if (!this._renderedSeqs.has(sid)) this._renderedSeqs.set(sid, new Set());
+      const seqSet = this._renderedSeqs.get(sid);
+      if (chunk.sequence !== undefined && seqSet.has(chunk.sequence)) continue;
+      if (chunk.sequence !== undefined) seqSet.add(chunk.sequence);
       if (!groups[sid]) groups[sid] = [];
       groups[sid].push(chunk);
     }
@@ -1260,40 +1437,42 @@ class AgentGUIClient {
    * Load agents
    */
   async loadAgents() {
-    try {
-      const response = await fetch(window.__BASE_URL + '/api/agents');
-      const { agents } = await response.json();
-      this.state.agents = agents;
+    return this._dedupedFetch('loadAgents', async () => {
+      try {
+        const response = await fetch(window.__BASE_URL + '/api/agents');
+        const { agents } = await response.json();
+        this.state.agents = agents;
 
-      // Populate agent selector with discovered (available) agents only
-      if (this.ui.agentSelector) {
-        this.ui.agentSelector.innerHTML = agents
-          .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
-          .join('');
+        if (this.ui.agentSelector) {
+          this.ui.agentSelector.innerHTML = agents
+            .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
+            .join('');
+        }
+
+        window.dispatchEvent(new CustomEvent('agents-loaded', { detail: { agents } }));
+        return agents;
+      } catch (error) {
+        console.error('Failed to load agents:', error);
+        return [];
       }
-
-      window.dispatchEvent(new CustomEvent('agents-loaded', { detail: { agents } }));
-
-      return agents;
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-      return [];
-    }
+    });
   }
 
   /**
    * Load conversations
    */
   async loadConversations() {
-    try {
-      const response = await fetch(window.__BASE_URL + '/api/conversations');
-      const { conversations } = await response.json();
-      this.state.conversations = conversations;
-      return conversations;
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-      return [];
-    }
+    return this._dedupedFetch('loadConversations', async () => {
+      try {
+        const response = await fetch(window.__BASE_URL + '/api/conversations');
+        const { conversations } = await response.json();
+        this.state.conversations = conversations;
+        return conversations;
+      } catch (error) {
+        console.error('Failed to load conversations:', error);
+        return [];
+      }
+    });
   }
 
   /**
@@ -1304,6 +1483,73 @@ class AgentGUIClient {
       this.ui.statusIndicator.dataset.status = status;
       this.ui.statusIndicator.textContent = status.charAt(0).toUpperCase() + status.slice(1);
     }
+    if (status === 'disconnected' || status === 'reconnecting') {
+      this._updateConnectionIndicator(status);
+    } else if (status === 'connected') {
+      this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+    }
+  }
+
+  _updateConnectionIndicator(quality) {
+    if (this._indicatorDebounce) return;
+    this._indicatorDebounce = true;
+    setTimeout(() => { this._indicatorDebounce = false; }, 1000);
+
+    let indicator = document.getElementById('connection-indicator');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'connection-indicator';
+      indicator.className = 'connection-indicator';
+      indicator.innerHTML = '<span class="connection-dot"></span><span class="connection-label"></span>';
+      indicator.addEventListener('click', () => this._toggleConnectionTooltip());
+      const header = document.querySelector('.header-right') || document.querySelector('.app-header');
+      if (header) {
+        header.style.position = 'relative';
+        header.appendChild(indicator);
+      }
+    }
+
+    const dot = indicator.querySelector('.connection-dot');
+    const label = indicator.querySelector('.connection-label');
+    if (!dot || !label) return;
+
+    dot.className = 'connection-dot';
+    if (quality === 'disconnected' || quality === 'reconnecting') {
+      dot.classList.add(quality);
+      label.textContent = quality === 'reconnecting' ? 'Reconnecting...' : 'Disconnected';
+    } else {
+      dot.classList.add(quality);
+      const latency = this.wsManager?.latency;
+      label.textContent = latency?.avg > 0 ? Math.round(latency.avg) + 'ms' : '';
+    }
+  }
+
+  _toggleConnectionTooltip() {
+    let tooltip = document.getElementById('connection-tooltip');
+    if (tooltip) { tooltip.remove(); return; }
+
+    const indicator = document.getElementById('connection-indicator');
+    if (!indicator) return;
+
+    tooltip = document.createElement('div');
+    tooltip.id = 'connection-tooltip';
+    tooltip.className = 'connection-tooltip';
+
+    const latency = this.wsManager?.latency || {};
+    const stats = this.wsManager?.stats || {};
+    const state = this.wsManager?.connectionState || 'unknown';
+
+    tooltip.innerHTML = [
+      `<div>State: ${state}</div>`,
+      `<div>Latency: ${Math.round(latency.avg || 0)}ms</div>`,
+      `<div>Jitter: ${Math.round(latency.jitter || 0)}ms</div>`,
+      `<div>Quality: ${latency.quality || 'unknown'}</div>`,
+      `<div>Reconnects: ${stats.totalReconnects || 0}</div>`,
+      `<div>Uptime: ${stats.lastConnectedTime ? Math.round((Date.now() - stats.lastConnectedTime) / 1000) + 's' : 'N/A'}</div>`
+    ].join('');
+
+    indicator.appendChild(tooltip);
+    setTimeout(() => { if (tooltip.parentNode) tooltip.remove(); }, 5000);
   }
 
   /**
@@ -1404,6 +1650,12 @@ class AgentGUIClient {
 
   async loadConversationMessages(conversationId) {
     try {
+      if (this._previousConvAbort) {
+        this._previousConvAbort.abort();
+      }
+      this._previousConvAbort = new AbortController();
+      const convSignal = this._previousConvAbort.signal;
+
       this.cacheCurrentConversation();
       this.stopChunkPolling();
       var prevId = this.state.currentConversation?.id;
@@ -1420,7 +1672,7 @@ class AgentGUIClient {
       }
 
       const cached = this.conversationCache.get(conversationId);
-      if (cached && (Date.now() - cached.timestamp) < 120000) {
+      if (cached && (Date.now() - cached.timestamp) < 300000) {
         const outputEl = document.getElementById('output');
         if (outputEl) {
           outputEl.innerHTML = '';
@@ -1437,7 +1689,9 @@ class AgentGUIClient {
 
       this.conversationCache.delete(conversationId);
 
-      const resp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/full`);
+      this._showSkeletonLoading(conversationId);
+
+      const resp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/full`, { signal: convSignal });
       if (resp.status === 404) {
         console.warn('Conversation no longer exists:', conversationId);
         this.state.currentConversation = null;
@@ -1624,6 +1878,7 @@ class AgentGUIClient {
         this.restoreScrollPosition(conversationId);
       }
     } catch (error) {
+      if (error.name === 'AbortError') return;
       console.error('Failed to load conversation messages:', error);
       this.showError('Failed to load conversation: ' + error.message);
     }
