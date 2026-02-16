@@ -13,6 +13,7 @@
   var recordedChunks = [];
   var TARGET_SAMPLE_RATE = 16000;
   var spokenChunks = new Set();
+  var renderedSeqs = new Set();
   var isLoadingHistory = false;
   var selectedVoiceId = localStorage.getItem('voice-selected-id') || 'default';
   var ttsAudioCache = new Map();
@@ -313,6 +314,12 @@
     return ttsAudioCache.get(key) || null;
   }
 
+  function splitSentences(text) {
+    var raw = text.match(/[^.!?]+[.!?]+[\s]?|[^.!?]+$/g);
+    if (!raw) return [text];
+    return raw.map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+  }
+
   var audioChunkQueue = [];
   var isPlayingChunk = false;
   var streamDone = false;
@@ -373,6 +380,38 @@
       return;
     }
 
+    var sentences = splitSentences(text);
+    var cachedSentences = [];
+    var uncachedText = [];
+    for (var i = 0; i < sentences.length; i++) {
+      var blob = getCachedTTSBlob(sentences[i]);
+      if (blob) {
+        cachedSentences.push({ idx: i, blob: blob });
+      } else {
+        uncachedText.push(sentences[i]);
+      }
+    }
+
+    if (cachedSentences.length === sentences.length) {
+      ttsConsecutiveFailures = 0;
+      for (var j = 0; j < cachedSentences.length; j++) {
+        audioChunkQueue.push(cachedSentences[j].blob);
+      }
+      streamDone = true;
+      if (!isPlayingChunk) playNextChunk();
+      return;
+    }
+
+    if (cachedSentences.length > 0) {
+      ttsConsecutiveFailures = 0;
+      for (var k = 0; k < cachedSentences.length; k++) {
+        audioChunkQueue.push(cachedSentences[k].blob);
+      }
+      if (!isPlayingChunk) playNextChunk();
+    }
+
+    var remainingText = uncachedText.join(' ');
+
     function onTtsSuccess() {
       ttsConsecutiveFailures = 0;
     }
@@ -392,11 +431,11 @@
     }
 
     function tryStreaming() {
-      if (!streamingSupported) { tryNonStreaming(text); return; }
+      if (!streamingSupported) { tryNonStreaming(remainingText); return; }
       fetch(BASE + '/api/tts-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text, voiceId: selectedVoiceId })
+        body: JSON.stringify({ text: remainingText, voiceId: selectedVoiceId })
       }).then(function(resp) {
         if (!resp.ok) {
           streamingSupported = false;
@@ -441,7 +480,7 @@
 
         return pump();
       }).catch(function() {
-        tryNonStreaming(text);
+        tryNonStreaming(remainingText);
       });
     }
 
@@ -583,17 +622,21 @@
       if (!voiceActive) return;
       if (data.type === 'streaming_progress' && data.block) {
         if (data.conversationId && data.conversationId !== currentConversationId) return;
+        if (data.seq !== undefined && renderedSeqs.has(data.seq)) return;
+        if (data.seq !== undefined) renderedSeqs.add(data.seq);
         handleVoiceBlock(data.block, true);
       }
       if (data.type === 'streaming_start') {
         if (data.conversationId && data.conversationId !== currentConversationId) return;
         spokenChunks = new Set();
+        renderedSeqs = new Set();
       }
     });
     window.addEventListener('conversation-selected', function(e) {
       currentConversationId = e.detail.conversationId;
       stopSpeaking();
       spokenChunks = new Set();
+      renderedSeqs = new Set();
       if (voiceActive) {
         loadVoiceBlocks(currentConversationId);
       }
@@ -633,6 +676,7 @@
         }
         var hasContent = false;
         data.chunks.forEach(function(chunk) {
+          if (chunk.sequence !== undefined) renderedSeqs.add(chunk.sequence);
           var block = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
           if (!block) return;
           if (block.type === 'text' && block.text) {
