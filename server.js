@@ -11,44 +11,17 @@ import { createRequire } from 'module';
 import { OAuth2Client } from 'google-auth-library';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
-import { isSetup, install, detectPython } from './lib/windows-pocket-tts-setup.js';
 let speechModule = null;
 async function getSpeech() {
   if (!speechModule) speechModule = await import('./lib/speech.js');
   return speechModule;
 }
 
-const pocketTtsSetupState = { attempted: false, ready: false, error: null, inProgress: false };
-
 async function ensurePocketTtsSetup(onProgress) {
-  if (pocketTtsSetupState.attempted) {
-    return pocketTtsSetupState.ready;
-  }
-
-  if (pocketTtsSetupState.inProgress) {
-    let waited = 0;
-    const MAX_WAIT = 600000;
-    while (pocketTtsSetupState.inProgress && waited < MAX_WAIT) {
-      await new Promise(r => setTimeout(r, 100));
-      waited += 100;
-    }
-    return pocketTtsSetupState.ready;
-  }
-
-  pocketTtsSetupState.inProgress = true;
-
-  if (onProgress) onProgress({ step: 'detecting-python', status: 'in-progress', message: 'Detecting Python installation' });
-
-  const result = await install((msg) => {
-    if (onProgress) onProgress(msg);
-  });
-
-  pocketTtsSetupState.attempted = true;
-  pocketTtsSetupState.ready = result.success;
-  pocketTtsSetupState.error = result.error || null;
-  pocketTtsSetupState.inProgress = false;
-
-  return pocketTtsSetupState.ready;
+  const { createRequire: cr } = await import('module');
+  const r = cr(import.meta.url);
+  const serverTTS = r('webtalk/server-tts');
+  return serverTTS.ensureInstalled(onProgress);
 }
 
 function eagerTTS(text, conversationId, sessionId) {
@@ -1446,12 +1419,12 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        if (!pocketTtsSetupState.attempted && process.platform === 'win32') {
+        if (process.platform === 'win32') {
           const setupOk = await ensurePocketTtsSetup((msg) => {
             broadcastSync({ type: 'tts_setup_progress', ...msg });
           });
           if (!setupOk) {
-            sendJSON(req, res, 503, { error: pocketTtsSetupState.error || 'pocket-tts setup failed', retryable: false });
+            sendJSON(req, res, 503, { error: 'pocket-tts setup failed', retryable: false });
             return;
           }
 
@@ -1524,26 +1497,18 @@ const server = http.createServer(async (req, res) => {
       try {
         const { getStatus } = await getSpeech();
         const baseStatus = getStatus();
-        const pythonDetect = detectPython();
-        const statusWithSetup = {
+        const r = createRequire(import.meta.url);
+        const serverTTS = r('webtalk/server-tts');
+        const pyInfo = serverTTS.detectPython();
+        sendJSON(req, res, 200, {
           ...baseStatus,
-          pythonDetected: pythonDetect.found,
-          pythonVersion: pythonDetect.version,
-          pocketTtsSetup: {
-            ready: pocketTtsSetupState.ready,
-            attempted: pocketTtsSetupState.attempted,
-            error: pocketTtsSetupState.error,
-          },
-          setupMessage: pocketTtsSetupState.error || (pocketTtsSetupState.ready ? 'pocket-tts ready' : 'Will setup on first TTS request'),
-        };
-        sendJSON(req, res, 200, statusWithSetup);
+          pythonDetected: pyInfo.found,
+          pythonVersion: pyInfo.version || null,
+          setupMessage: baseStatus.ttsReady ? 'pocket-tts ready' : 'Will setup on first TTS request',
+        });
       } catch (err) {
-        const pythonDetect = detectPython();
         sendJSON(req, res, 200, {
           sttReady: false, ttsReady: false, sttLoading: false, ttsLoading: false,
-          pythonDetected: pythonDetect.found,
-          pythonVersion: pythonDetect.version,
-          pocketTtsSetup: { ready: false, attempted: false, error: null },
           setupMessage: 'Will setup on first TTS request',
         });
       }
