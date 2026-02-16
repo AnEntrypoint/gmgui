@@ -1117,7 +1117,8 @@ class AgentGUIClient {
   async startExecution() {
     const prompt = this.ui.messageInput?.value || '';
     const conv = this.state.currentConversation;
-    const agentId = conv?.agentType || this.ui.agentSelector?.value || 'claude-code';
+    const isNewConversation = conv && !conv.messageCount && !this.state.streamingConversations.has(conv.id);
+    const agentId = (isNewConversation ? this.ui.agentSelector?.value : null) || conv?.agentType || this.ui.agentSelector?.value || 'claude-code';
     const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
@@ -1137,6 +1138,7 @@ class AgentGUIClient {
 
     try {
       if (conv?.id) {
+        this.lockAgentAndModel(agentId, model);
         await this.streamToConversation(conv.id, savedPrompt, agentId, model);
         this._confirmOptimisticMessage(pendingId);
       } else {
@@ -1942,7 +1944,6 @@ class AgentGUIClient {
       }
 
       const { conversation } = await response.json();
-      this.lockAgentAndModel(agentId, model);
 
       await this.loadConversations();
 
@@ -2018,7 +2019,14 @@ class AgentGUIClient {
             outputEl.appendChild(cached.dom.firstChild);
           }
           this.state.currentConversation = cached.conversation;
-          this.lockAgentAndModel(cached.conversation.agentType || 'claude-code', cached.conversation.model || null);
+          const cachedHasActivity = cached.conversation.messageCount > 0 || this.state.streamingConversations.has(conversationId);
+          if (cachedHasActivity) {
+            this.lockAgentAndModel(cached.conversation.agentType || 'claude-code', cached.conversation.model || null);
+          } else {
+            this.unlockAgentAndModel();
+            if (this.ui.agentSelector && cached.conversation.agentType) this.ui.agentSelector.value = cached.conversation.agentType;
+            if (cached.conversation.agentType) this.loadModelsForAgent(cached.conversation.agentType);
+          }
           this.conversationCache.delete(conversationId);
           this.restoreScrollPosition(conversationId);
           this.enableControls();
@@ -2046,7 +2054,14 @@ class AgentGUIClient {
       const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = await resp.json();
 
       this.state.currentConversation = conversation;
-      this.lockAgentAndModel(conversation.agentType || 'claude-code', conversation.model || null);
+      const hasActivity = (allMessages && allMessages.length > 0) || isActivelyStreaming || latestSession || this.state.streamingConversations.has(conversationId);
+      if (hasActivity) {
+        this.lockAgentAndModel(conversation.agentType || 'claude-code', conversation.model || null);
+      } else {
+        this.unlockAgentAndModel();
+        if (this.ui.agentSelector && conversation.agentType) this.ui.agentSelector.value = conversation.agentType;
+        if (conversation.agentType) this.loadModelsForAgent(conversation.agentType);
+      }
 
       const chunks = (rawChunks || []).map(chunk => ({
         ...chunk,
