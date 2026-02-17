@@ -11,6 +11,9 @@ import { createRequire } from 'module';
 import { OAuth2Client } from 'google-auth-library';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
+
+const ttsTextAccumulators = new Map();
+
 let speechModule = null;
 async function getSpeech() {
   if (!speechModule) speechModule = await import('./lib/speech.js');
@@ -87,6 +90,24 @@ async function ensureModelsDownloaded() {
 }
 
 function eagerTTS(text, conversationId, sessionId) {
+  const key = `${conversationId}:${sessionId}`;
+  let acc = ttsTextAccumulators.get(key);
+  if (!acc) {
+    acc = { text: '', timer: null };
+    ttsTextAccumulators.set(key, acc);
+  }
+  acc.text += text;
+  if (acc.timer) clearTimeout(acc.timer);
+  acc.timer = setTimeout(() => flushTTSaccumulator(key, conversationId, sessionId), 600);
+}
+
+function flushTTSaccumulator(key, conversationId, sessionId) {
+  const acc = ttsTextAccumulators.get(key);
+  if (!acc || !acc.text) return;
+  const text = acc.text.trim();
+  acc.text = '';
+  ttsTextAccumulators.delete(key);
+  
   getSpeech().then(speech => {
     const status = speech.getStatus();
     if (!status.ttsReady || status.ttsError) return;

@@ -284,7 +284,10 @@ class AgentGUIClient {
         const scrollContainer = document.getElementById(this.config.scrollContainerId);
         if (scrollContainer && !isNaN(scrollTop)) {
           requestAnimationFrame(() => {
-            scrollContainer.scrollTop = scrollTop;
+            requestAnimationFrame(() => {
+              const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
+              scrollContainer.scrollTop = Math.min(scrollTop, maxScroll);
+            });
           });
         }
       }
