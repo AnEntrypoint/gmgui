@@ -244,6 +244,7 @@ function discoverAgents() {
     { cmd: 'claude', id: 'claude-code', name: 'Claude Code', icon: 'C' },
     { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O' },
     { cmd: 'gemini', id: 'gemini', name: 'Gemini CLI', icon: 'G' },
+    { cmd: 'kilo', id: 'kilo', name: 'Kilo Code', icon: 'K' },
     { cmd: 'goose', id: 'goose', name: 'Goose', icon: 'g' },
     { cmd: 'openhands', id: 'openhands', name: 'OpenHands', icon: 'H' },
     { cmd: 'augment', id: 'augment', name: 'Augment Code', icon: 'A' },
@@ -2626,36 +2627,28 @@ function onServerReady() {
   console.log(`Agents: ${discoveredAgents.map(a => a.name).join(', ') || 'none'}`);
   console.log(`Hot reload: ${watch ? 'on' : 'off'}`);
 
-  // Clean up empty conversations on startup
   const deletedCount = queries.cleanupEmptyConversations();
   if (deletedCount > 0) {
     console.log(`Cleaned up ${deletedCount} empty conversation(s) on startup`);
   }
 
-  // Recover stale active sessions from previous run
   recoverStaleSessions();
 
-  // Resume interrupted streams after recovery
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
 
-  // Start model downloads in background after server is ready
-  setTimeout(() => {
-    ensureModelsDownloaded().then(ok => {
-      if (ok) console.log('[MODELS] Speech models ready');
-      else console.log('[MODELS] Speech model download failed');
-    }).catch(err => {
-      console.error('[MODELS] Download error:', err.message);
-    });
-  }, 2000);
+  ensureModelsDownloaded().then(ok => {
+    if (ok) console.log('[MODELS] Speech models ready');
+    else console.log('[MODELS] Speech model download failed');
+  }).catch(err => {
+    console.error('[MODELS] Download error:', err.message);
+  });
 
   getSpeech().then(s => s.preloadTTS()).catch(e => debugLog('[TTS] Preload failed: ' + e.message));
 
   performAutoImport();
 
-  // Then run it every 30 seconds (constant automatic importing)
   setInterval(performAutoImport, 30000);
 
-  // Agent health check every 30 seconds
   setInterval(performAgentHealthCheck, 30000);
 
 }
