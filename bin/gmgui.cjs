@@ -5,21 +5,15 @@ const fs = require('fs');
 
 const projectRoot = path.join(__dirname, '..');
 
-function hasBun() {
-  try {
-    spawnSync('which', ['bun'], { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 async function gmgui(args = []) {
   const command = args[0] || 'start';
 
   if (command === 'start') {
-    const useBun = hasBun();
-    const installer = useBun ? 'bun' : 'npm';
+    // Always use node as runtime for reliability. When invoked via bunx,
+    // dependencies are already managed. When invoked via npm/npx, we install
+    // dependencies ourselves. This avoids ENOENT errors on systems where bun
+    // may not be in PATH even though bunx works.
+    const installer = 'npm';
 
     // Ensure dependencies are installed only if node_modules is missing
     // Skip this for bunx which manages dependencies independently
@@ -39,7 +33,7 @@ async function gmgui(args = []) {
 
     const port = process.env.PORT || 3000;
     const baseUrl = process.env.BASE_URL || '/gm';
-    const runtime = useBun ? 'bun' : 'node';
+    const runtime = 'node';
 
     return new Promise((resolve, reject) => {
       const ps = spawn(runtime, [path.join(projectRoot, 'server.js')], {
