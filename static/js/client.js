@@ -833,6 +833,19 @@ class AgentGUIClient {
         this.emit('message:created', data);
         return;
       }
+      // Also check for pending ID (in case message-sending was already removed by _confirmOptimisticMessage)
+      const pendingById = outputEl.querySelector('[id^="pending-"]');
+      if (pendingById) {
+        pendingById.id = '';
+        pendingById.setAttribute('data-msg-id', data.message.id);
+        const ts = pendingById.querySelector('.message-timestamp');
+        if (ts) {
+          ts.style.opacity = '1';
+          ts.textContent = new Date(data.message.created_at).toLocaleString();
+        }
+        this.emit('message:created', data);
+        return;
+      }
       // Check if a user message with this ID already exists (prevents duplicate on race condition)
       const existingMsg = outputEl.querySelector(`[data-msg-id="${data.message.id}"]`);
       if (existingMsg) {
