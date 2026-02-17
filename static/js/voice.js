@@ -15,6 +15,8 @@
   var spokenChunks = new Set();
   var renderedSeqs = new Set();
   var isLoadingHistory = false;
+  var _lastVoiceBlockText = null;
+  var _lastVoiceBlockTime = 0;
   var selectedVoiceId = localStorage.getItem('voice-selected-id') || 'default';
   var ttsAudioCache = new Map();
   var TTS_CLIENT_CACHE_MAX = 50;
@@ -646,6 +648,14 @@
   function handleVoiceBlock(block, isNew) {
     if (!block || !block.type) return;
     if (block.type === 'text' && block.text) {
+      // Deduplicate: prevent rendering the same text block twice within 500ms
+      var now = Date.now();
+      if (_lastVoiceBlockText === block.text && (now - _lastVoiceBlockTime) < 500) {
+        return;
+      }
+      _lastVoiceBlockText = block.text;
+      _lastVoiceBlockTime = now;
+
       var div = addVoiceBlock(block.text, false);
       if (div && isNew && ttsEnabled) {
         div.classList.add('speaking');
@@ -661,6 +671,9 @@
     var container = document.getElementById('voiceMessages');
     if (!container) return;
     container.innerHTML = '';
+    // Reset dedup state when loading a new conversation
+    _lastVoiceBlockText = null;
+    _lastVoiceBlockTime = 0;
     if (!conversationId) {
       showVoiceEmpty(container);
       return;

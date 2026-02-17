@@ -204,39 +204,87 @@ const discoveredAgents = discoverAgents();
 
 const modelCache = new Map();
 
+const AGENT_MODEL_COMMANDS = {
+  'opencode': 'opencode models',
+  'kilo': 'kilo models',
+};
+
+const AGENT_DEFAULT_MODELS = {
+  'claude-code': [
+    { id: '', label: 'Default' },
+    { id: 'sonnet', label: 'Sonnet' },
+    { id: 'opus', label: 'Opus' },
+    { id: 'haiku', label: 'Haiku' },
+    { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
+    { id: 'claude-opus-4-6', label: 'Opus 4.6' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
+  ],
+  'gemini': [
+    { id: '', label: 'Default' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
+  ],
+  'goose': [
+    { id: '', label: 'Default' },
+    { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
+    { id: 'claude-opus-4-5', label: 'Opus 4.5' }
+  ],
+  'codex': [
+    { id: '', label: 'Default' },
+    { id: 'o4-mini', label: 'o4-mini' },
+    { id: 'o3', label: 'o3' },
+    { id: 'o3-mini', label: 'o3-mini' }
+  ]
+};
+
 async function getModelsForAgent(agentId) {
-  if (agentId === 'claude-code') {
-    return [
-      { id: '', label: 'Default' },
-      { id: 'sonnet', label: 'Sonnet' },
-      { id: 'opus', label: 'Opus' },
-      { id: 'haiku', label: 'Haiku' },
-      { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
-      { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
-    ];
+  const cached = modelCache.get(agentId);
+  if (cached && Date.now() - cached.timestamp < 300000) {
+    return cached.models;
   }
-  if (agentId === 'opencode') {
+
+  if (AGENT_DEFAULT_MODELS[agentId]) {
+    const models = AGENT_DEFAULT_MODELS[agentId];
+    modelCache.set(agentId, { models, timestamp: Date.now() });
+    return models;
+  }
+
+  if (AGENT_MODEL_COMMANDS[agentId]) {
     try {
-      const result = execSync('opencode models 2>/dev/null', { encoding: 'utf-8', timeout: 10000 });
+      const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
       const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
       const models = [{ id: '', label: 'Default' }];
       for (const line of lines) {
         models.push({ id: line, label: line });
       }
+      modelCache.set(agentId, { models, timestamp: Date.now() });
       return models;
     } catch (_) {
       return [{ id: '', label: 'Default' }];
     }
   }
-  if (agentId === 'gemini') {
-    return [
-      { id: '', label: 'Default' },
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
-    ];
+
+  const { getRegisteredAgents } = await import('./lib/claude-runner.js');
+  const agents = getRegisteredAgents();
+  const agent = agents.find(a => a.id === agentId);
+  
+  if (agent && agent.command) {
+    const modelCmd = `${agent.command} models`;
+    try {
+      const result = execSync(modelCmd, { encoding: 'utf-8', timeout: 15000 });
+      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        const models = [{ id: '', label: 'Default' }];
+        for (const line of lines) {
+          models.push({ id: line, label: line });
+        }
+        modelCache.set(agentId, { models, timestamp: Date.now() });
+        return models;
+      }
+    } catch (_) {}
   }
+
   return [];
 }
 

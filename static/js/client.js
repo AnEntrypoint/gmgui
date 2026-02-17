@@ -813,6 +813,7 @@ class AgentGUIClient {
     }
 
     if (data.message.role === 'user') {
+      // Find pending message by matching content to avoid duplicates
       const pending = outputEl.querySelector('.message-sending');
       if (pending) {
         pending.id = '';
@@ -823,6 +824,12 @@ class AgentGUIClient {
           ts.style.opacity = '1';
           ts.textContent = new Date(data.message.created_at).toLocaleString();
         }
+        this.emit('message:created', data);
+        return;
+      }
+      // Check if a user message with this ID already exists (prevents duplicate on race condition)
+      const existingMsg = outputEl.querySelector(`[data-msg-id="${data.message.id}"]`);
+      if (existingMsg) {
         this.emit('message:created', data);
         return;
       }

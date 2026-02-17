@@ -13,6 +13,7 @@ class ConversationManager {
     this.newBtn = document.querySelector('[data-new-conversation]');
     this.sidebarEl = document.querySelector('[data-sidebar]');
     this.streamingConversations = new Set();
+    this.agents = new Map();
 
     this.folderBrowser = {
       modal: null,
@@ -32,12 +33,32 @@ class ConversationManager {
   async init() {
     this.newBtn?.addEventListener('click', () => this.openFolderBrowser());
     this.setupDelegatedListeners();
+    await this.loadAgents();
     this.loadConversations();
     this.setupWebSocketListener();
     this.setupFolderBrowser();
     this.setupCloneUI();
 
     setInterval(() => this.loadConversations(), 30000);
+  }
+
+  async loadAgents() {
+    try {
+      const res = await fetch((window.__BASE_URL || '') + '/api/agents');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      for (const agent of data.agents || []) {
+        this.agents.set(agent.id, agent);
+      }
+    } catch (err) {
+      console.error('[ConversationManager] Error loading agents:', err);
+    }
+  }
+
+  getAgentDisplayName(agentId) {
+    if (!agentId) return 'Unknown';
+    const agent = this.agents.get(agentId);
+    return agent?.name || agentId;
   }
 
   setupDelegatedListeners() {
@@ -375,7 +396,7 @@ class ConversationManager {
     const isStreaming = this.streamingConversations.has(conv.id);
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
-    const agent = conv.agentType || 'unknown';
+    const agent = this.getAgentDisplayName(conv.agentType);
     const modelLabel = conv.model ? ` (${conv.model})` : '';
     const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
     const metaParts = [agent + modelLabel, timestamp];
@@ -403,7 +424,7 @@ class ConversationManager {
 
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
-    const agent = conv.agentType || 'unknown';
+    const agent = this.getAgentDisplayName(conv.agentType);
     const modelLabel = conv.model ? ` (${conv.model})` : '';
     const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
     const metaParts = [agent + modelLabel, timestamp];
