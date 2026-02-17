@@ -432,6 +432,9 @@ class AgentGUIClient {
         case 'rate_limit_clear':
           this.handleRateLimitClear(data);
           break;
+        case 'model_download_progress':
+          this._handleModelDownloadProgress(data.progress);
+          break;
         default:
           break;
       }
@@ -1833,7 +1836,7 @@ class AgentGUIClient {
   }
 
   _updateConnectionIndicator(quality) {
-    if (this._indicatorDebounce) return;
+    if (this._indicatorDebounce && !this._modelDownloadInProgress) return;
     this._indicatorDebounce = true;
     setTimeout(() => { this._indicatorDebounce = false; }, 1000);
 
@@ -1855,6 +1858,21 @@ class AgentGUIClient {
     const label = indicator.querySelector('.connection-label');
     if (!dot || !label) return;
 
+    // Check if model download is in progress
+    if (this._modelDownloadInProgress) {
+      dot.className = 'connection-dot downloading';
+      const progress = this._modelDownloadProgress;
+      if (progress && progress.totalBytes > 0) {
+        const pct = Math.round((progress.totalDownloaded / progress.totalBytes) * 100);
+        label.textContent = `Models ${pct}%`;
+      } else if (progress && progress.downloading) {
+        label.textContent = 'Downloading...';
+      } else {
+        label.textContent = 'Loading models...';
+      }
+      return;
+    }
+
     dot.className = 'connection-dot';
     if (quality === 'disconnected' || quality === 'reconnecting') {
       dot.classList.add(quality);
@@ -1863,6 +1881,29 @@ class AgentGUIClient {
       dot.classList.add(quality);
       const latency = this.wsManager?.latency;
       label.textContent = latency?.avg > 0 ? Math.round(latency.avg) + 'ms' : '';
+    }
+  }
+
+  _handleModelDownloadProgress(progress) {
+    this._modelDownloadProgress = progress;
+    
+    if (progress.error) {
+      this._modelDownloadInProgress = false;
+      console.error('[Models] Download error:', progress.error);
+      this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+      return;
+    }
+    
+    if (progress.done) {
+      this._modelDownloadInProgress = false;
+      console.log('[Models] Download complete');
+      this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+      return;
+    }
+    
+    if (progress.started || progress.downloading) {
+      this._modelDownloadInProgress = true;
+      this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
     }
   }
 

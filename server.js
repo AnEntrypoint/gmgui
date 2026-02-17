@@ -24,6 +24,68 @@ async function ensurePocketTtsSetup(onProgress) {
   return serverTTS.ensureInstalled(onProgress);
 }
 
+// Model download manager
+const modelDownloadState = {
+  downloading: false,
+  progress: null,
+  error: null,
+  complete: false
+};
+
+async function ensureModelsDownloaded() {
+  const { createRequire: cr } = await import('module');
+  const r = cr(import.meta.url);
+  const { checkAllFilesExist, downloadModels } = r('sttttsmodels');
+  
+  if (checkAllFilesExist()) {
+    modelDownloadState.complete = true;
+    return true;
+  }
+  
+  if (modelDownloadState.downloading) {
+    // Wait for current download
+    while (modelDownloadState.downloading) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    return modelDownloadState.complete;
+  }
+  
+  modelDownloadState.downloading = true;
+  modelDownloadState.error = null;
+  
+  try {
+    await downloadModels((progress) => {
+      modelDownloadState.progress = progress;
+      // Broadcast progress to all connected clients
+      broadcastSync({
+        type: 'model_download_progress',
+        progress: {
+          started: progress.started,
+          done: progress.done,
+          error: progress.error,
+          downloading: progress.downloading,
+          type: progress.type,
+          completedFiles: progress.completedFiles,
+          totalFiles: progress.totalFiles,
+          totalDownloaded: progress.totalDownloaded,
+          totalBytes: progress.totalBytes
+        }
+      });
+    });
+    modelDownloadState.complete = true;
+    return true;
+  } catch (err) {
+    modelDownloadState.error = err.message;
+    broadcastSync({
+      type: 'model_download_progress',
+      progress: { error: err.message, done: true }
+    });
+    return false;
+  } finally {
+    modelDownloadState.downloading = false;
+  }
+}
+
 function eagerTTS(text, conversationId, sessionId) {
   getSpeech().then(speech => {
     const status = speech.getStatus();
@@ -802,7 +864,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathOnly === '/api/conversations' && req.method === 'GET') {
-            sendJSON(req, res, 200, { conversations: queries.getConversationsList() });
+      const conversations = queries.getConversationsList();
+      // Filter out stale streaming state for conversations not in activeExecutions
+      for (const conv of conversations) {
+        if (conv.isStreaming && !activeExecutions.has(conv.id)) {
+          conv.isStreaming = 0;
+        }
+      }
+            sendJSON(req, res, 200, { conversations });
       return;
     }
 
@@ -1601,11 +1670,18 @@ const server = http.createServer(async (req, res) => {
           pythonDetected: pyInfo.found,
           pythonVersion: pyInfo.version || null,
           setupMessage: baseStatus.ttsReady ? 'pocket-tts ready' : 'Will setup on first TTS request',
+          modelsDownloading: modelDownloadState.downloading,
+          modelsComplete: modelDownloadState.complete,
+          modelsError: modelDownloadState.error,
+          modelsProgress: modelDownloadState.progress,
         });
       } catch (err) {
         sendJSON(req, res, 200, {
           sttReady: false, ttsReady: false, sttLoading: false, ttsLoading: false,
           setupMessage: 'Will setup on first TTS request',
+          modelsDownloading: modelDownloadState.downloading,
+          modelsComplete: modelDownloadState.complete,
+          modelsError: modelDownloadState.error,
         });
       }
       return;
@@ -2532,14 +2608,9 @@ function performAgentHealthCheck() {
         markAgentDead(conversationId, entry, 'Agent process died unexpectedly');
       } else if (now - entry.lastActivity > STUCK_AGENT_THRESHOLD_MS) {
         debugLog(`[HEALTH] Agent PID ${entry.pid} for conv ${conversationId} has no activity for ${Math.round((now - entry.lastActivity) / 1000)}s`);
-        broadcastSync({
-          type: 'streaming_error',
-          sessionId: entry.sessionId,
-          conversationId,
-          error: 'Agent may be stuck (no activity for 10 minutes)',
-          recoverable: true,
-          timestamp: now
-        });
+        // Kill stuck agent and clear streaming state
+        try { process.kill(entry.pid, 'SIGTERM'); } catch (e) {}
+        markAgentDead(conversationId, entry, 'Agent was stuck (no activity for 10 minutes)');
       }
     } else {
       if (now - entry.startTime > NO_PID_GRACE_PERIOD_MS) {
@@ -2566,6 +2637,16 @@ function onServerReady() {
 
   // Resume interrupted streams after recovery
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
+
+  // Start model downloads in background after server is ready
+  setTimeout(() => {
+    ensureModelsDownloaded().then(ok => {
+      if (ok) console.log('[MODELS] Speech models ready');
+      else console.log('[MODELS] Speech model download failed');
+    }).catch(err => {
+      console.error('[MODELS] Download error:', err.message);
+    });
+  }, 2000);
 
   getSpeech().then(s => s.preloadTTS()).catch(e => debugLog('[TTS] Preload failed: ' + e.message));
 
