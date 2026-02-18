@@ -173,7 +173,6 @@ class GMGUIApp {
 
   handleEvent(event) {
     if (event.type === 'message_created') {
-      this.addMessageToDisplay(event.message);
       this.handleMessageReceived(event.message);
     } else if (event.type === 'conversations_updated') {
       this.fetchConversations().then(() => this.renderChatHistory());
