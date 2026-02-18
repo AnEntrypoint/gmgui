@@ -1757,6 +1757,30 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/git/check-remote-ownership' && req.method === 'GET') {
+      try {
+        const result = execSync('git remote get-url origin 2>/dev/null', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const remoteUrl = result.trim();
+        const statusResult = execSync('git status --porcelain', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const hasChanges = statusResult.trim().length > 0;
+        const ownsRemote = !remoteUrl.includes('github.com/') || remoteUrl.includes(process.env.GITHUB_USER || '');
+        sendJSON(req, res, 200, { ownsRemote, hasChanges, remoteUrl });
+      } catch {
+        sendJSON(req, res, 200, { ownsRemote: false, hasChanges: false, remoteUrl: '' });
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/git/push' && req.method === 'POST') {
+      try {
+        execSync('git add -A && git commit -m "Auto-commit" && git push', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        sendJSON(req, res, 200, { success: true });
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
     if (routePath.startsWith('/api/image/')) {
       const imagePath = routePath.slice('/api/image/'.length);
       const decodedPath = decodeURIComponent(imagePath);
@@ -2085,6 +2109,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       type: 'streaming_complete',
       sessionId,
       conversationId,
+      agentId,
       eventCount,
       seq: currentSequence,
       timestamp: Date.now()

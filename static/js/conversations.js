@@ -502,6 +502,9 @@ class ConversationManager {
   }
 
   addConversation(conv) {
+    if (this.conversations.some(c => c.id === conv.id)) {
+      return;
+    }
     this.conversations.unshift(conv);
     this.render();
   }

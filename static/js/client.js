@@ -764,7 +764,6 @@ class AgentGUIClient {
 
     this.state.streamingConversations.delete(conversationId);
 
-    // Stop polling for chunks
     this.stopChunkPolling();
 
     const sessionId = data.sessionId || this.state.currentSession?.id;
@@ -782,13 +781,36 @@ class AgentGUIClient {
       streamingEl.appendChild(ts);
     }
 
-    // Save scroll position after streaming completes
     if (conversationId) {
       this.saveScrollPosition(conversationId);
     }
 
     this.enableControls();
     this.emit('streaming:complete', data);
+
+    if (data.agentId && this._isACPAgent(data.agentId)) {
+      this._promptPushIfWeOwnRemote();
+    }
+  }
+
+  _isACPAgent(agentId) {
+    const acpAgents = ['opencode', 'gemini', 'goose', 'openhands', 'augment', 'cline', 'kimi', 'qwen', 'codex', 'mistral', 'kiro', 'fast-agent'];
+    return acpAgents.includes(agentId);
+  }
+
+  async _promptPushIfWeOwnRemote() {
+    try {
+      const result = await fetch(window.__BASE_URL + '/api/git/check-remote-ownership');
+      const { ownsRemote, hasChanges, remoteUrl } = await result.json();
+      if (ownsRemote && hasChanges) {
+        const shouldPush = confirm('Push changes to remote?');
+        if (shouldPush) {
+          await fetch(window.__BASE_URL + '/api/git/push', { method: 'POST' });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to check git remote ownership:', e);
+    }
   }
 
   /**
@@ -796,6 +818,9 @@ class AgentGUIClient {
    */
   handleConversationCreated(data) {
     if (data.conversation) {
+      if (this.state.conversations.some(c => c.id === data.conversation.id)) {
+        return;
+      }
       this.state.conversations.push(data.conversation);
       this.emit('conversation:created', data.conversation);
     }
@@ -1478,7 +1503,6 @@ class AgentGUIClient {
       }
 
       this._lastSendTime = Date.now();
-      this._startThinkingCountdown();
       this.emit('execution:started', result);
     } catch (error) {
       console.error('Stream execution error:', error);
@@ -1967,14 +1991,12 @@ class AgentGUIClient {
    * Disable UI controls during streaming
    */
   disableControls() {
-    if (this.ui.sendButton) this.ui.sendButton.disabled = true;
   }
 
   /**
    * Enable UI controls
    */
   enableControls() {
-    if (this.ui.sendButton) this.ui.sendButton.disabled = false;
   }
 
   /**
