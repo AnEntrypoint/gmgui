@@ -530,16 +530,32 @@
     if (!container) return;
     var emptyMsg = container.querySelector('.voice-empty');
     if (emptyMsg) emptyMsg.remove();
+    var lastChild = container.lastElementChild;
+    if (!isUser && lastChild && lastChild.classList.contains('voice-block') && !lastChild.classList.contains('voice-block-user')) {
+      var contentSpan = lastChild.querySelector('.voice-block-content');
+      if (contentSpan) {
+        contentSpan.textContent += '\n' + stripHtml(text);
+        lastChild._fullText = (lastChild._fullText || contentSpan.textContent) + '\n' + text;
+        scrollVoiceToBottom();
+        return lastChild;
+      }
+    }
     var div = document.createElement('div');
     div.className = 'voice-block' + (isUser ? ' voice-block-user' : '');
-    div.textContent = isUser ? text : stripHtml(text);
-    if (!isUser) {
+    if (isUser) {
+      div.textContent = text;
+    } else {
+      var contentSpan = document.createElement('span');
+      contentSpan.className = 'voice-block-content';
+      contentSpan.textContent = stripHtml(text);
+      div.appendChild(contentSpan);
+      div._fullText = text;
       var rereadBtn = document.createElement('button');
       rereadBtn.className = 'voice-reread-btn';
       rereadBtn.title = 'Re-read aloud';
       rereadBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
       rereadBtn.addEventListener('click', function() {
-        speak(text);
+        speak(div._fullText || contentSpan.textContent);
       });
       div.appendChild(rereadBtn);
     }
