@@ -4,6 +4,15 @@
  * for Claude Code streaming execution display
  */
 
+function pathSplit(p) {
+  return p.split(/[\/\\]/).filter(Boolean);
+}
+
+function pathBasename(p) {
+  const parts = pathSplit(p);
+  return parts.length ? parts.pop() : '';
+}
+
 class StreamingRenderer {
   constructor(config = {}) {
     // Configuration
@@ -523,7 +532,7 @@ class StreamingRenderer {
    */
   renderFilePath(filePath) {
     if (!filePath) return '';
-    const parts = filePath.split('/');
+    const parts = pathSplit(filePath);
     const fileName = parts.pop();
     const dir = parts.join('/');
     return `<div class="tool-param-file"><span class="file-icon">&#128196;</span>${dir ? `<span class="file-dir">${this.escapeHtml(dir)}/</span>` : ''}<span class="file-name">${this.escapeHtml(fileName)}</span></div>`;
@@ -660,18 +669,16 @@ class StreamingRenderer {
   getToolUseTitle(toolName, input) {
     const normalizedName = toolName.replace(/^mcp__[^_]+__/, '');
     if (normalizedName === 'Edit' && input.file_path) {
-      const parts = input.file_path.split('/');
+      const parts = pathSplit(input.file_path);
       const fileName = parts.pop();
       const dir = parts.slice(-2).join('/');
       return dir ? `${dir}/${fileName}` : fileName;
     }
     if (normalizedName === 'Read' && input.file_path) {
-      const parts = input.file_path.split('/');
-      return parts.pop();
+      return pathBasename(input.file_path);
     }
     if (normalizedName === 'Write' && input.file_path) {
-      const parts = input.file_path.split('/');
-      return parts.pop();
+      return pathBasename(input.file_path);
     }
     if (normalizedName === 'Bash' || normalizedName === 'bash') {
       const cmd = input.command || input.commands || '';
@@ -684,7 +691,7 @@ class StreamingRenderer {
       try { return new URL(input.url).hostname; } catch (e) { return input.url.substring(0, 40); }
     }
     if (normalizedName === 'WebSearch' && input.query) return input.query.substring(0, 50);
-    if (input.file_path) return input.file_path.split('/').pop();
+    if (input.file_path) return pathBasename(input.file_path);
     if (input.command) {
       const c = typeof input.command === 'string' ? input.command : JSON.stringify(input.command);
       return c.length > 50 ? c.substring(0, 47) + '...' : c;
@@ -748,11 +755,14 @@ class StreamingRenderer {
     }
 
     const lines = trimmed.split('\n');
-    const allFilePaths = lines.length > 1 && lines.every(l => l.trim() === '' || l.trim().startsWith('/'));
+    const allFilePaths = lines.length > 1 && lines.every(l => {
+      const t = l.trim();
+      return t === '' || t.startsWith('/') || /^[A-Za-z]:[\\\/]/.test(t);
+    });
     if (allFilePaths && lines.filter(l => l.trim()).length > 0) {
       const fileHtml = lines.filter(l => l.trim()).map(l => {
         const p = l.trim();
-        const parts = p.split('/');
+        const parts = pathSplit(p);
         const name = parts.pop();
         const dir = parts.join('/');
         return `<div style="display:flex;align-items:center;gap:0.375rem;padding:0.1875rem 0;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${this.escapeHtml(dir)}/</span><span style="font-weight:600">${this.escapeHtml(name)}</span></div>`;
@@ -785,7 +795,8 @@ class StreamingRenderer {
         const lines = data.split('\n').length;
         return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${this.escapeHtml(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars, ' + lines + ' lines)' : ''}</div>`;
       }
-      if (data.startsWith('/') && !data.includes(' ') && data.includes('.')) return this.renderFilePath(data);
+      const looksLikePath = data.startsWith('/') || /^[A-Za-z]:[\\\/]/.test(data);
+      if (looksLikePath && !data.includes(' ') && data.includes('.')) return this.renderFilePath(data);
       return `<span style="color:var(--color-text-primary)">${this.escapeHtml(data)}</span>`;
     }
 
@@ -986,11 +997,14 @@ class StreamingRenderer {
       return html;
     }
 
-    const allFilePaths = lines.length > 1 && lines.every(l => l.trim() === '' || l.trim().startsWith('/'));
+    const allFilePaths = lines.length > 1 && lines.every(l => {
+      const t = l.trim();
+      return t === '' || t.startsWith('/') || /^[A-Za-z]:[\\\/]/.test(t);
+    });
     if (allFilePaths && lines.filter(l => l.trim()).length > 0) {
       const fileHtml = lines.filter(l => l.trim()).map(l => {
         const p = l.trim();
-        const parts = p.split('/');
+        const parts = pathSplit(p);
         const name = parts.pop();
         const dir = parts.join('/');
         return `<div style="display:flex;align-items:center;gap:0.375rem;padding:0.1875rem 0;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${esc(dir)}/</span><span style="font-weight:600">${esc(name)}</span></div>`;
@@ -1103,15 +1117,15 @@ class StreamingRenderer {
 
   static getToolTitle(toolName, input) {
     const n = toolName.replace(/^mcp__[^_]+__/, '');
-    if (n === 'Edit' && input.file_path) { const p = input.file_path.split('/'); const f = p.pop(); const d = p.slice(-2).join('/'); return d ? d+'/'+f : f; }
-    if (n === 'Read' && input.file_path) return input.file_path.split('/').pop();
-    if (n === 'Write' && input.file_path) return input.file_path.split('/').pop();
+    if (n === 'Edit' && input.file_path) { const p = pathSplit(input.file_path); const f = p.pop(); const d = p.slice(-2).join('/'); return d ? d+'/'+f : f; }
+    if (n === 'Read' && input.file_path) return pathBasename(input.file_path);
+    if (n === 'Write' && input.file_path) return pathBasename(input.file_path);
     if ((n === 'Bash' || n === 'bash') && (input.command || input.commands)) { const c = typeof (input.command||input.commands) === 'string' ? (input.command||input.commands) : JSON.stringify(input.command||input.commands); return c.length > 60 ? c.substring(0,57)+'...' : c; }
     if (n === 'Glob' && input.pattern) return input.pattern;
     if (n === 'Grep' && input.pattern) return input.pattern;
     if (n === 'WebFetch' && input.url) { try { return new URL(input.url).hostname; } catch(e) { return input.url.substring(0,40); } }
     if (n === 'WebSearch' && input.query) return input.query.substring(0,50);
-    if (input.file_path) return input.file_path.split('/').pop();
+    if (input.file_path) return pathBasename(input.file_path);
     if (input.command) { const c = typeof input.command === 'string' ? input.command : JSON.stringify(input.command); return c.length > 50 ? c.substring(0,47)+'...' : c; }
     if (input.query) return input.query.substring(0,50);
     return '';
@@ -1134,8 +1148,9 @@ class StreamingRenderer {
       if (data.length > 500) {
         return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${esc(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars)' : ''}</div>`;
       }
-      if (data.startsWith('/') && !data.includes(' ') && data.includes('.')) {
-        const parts = data.split('/');
+      const looksLikePath = /^[A-Za-z]:[\\\/]/.test(data) || data.startsWith('/');
+      if (looksLikePath && !data.includes(' ') && data.includes('.')) {
+        const parts = pathSplit(data);
         const name = parts.pop();
         const dir = parts.join('/');
         return `<div style="display:flex;align-items:center;gap:0.375rem;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.8rem"><span style="opacity:0.5">&#128196;</span><span style="color:var(--color-text-secondary)">${esc(dir)}/</span><span style="font-weight:600">${esc(name)}</span></div>`;

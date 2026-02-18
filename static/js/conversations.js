@@ -4,6 +4,15 @@
  * Includes folder browser for selecting working directory on new conversation
  */
 
+function pathSplit(p) {
+  return p.split(/[\/\\]/).filter(Boolean);
+}
+
+function pathBasename(p) {
+  const parts = pathSplit(p);
+  return parts.length ? parts.pop() : '';
+}
+
 class ConversationManager {
   constructor() {
     this.conversations = [];
@@ -176,7 +185,8 @@ class ConversationManager {
         li.innerHTML = `<span class="folder-list-item-icon">&#128193;</span><span class="folder-list-item-name">${this.escapeHtml(folder.name)}</span>`;
         li.addEventListener('click', () => {
           const expandedBase = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
-          const newPath = expandedBase + '/' + folder.name;
+          const separator = expandedBase.includes('\\') ? '\\' : '/';
+          const newPath = expandedBase + separator + folder.name;
           this.loadFolders(newPath);
         });
         this.folderBrowser.listEl.appendChild(li);
@@ -189,26 +199,31 @@ class ConversationManager {
 
   getParentPath(dirPath) {
     const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
-    const parts = expanded.split('/').filter(Boolean);
-    if (parts.length <= 1) return '/';
+    const parts = pathSplit(expanded);
+    if (parts.length <= 1) {
+      const separator = expanded.includes('\\') ? '\\' : '/';
+      return separator;
+    }
     parts.pop();
-    return '/' + parts.join('/');
+    const separator = expanded.includes('\\') ? '\\' : '/';
+    return separator + parts.join(separator);
   }
 
   renderBreadcrumb(dirPath) {
     if (!this.folderBrowser.breadcrumbEl) return;
 
     const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
-    const parts = expanded.split('/').filter(Boolean);
+    const parts = pathSplit(expanded);
+    const separator = expanded.includes('\\') ? '\\' : '/';
 
     let html = '';
-    html += '<span class="folder-breadcrumb-segment" data-path="/">/ </span>';
+    html += `<span class="folder-breadcrumb-segment" data-path="${separator}">${separator} </span>`;
 
     let accumulated = '';
     for (let i = 0; i < parts.length; i++) {
-      accumulated += '/' + parts[i];
+      accumulated += separator + parts[i];
       const isLast = i === parts.length - 1;
-      html += '<span class="folder-breadcrumb-separator">/</span>';
+      html += `<span class="folder-breadcrumb-separator">${separator}</span>`;
       html += `<span class="folder-breadcrumb-segment${isLast ? '' : ''}" data-path="${this.escapeHtml(accumulated)}">${this.escapeHtml(parts[i])}</span>`;
     }
 
@@ -227,7 +242,7 @@ class ConversationManager {
     const expanded = currentPath === '~' ? this.folderBrowser.homePath : currentPath;
     this.closeFolderBrowser();
 
-    const dirName = expanded.split('/').filter(Boolean).pop() || 'root';
+    const dirName = pathBasename(expanded) || 'root';
     window.dispatchEvent(new CustomEvent('create-new-conversation', {
       detail: { workingDirectory: expanded, title: dirName }
     }));
@@ -398,7 +413,7 @@ class ConversationManager {
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
     const agent = this.getAgentDisplayName(conv.agentType);
     const modelLabel = conv.model ? ` (${conv.model})` : '';
-    const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
+    const wd = conv.workingDirectory ? pathBasename(conv.workingDirectory) : '';
     const metaParts = [agent + modelLabel, timestamp];
     if (wd) metaParts.push(wd);
 

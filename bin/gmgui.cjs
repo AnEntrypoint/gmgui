@@ -16,18 +16,28 @@ async function gmgui(args = []) {
     const installer = 'npm';
 
     // Ensure dependencies are installed only if node_modules is missing
-    // Skip this for bunx which manages dependencies independently
+    // Skip this for bunx/npx which manage dependencies independently
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
-    const isBunx = process.env.npm_execpath && process.env.npm_execpath.includes('bunx');
+    const execPath = process.env.npm_execpath || '';
+    const isBunx = execPath.includes('bun') || process.env.BUN_INSTALL;
+    const isNpx = execPath.includes('npx') || process.env._.includes('npx');
+    
+    // Also skip if running from temp/cache directory (bunx/npm cache)
+    const isFromCache = projectRoot.includes('node_modules') && 
+                        (projectRoot.includes('.bun') || projectRoot.includes('_npx') || projectRoot.includes('npm-cache'));
 
-    if (!isBunx && !fs.existsSync(nodeModulesPath)) {
+    if (!isBunx && !isNpx && !isFromCache && !fs.existsSync(nodeModulesPath)) {
       console.log(`Installing dependencies with ${installer}...`);
       const installResult = spawnSync(installer, ['install'], {
         cwd: projectRoot,
-        stdio: 'inherit'
+        stdio: 'inherit',
+        shell: true
       });
-      if (installResult.status !== 0) {
+      if (installResult.status !== 0 && installResult.status !== null) {
         throw new Error(`${installer} install failed with code ${installResult.status}`);
+      }
+      if (installResult.error) {
+        throw new Error(`${installer} install failed: ${installResult.error.message}`);
       }
     }
 

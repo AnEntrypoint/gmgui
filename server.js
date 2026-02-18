@@ -1260,7 +1260,8 @@ const server = http.createServer(async (req, res) => {
       delete childEnv.PORT;
       delete childEnv.BASE_URL;
       delete childEnv.HOT_RELOAD;
-      const child = spawn('npm', ['run', script], { cwd: wd, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: childEnv });
+      const isWindows = os.platform() === 'win32';
+      const child = spawn('npm', ['run', script], { cwd: wd, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: childEnv, shell: isWindows });
       activeScripts.set(conversationId, { process: child, script, startTime: Date.now() });
       broadcastSync({ type: 'script_started', conversationId, script, timestamp: Date.now() });
 
@@ -1508,7 +1509,8 @@ const server = http.createServer(async (req, res) => {
 
       const child = spawn(authCmd.cmd, authCmd.args, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: '1' }
+        env: { ...process.env, FORCE_COLOR: '1' },
+        shell: os.platform() === 'win32'
       });
       activeScripts.set(conversationId, { process: child, script: 'auth-' + agentId, startTime: Date.now() });
       broadcastSync({ type: 'script_started', conversationId, script: 'auth-' + agentId, agentId, timestamp: Date.now() });
@@ -1721,12 +1723,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       try {
-        execSync(`git clone https://github.com/${repo}.git`, {
+        const isWindows = os.platform() === 'win32';
+        execSync('git clone https://github.com/' + repo + '.git', {
           cwd: cloneDir,
           encoding: 'utf-8',
           timeout: 120000,
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+          shell: isWindows
         });
         sendJSON(req, res, 200, { ok: true, repo, path: targetPath, name: repoName });
       } catch (err) {
@@ -1756,7 +1760,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/git/check-remote-ownership' && req.method === 'GET') {
       try {
-        const result = execSync('git remote get-url origin 2>/dev/null', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const isWindows = os.platform() === 'win32';
+        const result = execSync('git remote get-url origin' + (isWindows ? '' : ' 2>/dev/null'), { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         const remoteUrl = result.trim();
         const statusResult = execSync('git status --porcelain', { encoding: 'utf-8', cwd: STARTUP_CWD });
         const hasChanges = statusResult.trim().length > 0;
@@ -1770,7 +1775,8 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/git/push' && req.method === 'POST') {
       try {
-        execSync('git add -A && git commit -m "Auto-commit" && git push', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const isWindows = os.platform() === 'win32';
+        execSync('git add -A && git commit -m "Auto-commit" && git push', { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         sendJSON(req, res, 200, { success: true });
       } catch (err) {
         sendJSON(req, res, 500, { error: err.message });
@@ -1784,7 +1790,9 @@ const server = http.createServer(async (req, res) => {
       const expandedPath = decodedPath.startsWith('~') ?
         decodedPath.replace('~', os.homedir()) : decodedPath;
       const normalizedPath = path.normalize(expandedPath);
-      if (!normalizedPath.startsWith('/') || normalizedPath.includes('..')) {
+      const isWindows = os.platform() === 'win32';
+      const isAbsolute = isWindows ? /^[A-Za-z]:[\\\/]/.test(normalizedPath) : normalizedPath.startsWith('/');
+      if (!isAbsolute || normalizedPath.includes('..')) {
         res.writeHead(403); res.end('Forbidden'); return;
       }
       try {
