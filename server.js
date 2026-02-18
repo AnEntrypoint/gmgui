@@ -2069,6 +2069,46 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
         if (parsed.result && allBlocks.length === 0) {
           allBlocks.push({ type: 'text', text: String(parsed.result) });
         }
+      } else if (parsed.type === 'tool_status') {
+        // Handle ACP tool status updates (in_progress, pending)
+        broadcastSync({
+          type: 'streaming_progress',
+          sessionId,
+          conversationId,
+          block: {
+            type: 'tool_status',
+            tool_use_id: parsed.tool_use_id,
+            status: parsed.status
+          },
+          seq: currentSequence,
+          timestamp: Date.now()
+        });
+      } else if (parsed.type === 'usage') {
+        // Handle ACP usage updates
+        broadcastSync({
+          type: 'streaming_progress',
+          sessionId,
+          conversationId,
+          block: {
+            type: 'usage',
+            usage: parsed.usage
+          },
+          seq: currentSequence,
+          timestamp: Date.now()
+        });
+      } else if (parsed.type === 'plan') {
+        // Handle ACP plan updates
+        broadcastSync({
+          type: 'streaming_progress',
+          sessionId,
+          conversationId,
+          block: {
+            type: 'plan',
+            entries: parsed.entries
+          },
+          seq: currentSequence,
+          timestamp: Date.now()
+        });
       }
     };
 

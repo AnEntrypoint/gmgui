@@ -351,6 +351,12 @@ class StreamingRenderer {
           return this.renderBlockSystem(block, context);
         case 'result':
           return this.renderBlockResult(block, context);
+        case 'tool_status':
+          return this.renderBlockToolStatus(block, context);
+        case 'usage':
+          return this.renderBlockUsage(block, context);
+        case 'plan':
+          return this.renderBlockPlan(block, context);
         default:
           return this.renderBlockGeneric(block, context);
       }
@@ -1318,6 +1324,95 @@ class StreamingRenderer {
     }
 
     return details;
+  }
+
+  /**
+   * Render tool status block (ACP in_progress/pending updates)
+   */
+  renderBlockToolStatus(block, context) {
+    const status = block.status || 'pending';
+    const statusIcons = {
+      pending: '<svg viewBox="0 0 20 20" fill="currentColor" style="color:var(--color-text-secondary)"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>',
+      in_progress: '<svg viewBox="0 0 20 20" fill="currentColor" class="animate-spin" style="color:var(--color-info)"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>'
+    };
+    const statusLabels = {
+      pending: 'Pending',
+      in_progress: 'Running...'
+    };
+
+    const div = document.createElement('div');
+    div.className = 'block-tool-status';
+    div.dataset.toolUseId = block.tool_use_id || '';
+    div.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0.5rem;font-size:0.75rem;color:var(--color-text-secondary)">
+        ${statusIcons[status] || statusIcons.pending}
+        <span>${statusLabels[status] || status}</span>
+      </div>
+    `;
+    return div;
+  }
+
+  /**
+   * Render usage block (ACP usage updates)
+   */
+  renderBlockUsage(block, context) {
+    const usage = block.usage || {};
+    const used = usage.used || 0;
+    const size = usage.size || 0;
+    const cost = usage.cost ? '$' + usage.cost.toFixed(4) : '';
+
+    const div = document.createElement('div');
+    div.className = 'block-usage';
+    div.innerHTML = `
+      <div style="display:flex;gap:1rem;padding:0.25rem 0.5rem;font-size:0.7rem;color:var(--color-text-secondary);background:var(--color-bg-secondary);border-radius:0.25rem">
+        ${used ? `<span><strong>Used:</strong> ${used.toLocaleString()}</span>` : ''}
+        ${size ? `<span><strong>Context:</strong> ${size.toLocaleString()}</span>` : ''}
+        ${cost ? `<span><strong>Cost:</strong> ${cost}</span>` : ''}
+      </div>
+    `;
+    return div;
+  }
+
+  /**
+   * Render plan block (ACP plan updates)
+   */
+  renderBlockPlan(block, context) {
+    const entries = block.entries || [];
+    if (entries.length === 0) return null;
+
+    const priorityColors = {
+      high: '#ef4444',
+      medium: '#f59e0b',
+      low: '#6b7280'
+    };
+    const statusIcons = {
+      pending: '○',
+      in_progress: '◐',
+      completed: '●'
+    };
+
+    const div = document.createElement('div');
+    div.className = 'block-plan';
+    div.innerHTML = `
+      <details class="folded-tool folded-tool-info">
+        <summary class="folded-tool-bar">
+          <span class="folded-tool-icon"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/></svg></span>
+          <span class="folded-tool-name">Plan</span>
+          <span class="folded-tool-desc">${entries.length} tasks</span>
+        </summary>
+        <div class="folded-tool-body">
+          <div style="display:flex;flex-direction:column;gap:0.375rem">
+            ${entries.map(e => `
+              <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem">
+                <span style="color:${priorityColors[e.priority] || priorityColors.low}">${statusIcons[e.status] || statusIcons.pending}</span>
+                <span style="${e.status === 'completed' ? 'text-decoration:line-through;opacity:0.6' : ''}">${this.escapeHtml(e.content || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </details>
+    `;
+    return div;
   }
 
   /**
