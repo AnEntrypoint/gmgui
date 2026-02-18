@@ -120,19 +120,16 @@ function flushTTSaccumulator(key, conversationId, sessionId) {
       }
     }
     if (voices.size === 0) return;
-    const sentences = speech.splitSentences(text);
+    const cacheKey = speech.ttsCacheKey(text, vid);
     for (const vid of voices) {
-      for (const sentence of sentences) {
-        const cacheKey = speech.ttsCacheKey(sentence, vid);
-        const cached = speech.ttsCacheGet(cacheKey);
-        if (cached) {
-          pushTTSAudio(cacheKey, cached, conversationId, sessionId, vid);
-          continue;
-        }
-        speech.synthesize(sentence, vid).then(wav => {
-          pushTTSAudio(cacheKey, wav, conversationId, sessionId, vid);
-        }).catch(() => {});
+      const cached = speech.ttsCacheGet(cacheKey);
+      if (cached) {
+        pushTTSAudio(cacheKey, cached, conversationId, sessionId, vid);
+        continue;
       }
+      speech.synthesize(text, vid).then(wav => {
+        pushTTSAudio(cacheKey, wav, conversationId, sessionId, vid);
+      }).catch(() => {});
     }
   }).catch(() => {});
 }

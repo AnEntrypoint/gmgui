@@ -317,9 +317,23 @@
   }
 
   function splitSentences(text) {
+    if (!text) return [text];
     var raw = text.match(/[^.!?]+[.!?]+[\s]?|[^.!?]+$/g);
     if (!raw) return [text];
-    return raw.map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+    var sentences = raw.map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+    var result = [];
+    for (var i = 0; i < sentences.length; i++) {
+      var s = sentences[i];
+      if (result.length > 0) {
+        var prev = result[result.length - 1];
+        if (s.match(/^(\d+[\.\)]|\d+\s)/) || prev.match(/\d+[\.\)]$/)) {
+          result[result.length - 1] = prev + ' ' + s;
+          continue;
+        }
+      }
+      result.push(s);
+    }
+    return result;
   }
 
   var audioChunkQueue = [];
@@ -382,17 +396,9 @@
       return;
     }
 
-    var sentences = splitSentences(text);
+    var sentences = [text];
     var cachedSentences = [];
-    var uncachedText = [];
-    for (var i = 0; i < sentences.length; i++) {
-      var blob = getCachedTTSBlob(sentences[i]);
-      if (blob) {
-        cachedSentences.push({ idx: i, blob: blob });
-      } else {
-        uncachedText.push(sentences[i]);
-      }
-    }
+    var uncachedText = [text];
 
     if (cachedSentences.length === sentences.length) {
       ttsConsecutiveFailures = 0;
