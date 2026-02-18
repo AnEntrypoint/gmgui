@@ -38,9 +38,17 @@ const modelDownloadState = {
 async function ensureModelsDownloaded() {
   const { createRequire: cr } = await import('module');
   const r = cr(import.meta.url);
-  const { checkAllFilesExist, downloadModels } = r('sttttsmodels');
+  const models = r('sttttsmodels');
+  const checkAllFilesExist = models.checkAllFilesExist;
+  const downloadModels = models.downloadModels;
   
-  if (checkAllFilesExist()) {
+  if (checkAllFilesExist && checkAllFilesExist()) {
+    modelDownloadState.complete = true;
+    return true;
+  }
+  
+  if (!downloadModels) {
+    console.log('[MODELS] Download function not available, skipping');
     modelDownloadState.complete = true;
     return true;
   }
