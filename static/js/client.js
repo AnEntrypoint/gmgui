@@ -611,6 +611,8 @@ class AgentGUIClient {
                   if (chunk.block.type === 'tool_result') {
                     const lastInFrag = bFrag.lastElementChild;
                     if (lastInFrag?.classList?.contains('block-tool-use')) {
+                      lastInFrag.classList.remove('has-success', 'has-error');
+                      lastInFrag.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
                       const parentIsOpen = lastInFrag.hasAttribute('open');
                       const contextWithParent = { ...chunk, parentIsOpen };
                       const el = this.renderer.renderBlock(chunk.block, contextWithParent, bFrag);
@@ -1141,7 +1143,7 @@ class AgentGUIClient {
       let html = '<div class="message-blocks">';
       if (content.blocks && Array.isArray(content.blocks)) {
         let pendingToolUseClose = false;
-        content.blocks.forEach(block => {
+        content.blocks.forEach((block, blockIdx, blocks) => {
           if (block.type !== 'tool_result' && pendingToolUseClose) {
             html += '</details>';
             pendingToolUseClose = false;
@@ -1186,7 +1188,9 @@ class AgentGUIClient {
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
             const typeClass = hasRenderer && this.renderer ? this.renderer._getBlockTypeClass('tool_use') : 'block-type-tool_use';
-            html += `<details class="block-tool-use folded-tool ${typeClass}"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            const nextBlock = blocks[blockIdx + 1];
+            const resultClass = nextBlock?.type === 'tool_result' ? (nextBlock.is_error ? 'has-error' : 'has-success') : '';
+            html += `<details class="block-tool-use folded-tool ${typeClass} ${resultClass}"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
             pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
@@ -1751,6 +1755,8 @@ class AgentGUIClient {
       const lastEl = blocksEl.lastElementChild;
       const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
       if (toolUseEl) {
+        toolUseEl.classList.remove('has-success', 'has-error');
+        toolUseEl.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
         const parentIsOpen = toolUseEl.hasAttribute('open');
         const contextWithParent = { ...chunk, parentIsOpen };
         const element = this.renderer.renderBlock(chunk.block, contextWithParent, blocksEl);
@@ -1811,6 +1817,8 @@ class AgentGUIClient {
           const lastEl = blocksEl.lastElementChild;
           const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
           if (toolUseEl) {
+            toolUseEl.classList.remove('has-success', 'has-error');
+            toolUseEl.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
             const parentIsOpen = toolUseEl.hasAttribute('open');
             const contextWithParent = { ...chunk, parentIsOpen };
             const el = this.renderer.renderBlock(chunk.block, contextWithParent, blocksEl);
@@ -2390,6 +2398,8 @@ class AgentGUIClient {
               if (chunk.block.type === 'tool_result') {
                 const lastInFrag = blockFrag.lastElementChild;
                 if (lastInFrag?.classList?.contains('block-tool-use')) {
+                  lastInFrag.classList.remove('has-success', 'has-error');
+                  lastInFrag.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
                   const parentIsOpen = lastInFrag.hasAttribute('open');
                   const contextWithParent = { ...chunk, parentIsOpen };
                   const element = this.renderer.renderBlock(chunk.block, contextWithParent, blockFrag);
