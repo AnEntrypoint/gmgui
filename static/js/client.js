@@ -496,6 +496,12 @@ class AgentGUIClient {
         case 'model_download_progress':
           this._handleModelDownloadProgress(data.progress || data);
           break;
+        case 'stt_progress':
+          this._handleSTTProgress(data);
+          break;
+        case 'tts_setup_progress':
+          this._handleTTSSetupProgress(data);
+          break;
         default:
           break;
       }
@@ -2097,6 +2103,29 @@ class AgentGUIClient {
 
         window._voiceProgressDialog.update(progress.percentComplete || 0, displayText);
       }
+    }
+  }
+
+  _handleSTTProgress(data) {
+    const el = document.getElementById('voiceTranscript');
+    if (!el) return;
+
+    if (data.status === 'transcribing') {
+      el.textContent = 'Transcribing...';
+      el.classList.add('transcribing');
+    } else if (data.status === 'completed') {
+      el.textContent = data.transcript || '';
+      el.setAttribute('data-final', data.transcript || '');
+      el.classList.remove('transcribing');
+    } else if (data.status === 'failed') {
+      el.textContent = 'Transcription failed: ' + (data.error || 'unknown error');
+      el.classList.remove('transcribing');
+    }
+  }
+
+  _handleTTSSetupProgress(data) {
+    if (data.step && data.status) {
+      console.log('[TTS Setup]', data.step, ':', data.status, data.message || '');
     }
   }
 

@@ -2418,11 +2418,15 @@ const server = http.createServer(async (req, res) => {
                     sendJSON(req, res, 400, { error: 'No audio data' });
           return;
         }
+        broadcastSync({ type: 'stt_progress', status: 'transcribing', percentComplete: 0 });
         const { transcribe } = await getSpeech();
         const text = await transcribe(audioBuffer);
-                sendJSON(req, res, 200, { text: (text || '').trim() });
+        const finalText = (text || '').trim();
+        broadcastSync({ type: 'stt_progress', status: 'completed', percentComplete: 100, transcript: finalText });
+                sendJSON(req, res, 200, { text: finalText });
       } catch (err) {
         debugLog('[STT] Error: ' + err.message);
+        broadcastSync({ type: 'stt_progress', status: 'failed', percentComplete: 0, error: err.message });
         if (!res.headersSent) sendJSON(req, res, 500, { error: err.message || 'STT failed' });
       }
       return;
@@ -3303,7 +3307,7 @@ const BROADCAST_TYPES = new Set([
   'conversations_updated', 'conversation_deleted', 'queue_status', 'queue_updated',
   'rate_limit_hit', 'rate_limit_clear',
   'script_started', 'script_stopped', 'script_output',
-  'model_download_progress'
+  'model_download_progress', 'stt_progress', 'tts_setup_progress', 'voice_list'
 ]);
 
 const wsBatchQueues = new Map();
