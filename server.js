@@ -3604,8 +3604,24 @@ function onServerReady() {
   ensureModelsDownloaded().then(ok => {
     if (ok) console.log('[MODELS] Speech models ready');
     else console.log('[MODELS] Speech model download failed');
+    try {
+      const { getVoices } = require('./lib/speech.js');
+      const voices = getVoices();
+      broadcastSync({ type: 'voice_list', voices });
+    } catch (err) {
+      debugLog('[VOICE] Failed to broadcast voices: ' + err.message);
+      broadcastSync({ type: 'voice_list', voices: [] });
+    }
   }).catch(err => {
     console.error('[MODELS] Download error:', err.message);
+    try {
+      const { getVoices } = require('./lib/speech.js');
+      const voices = getVoices();
+      broadcastSync({ type: 'voice_list', voices });
+    } catch (err2) {
+      debugLog('[VOICE] Failed to broadcast voices: ' + err2.message);
+      broadcastSync({ type: 'voice_list', voices: [] });
+    }
   });
 
   getSpeech().then(s => s.preloadTTS()).catch(e => debugLog('[TTS] Preload failed: ' + e.message));

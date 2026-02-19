@@ -139,6 +139,13 @@ class WebSocketManager {
           continue;
         }
 
+        if (data.type === 'voice_list') {
+          this.cachedVoiceList = data.voices || [];
+          for (const listener of this.voiceListListeners) {
+            try { listener(this.cachedVoiceList); } catch (_) {}
+          }
+        }
+
         if (data.seq !== undefined && data.sessionId) {
           this.lastSeqBySession[data.sessionId] = Math.max(
             this.lastSeqBySession[data.sessionId] || -1, data.seq
@@ -564,6 +571,21 @@ class WebSocketManager {
     }
     this.disconnect();
     this.listeners = {};
+  }
+  subscribeToVoiceList(callback) {
+    if (!this.voiceListListeners.includes(callback)) {
+      this.voiceListListeners.push(callback);
+    }
+    if (this.cachedVoiceList !== null) {
+      callback(this.cachedVoiceList);
+    }
+  }
+
+  unsubscribeFromVoiceList(callback) {
+    const idx = this.voiceListListeners.indexOf(callback);
+    if (idx > -1) {
+      this.voiceListListeners.splice(idx, 1);
+    }
   }
 }
 

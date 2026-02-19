@@ -35,6 +35,43 @@
     if (!selector) return;
     var saved = localStorage.getItem('voice-selected-id');
     if (saved) selectedVoiceId = saved;
+    if (window.wsManager) {
+      window.wsManager.subscribeToVoiceList(function(voices) {
+        if (!Array.isArray(voices)) return;
+        selector.innerHTML = '';
+        var builtIn = voices.filter(function(v) { return !v.isCustom; });
+        var custom = voices.filter(function(v) { return v.isCustom; });
+        if (builtIn.length) {
+          var grp1 = document.createElement('optgroup');
+          grp1.label = 'Built-in Voices';
+          builtIn.forEach(function(voice) {
+            var opt = document.createElement('option');
+            opt.value = voice.id;
+            var parts = [];
+            if (voice.gender) parts.push(voice.gender);
+            if (voice.accent) parts.push(voice.accent);
+            opt.textContent = voice.name + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+            grp1.appendChild(opt);
+          });
+          selector.appendChild(grp1);
+        }
+        if (custom.length) {
+          var grp2 = document.createElement('optgroup');
+          grp2.label = 'Custom Voices';
+          custom.forEach(function(voice) {
+            var opt = document.createElement('option');
+            opt.value = voice.id;
+            opt.textContent = voice.name;
+            grp2.appendChild(opt);
+          });
+          selector.appendChild(grp2);
+        }
+        if (saved && selector.querySelector('option[value="' + saved + '"]')) {
+          selector.value = saved;
+        }
+      });
+      return;
+    }
     fetch(BASE + '/api/voices')
       .then(function(res) { return res.json(); })
       .then(function(data) {
