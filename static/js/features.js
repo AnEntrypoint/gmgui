@@ -198,8 +198,8 @@
   }
 
   function isVoiceReady() {
-    if (window.agentGUIClient && window.agentGUIClient._modelDownloadInProgress === false) {
-      return window.agentGUIClient._modelDownloadProgress?.done === true || 
+    if (window.agentGUIClient && !window.agentGUIClient._modelDownloadInProgress) {
+      return window.agentGUIClient._modelDownloadProgress?.done === true ||
              window.agentGUIClient._modelDownloadProgress?.complete === true;
     }
     return false;

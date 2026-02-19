@@ -73,7 +73,7 @@ async function ensureModelsDownloaded() {
     config.modelsDir = path.dirname(sttDir);
     config.ttsModelsDir = ttsDir;
     config.sttModelsDir = sttDir;
-    config.whisperBaseUrl = 'https://huggingface.co/onnx-community/whisper-base/resolve/main/';
+    config.whisperBaseUrl = 'https://huggingface.co/';
     config.ttsBaseUrl = 'https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/';
 
     const totalFiles = 16;
@@ -82,7 +82,7 @@ async function ensureModelsDownloaded() {
     if (!sttOk) {
       console.log('[MODELS] Downloading STT model...');
       broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', completedFiles, totalFiles });
-      await webtalkWhisper.ensureModel('whisper-base', config);
+      await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
       completedFiles += 10;
     }
 
