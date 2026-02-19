@@ -2044,8 +2044,11 @@ class AgentGUIClient {
         window._voiceProgressDialog.close();
         window._voiceProgressDialog = null;
       }
+      const errorMsg = 'Failed to download voice models: ' + progress.error;
       if (window.UIDialog) {
-        window.UIDialog.alert('Failed to download voice models: ' + progress.error, 'Download Error');
+        window.UIDialog.alert(errorMsg, 'Download Error');
+      } else {
+        alert(errorMsg);
       }
       return;
     }

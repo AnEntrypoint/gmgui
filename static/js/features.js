@@ -208,10 +208,22 @@
   function triggerVoiceModelDownload() {
     var client = window.agentGUIClient;
     if (client && client._modelDownloadInProgress) {
+      if (window._voiceProgressDialog) {
+        return;
+      }
       showToast('Voice models downloading... please wait', 'info');
       return;
     }
-    showToast('Starting voice model download...', 'info');
+
+    if (!window._voiceProgressDialog) {
+      window._voiceProgressDialog = new ProgressDialog({
+        title: 'Voice Models',
+        message: 'Preparing to download voice models...',
+        percentage: 0,
+        cancellable: false
+      });
+    }
+
     fetch((window.__BASE_URL || '') + '/api/speech-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -219,12 +231,22 @@
     }).then(function(res) { return res.json(); })
     .then(function(data) {
       if (data.ok) {
-        showToast('Downloading voice models... will auto-open when ready', 'info');
         window._voiceTabPendingOpen = true;
+        if (window._voiceProgressDialog) {
+          window._voiceProgressDialog.update(0, 'Starting download...');
+        }
       } else {
+        if (window._voiceProgressDialog) {
+          window._voiceProgressDialog.close();
+          window._voiceProgressDialog = null;
+        }
         showToast('Failed to start download: ' + (data.error || 'unknown'), 'error');
       }
     }).catch(function(err) {
+      if (window._voiceProgressDialog) {
+        window._voiceProgressDialog.close();
+        window._voiceProgressDialog = null;
+      }
       showToast('Download request failed: ' + err.message, 'error');
     });
   }
