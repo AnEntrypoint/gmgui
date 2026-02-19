@@ -1865,6 +1865,9 @@ class AgentGUIClient {
       } else if (status.modelsDownloading) {
         this._modelDownloadProgress = status.modelsProgress || { downloading: true };
         this._modelDownloadInProgress = true;
+        setTimeout(function() {
+          if (window.__showVoiceDownloadProgress) window.__showVoiceDownloadProgress();
+        }, 0);
       } else {
         this._modelDownloadProgress = { done: false };
         this._modelDownloadInProgress = false;
@@ -2059,7 +2062,11 @@ class AgentGUIClient {
     if (progress.started || progress.downloading) {
       this._modelDownloadInProgress = true;
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
-      
+
+      if (!window._voiceProgressDialog && window.__showVoiceDownloadProgress) {
+        window.__showVoiceDownloadProgress();
+      }
+
       if (window._voiceProgressDialog && progress.totalBytes > 0) {
         var pct = Math.round((progress.totalDownloaded / progress.totalBytes) * 100);
         var mb = Math.round(progress.totalBytes / 1024 / 1024);

@@ -335,6 +335,7 @@
   }
 
   window.__checkVoiceReady = isVoiceReady;
+  window.__showVoiceDownloadProgress = showVoiceDownloadProgress;
 
   function switchView(view) {
     currentView = view;
