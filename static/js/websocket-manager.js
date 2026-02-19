@@ -24,6 +24,8 @@ class WebSocketManager {
     this.connectionState = 'disconnected';
     this.activeSubscriptions = new Set();
     this.connectionEstablishedAt = 0;
+    this.cachedVoiceList = null;
+    this.voiceListListeners = [];
 
     this.latency = {
       samples: [],
