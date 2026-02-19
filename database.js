@@ -1294,7 +1294,8 @@ export const queries = {
       ON CONFLICT(cid) DO UPDATE SET last_accessed_at = ?, success_count = success_count + 1
     `);
     stmt.run(id, cid, modelName, modelType, modelHash, gatewayUrl, now, now, now);
-    return id;
+    const record = this.getIpfsCid(cid);
+    return record ? record.id : id;
   },
 
   getIpfsCid(cid) {

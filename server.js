@@ -11,6 +11,7 @@ import { createRequire } from 'module';
 import { OAuth2Client } from 'google-auth-library';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
+import IPFSDownloader from './lib/ipfs-downloader.js';
 
 const ttsTextAccumulators = new Map();
 
