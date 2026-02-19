@@ -413,30 +413,13 @@ class StreamingRenderer {
     div.className = 'block-text';
     if (isHtml) div.classList.add('html-content');
     div.innerHTML = html;
-    const colorIndex = this._getBlockColorIndex('text');
-    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    div.classList.add(this._getBlockTypeClass('text'));
     return div;
   }
 
-  _getBlockColorIndex(blockType) {
-    const typeColors = {
-      'text': 0,
-      'tool_use': 1,
-      'tool_result': 2,
-      'code': 3,
-      'thinking': 4,
-      'bash': 5,
-      'system': 6,
-      'result': 7,
-      'error': 8,
-      'image': 9,
-      'plan': 10,
-      'usage': 11,
-      'premature': 8,
-      'tool_status': 7,
-      'generic': 0
-    };
-    return typeColors[blockType] !== undefined ? typeColors[blockType] : 0;
+  _getBlockTypeClass(blockType) {
+    const validTypes = ['text','tool_use','tool_result','code','thinking','bash','system','result','error','image','plan','usage','premature','tool_status','generic'];
+    return validTypes.includes(blockType) ? `block-type-${blockType}` : 'block-type-generic';
   }
 
   containsHtmlTags(text) {
@@ -484,25 +467,22 @@ class StreamingRenderer {
   renderBlockCode(block, context) {
     const div = document.createElement('div');
     div.className = 'block-code';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('code')})`;
+    div.classList.add(this._getBlockTypeClass('code'));
 
     const code = block.code || '';
     const language = (block.language || 'plaintext').toLowerCase();
     const lineCount = code.split('\n').length;
 
-    const details = document.createElement('details');
-    details.className = 'collapsible-code';
-
-    const summary = document.createElement('summary');
-    summary.className = 'collapsible-code-summary';
-    summary.innerHTML = `
+    const header = document.createElement('div');
+    header.className = 'code-block-header';
+    header.innerHTML = `
       <span class="collapsible-code-label">${this.escapeHtml(language)} - ${lineCount} line${lineCount !== 1 ? 's' : ''}</span>
       <button class="copy-code-btn" title="Copy code">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
       </button>
     `;
 
-    const copyBtn = summary.querySelector('.copy-code-btn');
+    const copyBtn = header.querySelector('.copy-code-btn');
     copyBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -517,9 +497,8 @@ class StreamingRenderer {
     const codeContainer = document.createElement('div');
     codeContainer.innerHTML = `<pre style="${preStyle}"><code class="lazy-hl">${this.escapeHtml(code)}</code></pre>`;
 
-    details.appendChild(summary);
-    details.appendChild(codeContainer);
-    div.appendChild(details);
+    div.appendChild(header);
+    div.appendChild(codeContainer);
 
     return div;
   }
@@ -530,8 +509,7 @@ class StreamingRenderer {
   renderBlockThinking(block, context) {
     const div = document.createElement('div');
     div.className = 'block-thinking';
-    const colorIndex = this._getBlockColorIndex('thinking');
-    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    div.classList.add(this._getBlockTypeClass('thinking'));
 
     const thinking = block.thinking || '';
     div.innerHTML = `
@@ -662,7 +640,7 @@ class StreamingRenderer {
           const truncated = lineCount > 50;
           const displayCode = truncated ? codeLines.slice(0, 50).join('\n') : input.code;
           const lang = input.runtime || 'javascript';
-          html += `<div style="margin-top:0.5rem"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem"><span style="font-size:0.7rem;font-weight:600;color:#0891b2;text-transform:uppercase">${this.escapeHtml(lang)}</span><span style="font-size:0.7rem;color:var(--color-text-secondary)">${lineCount} lines</span></div>${StreamingRenderer.renderCodeWithHighlight(displayCode, this.escapeHtml.bind(this))}${truncated ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${lineCount - 50} more lines</div>` : ''}</div>`;
+          html += `<div style="margin-top:0.5rem"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem"><span style="font-size:0.7rem;font-weight:600;color:#0891b2;text-transform:uppercase">${this.escapeHtml(lang)}</span><span style="font-size:0.7rem;color:var(--color-text-secondary)">${lineCount} lines</span></div>${StreamingRenderer.renderCodeWithHighlight(displayCode, this.escapeHtml.bind(this), true)}${truncated ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${lineCount - 50} more lines</div>` : ''}</div>`;
         }
 
         // Render commands (bash commands)
@@ -691,7 +669,7 @@ class StreamingRenderer {
     const displayContent = truncated ? content.substring(0, maxLen) : content;
     const lineCount = content.split('\n').length;
     const codeBody = StreamingRenderer.detectCodeContent(displayContent)
-      ? StreamingRenderer.renderCodeWithHighlight(displayContent, this.escapeHtml.bind(this))
+      ? StreamingRenderer.renderCodeWithHighlight(displayContent, this.escapeHtml.bind(this), true)
       : `<div class="preview-body">${this.escapeHtml(displayContent)}</div>`;
     return `<div class="tool-param-content-preview" style="margin-top:0.5rem"><div class="preview-header"><span>${this.escapeHtml(label)}</span><span style="font-weight:400">${lineCount} lines${truncated ? ' (truncated)' : ''}</span></div>${codeBody}${truncated ? '<div class="preview-truncated">... ' + (content.length - maxLen) + ' more characters</div>' : ''}</div>`;
   }
@@ -758,8 +736,7 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
     if (block.id) details.dataset.toolUseId = block.id;
-    const colorIndex = this._getBlockColorIndex('tool_use');
-    details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    details.classList.add(this._getBlockTypeClass('tool_use'));
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
     const displayName = this.getToolUseDisplayName(toolName);
@@ -831,7 +808,7 @@ class StreamingRenderer {
       if (data.length > 200 && StreamingRenderer.detectCodeContent(data)) {
         const displayData = data.length > 1000 ? data.substring(0, 1000) : data;
         const suffix = data.length > 1000 ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${data.length - 1000} more characters</div>` : '';
-        return `<div style="max-height:200px;overflow-y:auto">${StreamingRenderer.renderCodeWithHighlight(displayData, this.escapeHtml.bind(this))}${suffix}</div>`;
+        return `<div style="max-height:200px;overflow-y:auto">${StreamingRenderer.renderCodeWithHighlight(displayData, this.escapeHtml.bind(this), true)}${suffix}</div>`;
       }
       if (data.length > 500) {
         const lines = data.split('\n').length;
@@ -1185,7 +1162,7 @@ class StreamingRenderer {
       if (data.length > 200 && StreamingRenderer.detectCodeContent(data)) {
         const displayData = data.length > 1000 ? data.substring(0, 1000) : data;
         const suffix = data.length > 1000 ? `<div style="font-size:0.7rem;color:var(--color-text-secondary);text-align:center;padding:0.25rem">... ${data.length - 1000} more characters</div>` : '';
-        return `<div style="max-height:200px;overflow-y:auto">${StreamingRenderer.renderCodeWithHighlight(displayData, esc)}${suffix}</div>`;
+        return `<div style="max-height:200px;overflow-y:auto">${StreamingRenderer.renderCodeWithHighlight(displayData, esc, true)}${suffix}</div>`;
       }
       if (data.length > 500) {
         return `<div style="font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow-y:auto;background:var(--color-bg-code);color:#d1d5db;padding:0.5rem;border-radius:0.375rem;line-height:1.5">${esc(data.substring(0, 1000))}${data.length > 1000 ? '\n... (' + (data.length - 1000) + ' more chars)' : ''}</div>`;
@@ -1228,22 +1205,19 @@ class StreamingRenderer {
     const parentIsOpen = context.parentIsOpen !== undefined ? context.parentIsOpen : true;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'tool-result-inline' + (isError ? ' tool-result-error' : '');
+    wrapper.className = 'tool-result-inline' + (isError ? ' tool-result-error' : ' tool-result-success');
     wrapper.dataset.eventType = 'tool_result';
     if (block.tool_use_id) wrapper.dataset.toolUseId = block.tool_use_id;
-    const colorIndex = this._getBlockColorIndex('tool_result');
-    wrapper.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    wrapper.classList.add(this._getBlockTypeClass('tool_result'));
 
     const header = document.createElement('div');
     header.className = 'tool-result-status';
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-    const preview = contentStr.length > 80 ? contentStr.substring(0, 77).replace(/\n/g, ' ') + '...' : contentStr.replace(/\n/g, ' ');
     header.innerHTML = `
       <span class="folded-tool-icon">${iconSvg}</span>
       <span class="folded-tool-name">${isError ? 'Error' : 'Success'}</span>
-      <span class="folded-tool-desc">${this.escapeHtml(preview)}</span>
     `;
     wrapper.appendChild(header);
 
@@ -1265,7 +1239,7 @@ class StreamingRenderer {
   renderBlockImage(block, context) {
     const div = document.createElement('div');
     div.className = 'block-image';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('image')})`;
+    div.classList.add(this._getBlockTypeClass('image'));
 
     let src = block.image || block.src || '';
     const alt = block.alt || 'Image';
@@ -1289,8 +1263,7 @@ class StreamingRenderer {
   renderBlockBash(block, context) {
     const div = document.createElement('div');
     div.className = 'block-bash';
-    const colorIndex = this._getBlockColorIndex('bash');
-    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    div.classList.add(this._getBlockTypeClass('bash'));
 
     const command = block.command || block.code || '';
     const output = block.output || '';
@@ -1301,7 +1274,7 @@ class StreamingRenderer {
     // For output, check if it looks like code and use syntax highlighting
     if (output) {
       if (StreamingRenderer.detectCodeContent(output)) {
-        html += StreamingRenderer.renderCodeWithHighlight(output, this.escapeHtml.bind(this));
+        html += StreamingRenderer.renderCodeWithHighlight(output, this.escapeHtml.bind(this), true);
       } else {
         html += `<pre class="bash-output"><code>${this.escapeHtml(output)}</code></pre>`;
       }
@@ -1318,7 +1291,7 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = 'folded-tool folded-tool-info';
     details.dataset.eventType = 'system';
-    details.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('system')})`;
+    details.classList.add(this._getBlockTypeClass('system'));
     const desc = block.model ? this.escapeHtml(block.model) : 'Session';
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
@@ -1355,8 +1328,7 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
     details.dataset.eventType = 'result';
-    const colorIndex = this._getBlockColorIndex(isError ? 'error' : 'result');
-    details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    details.classList.add(this._getBlockTypeClass(isError ? 'error' : 'result'));
 
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
@@ -1411,7 +1383,7 @@ class StreamingRenderer {
     const div = document.createElement('div');
     div.className = 'block-tool-status';
     div.dataset.toolUseId = block.tool_use_id || '';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('tool_use')})`;
+    div.classList.add(this._getBlockTypeClass('tool_status'));
     div.innerHTML = `
       <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0.5rem;font-size:0.75rem;color:var(--color-text-secondary)">
         ${statusIcons[status] || statusIcons.pending}
@@ -1432,7 +1404,7 @@ class StreamingRenderer {
 
     const div = document.createElement('div');
     div.className = 'block-usage';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('usage')})`;
+    div.classList.add(this._getBlockTypeClass('usage'));
     div.innerHTML = `
       <div style="display:flex;gap:1rem;padding:0.25rem 0.5rem;font-size:0.7rem;color:var(--color-text-secondary);background:var(--color-bg-secondary);border-radius:0.25rem">
         ${used ? `<span><strong>Used:</strong> ${used.toLocaleString()}</span>` : ''}
@@ -1463,7 +1435,7 @@ class StreamingRenderer {
 
     const div = document.createElement('div');
     div.className = 'block-plan';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('plan')})`;
+    div.classList.add(this._getBlockTypeClass('plan'));
     div.innerHTML = `
       <details class="folded-tool folded-tool-info">
         <summary class="folded-tool-bar">
@@ -1489,7 +1461,7 @@ class StreamingRenderer {
   renderBlockPremature(block, context) {
     const div = document.createElement('div');
     div.className = 'folded-tool folded-tool-error block-premature';
-    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('premature')})`;
+    div.classList.add(this._getBlockTypeClass('premature'));
     const code = block.exitCode != null ? ` (exit ${block.exitCode})` : '';
     const stderrDisplay = block.stderrText ? `<div class="folded-tool-content" style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.05);border-radius:4px;font-family:monospace;font-size:0.9em;white-space:pre-wrap;">${this.escapeHtml(block.stderrText)}</div>` : '';
     div.innerHTML = `
@@ -1509,8 +1481,7 @@ class StreamingRenderer {
   renderBlockGeneric(block, context) {
     const div = document.createElement('div');
     div.className = 'block-generic';
-    const colorIndex = this._getBlockColorIndex('generic');
-    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    div.classList.add(this._getBlockTypeClass('generic'));
 
     // Show key-value pairs instead of raw JSON
     const fieldsHtml = Object.entries(block)
@@ -1542,8 +1513,7 @@ class StreamingRenderer {
   renderBlockError(block, error) {
     const div = document.createElement('div');
     div.className = 'block-error';
-    const colorIndex = this._getBlockColorIndex('error');
-    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
+    div.classList.add(this._getBlockTypeClass('error'));
 
     div.innerHTML = `
       <div style="display:flex;align-items:flex-start;gap:0.625rem">
@@ -1596,7 +1566,7 @@ class StreamingRenderer {
 
     // Fallback: simple progress indicator
     const div = document.createElement('div');
-    div.className = 'event-streaming-progress mb-2 p-2 border-l-4 border-blue-500';
+    div.className = 'event-streaming-progress mb-2 p-2';
     div.dataset.eventId = event.id || '';
     div.dataset.eventType = 'streaming_progress';
 
@@ -1710,7 +1680,7 @@ class StreamingRenderer {
    */
   renderGitStatus(event) {
     const div = document.createElement('div');
-    div.className = 'event-git-status card mb-3 p-4 border-l-4 border-orange-500';
+    div.className = 'event-git-status card mb-3 p-4';
     div.dataset.eventId = event.id || '';
     div.dataset.eventType = 'git_status';
 
@@ -1935,7 +1905,7 @@ class StreamingRenderer {
    */
   renderThinking(event) {
     const div = document.createElement('div');
-    div.className = 'event-thinking mb-3 p-4 bg-purple-50 dark:bg-purple-900 rounded border-l-4 border-purple-500';
+    div.className = 'event-thinking mb-3 p-4 bg-purple-50 dark:bg-purple-900 rounded';
     div.dataset.eventId = event.id || '';
     div.dataset.eventType = 'thinking_block';
 

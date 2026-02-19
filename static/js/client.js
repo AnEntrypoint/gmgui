@@ -1185,8 +1185,8 @@ class AgentGUIClient {
             const dName = hasRenderer ? StreamingRenderer.getToolDisplayName(tn) : tn;
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
-            const colorIdx = hasRenderer && this.renderer ? this.renderer._getBlockColorIndex('tool_use') : 1;
-            html += `<details class="block-tool-use folded-tool" style="border-left:3px solid var(--block-color-${colorIdx})"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            const typeClass = hasRenderer && this.renderer ? this.renderer._getBlockTypeClass('tool_use') : 'block-type-tool_use';
+            html += `<details class="block-tool-use folded-tool ${typeClass}"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
             pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
@@ -1195,8 +1195,8 @@ class AgentGUIClient {
             const resultIcon = block.is_error
               ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
               : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-            const colorIdx = hasRenderer && this.renderer ? this.renderer._getBlockColorIndex('tool_result') : 2;
-            const resultHtml = `<div class="tool-result-inline${block.is_error ? ' tool-result-error' : ''}" style="border-left:3px solid var(--block-color-${colorIdx})"><div class="tool-result-status"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></div><div class="folded-tool-body">${smartHtml}</div></div>`;
+            const resultTypeClass = hasRenderer && this.renderer ? this.renderer._getBlockTypeClass('tool_result') : 'block-type-tool_result';
+            const resultHtml = `<div class="tool-result-inline${block.is_error ? ' tool-result-error' : ' tool-result-success'} ${resultTypeClass}"><div class="tool-result-status"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span></div><div class="folded-tool-body">${smartHtml}</div></div>`;
             if (pendingToolUseClose) {
               html += resultHtml + '</details>';
               pendingToolUseClose = false;

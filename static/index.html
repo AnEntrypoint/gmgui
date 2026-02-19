@@ -38,18 +38,6 @@
       --sidebar-width: 300px;
       --header-height: 52px;
       --msg-max-width: 100%;
-      --block-color-0: #8b5cf6;
-      --block-color-1: #ec4899;
-      --block-color-2: #14b8a6;
-      --block-color-3: #f97316;
-      --block-color-4: #06b6d4;
-      --block-color-5: #84cc16;
-      --block-color-6: #a855f7;
-      --block-color-7: #f43f5e;
-      --block-color-8: #22c55e;
-      --block-color-9: #eab308;
-      --block-color-10: #0ea5e9;
-      --block-color-11: #d946ef;
     }
 
     html.dark {
@@ -58,18 +46,6 @@
       --color-text-primary: #f9fafb;
       --color-text-secondary: #d1d5db;
       --color-border: #374151;
-      --block-color-0: #a78bfa;
-      --block-color-1: #f472b6;
-      --block-color-2: #2dd4bf;
-      --block-color-3: #fb923c;
-      --block-color-4: #22d3ee;
-      --block-color-5: #a3e635;
-      --block-color-6: #c084fc;
-      --block-color-7: #fb7185;
-      --block-color-8: #4ade80;
-      --block-color-9: #facc15;
-      --block-color-10: #38bdf8;
-      --block-color-11: #e879f9;
     }
 
     html, body {
@@ -1873,6 +1849,163 @@
     html.dark .folded-tool-info .folded-tool-desc { color: #a5b4fc; }
     .folded-tool-info > .folded-tool-body { border-top-color: #c7d2fe; }
     html.dark .folded-tool-info > .folded-tool-body { border-top-color: #3730a3; }
+
+    /* --- Per-block-type unique colored backgrounds --- */
+    .block-type-text { background: #f8fafc; }
+    html.dark .block-type-text { background: #1e293b; }
+
+    .block-type-tool_use { background: #ecfeff; }
+    html.dark .block-type-tool_use { background: #0c1a24; }
+    .block-type-tool_use.folded-tool > .folded-tool-bar { background: #cffafe; }
+    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar { background: #0e2a3a; }
+    .block-type-tool_use.folded-tool > .folded-tool-bar:hover { background: #a5f3fc; }
+    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar:hover { background: #164e63; }
+    .block-type-tool_use.folded-tool > .folded-tool-bar::before { color: #0891b2; }
+    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar::before { color: #22d3ee; }
+    .block-type-tool_use .folded-tool-icon { color: #0891b2; }
+    html.dark .block-type-tool_use .folded-tool-icon { color: #22d3ee; }
+    .block-type-tool_use .folded-tool-name { color: #155e75; }
+    html.dark .block-type-tool_use .folded-tool-name { color: #67e8f9; }
+    .block-type-tool_use .folded-tool-desc { color: #0e7490; }
+    html.dark .block-type-tool_use .folded-tool-desc { color: #22d3ee; }
+    .block-type-tool_use > .folded-tool-body { border-top-color: #a5f3fc; }
+    html.dark .block-type-tool_use > .folded-tool-body { border-top-color: #164e63; }
+
+    .block-type-tool_result { background: #f0fdf4; }
+    html.dark .block-type-tool_result { background: #0a1f0f; }
+    .block-type-tool_result .tool-result-status { background: #dcfce7; }
+    html.dark .block-type-tool_result .tool-result-status { background: #0f2b1a; }
+    .block-type-tool_result .folded-tool-icon { color: #16a34a; }
+    html.dark .block-type-tool_result .folded-tool-icon { color: #4ade80; }
+    .block-type-tool_result .folded-tool-name { color: #166534; }
+    html.dark .block-type-tool_result .folded-tool-name { color: #86efac; }
+    .block-type-tool_result > .folded-tool-body { border-top-color: #bbf7d0; }
+    html.dark .block-type-tool_result > .folded-tool-body { border-top-color: #166534; }
+    .block-type-tool_result.tool-result-error { background: #fef2f2; }
+    html.dark .block-type-tool_result.tool-result-error { background: #1c0f0f; }
+    .block-type-tool_result.tool-result-error .tool-result-status { background: #fee2e2; }
+    html.dark .block-type-tool_result.tool-result-error .tool-result-status { background: #2c1010; }
+    .block-type-tool_result.tool-result-error .folded-tool-icon { color: #dc2626; }
+    html.dark .block-type-tool_result.tool-result-error .folded-tool-icon { color: #f87171; }
+    .block-type-tool_result.tool-result-error .folded-tool-name { color: #991b1b; }
+    html.dark .block-type-tool_result.tool-result-error .folded-tool-name { color: #fca5a5; }
+
+    .block-type-code { background: #1e293b; }
+    html.dark .block-type-code { background: #0f172a; }
+
+    .block-type-thinking { background: #f5f3ff; }
+    html.dark .block-type-thinking { background: #1e1033; }
+
+    .block-type-bash { background: #fffbeb; }
+    html.dark .block-type-bash { background: #1c1507; }
+
+    .block-type-system { background: #eef2ff; }
+    html.dark .block-type-system { background: #15103a; }
+    .block-type-system.folded-tool > .folded-tool-bar { background: #e0e7ff; }
+    html.dark .block-type-system.folded-tool > .folded-tool-bar { background: #1e1b4b; }
+    .block-type-system.folded-tool > .folded-tool-bar:hover { background: #c7d2fe; }
+    html.dark .block-type-system.folded-tool > .folded-tool-bar:hover { background: #312e81; }
+    .block-type-system.folded-tool > .folded-tool-bar::before { color: #6366f1; }
+    html.dark .block-type-system.folded-tool > .folded-tool-bar::before { color: #a5b4fc; }
+    .block-type-system .folded-tool-icon { color: #6366f1; }
+    html.dark .block-type-system .folded-tool-icon { color: #a5b4fc; }
+    .block-type-system .folded-tool-name { color: #3730a3; }
+    html.dark .block-type-system .folded-tool-name { color: #c7d2fe; }
+    .block-type-system .folded-tool-desc { color: #4f46e5; }
+    html.dark .block-type-system .folded-tool-desc { color: #a5b4fc; }
+    .block-type-system > .folded-tool-body { border-top-color: #c7d2fe; }
+    html.dark .block-type-system > .folded-tool-body { border-top-color: #3730a3; }
+
+    .block-type-result { background: #f0fdf4; }
+    html.dark .block-type-result { background: #0a1f0f; }
+    .block-type-result.folded-tool > .folded-tool-bar { background: #dcfce7; }
+    html.dark .block-type-result.folded-tool > .folded-tool-bar { background: #0f2b1a; }
+    .block-type-result.folded-tool > .folded-tool-bar:hover { background: #bbf7d0; }
+    html.dark .block-type-result.folded-tool > .folded-tool-bar:hover { background: #14532d; }
+    .block-type-result.folded-tool > .folded-tool-bar::before { color: #16a34a; }
+    html.dark .block-type-result.folded-tool > .folded-tool-bar::before { color: #4ade80; }
+    .block-type-result .folded-tool-icon { color: #16a34a; }
+    html.dark .block-type-result .folded-tool-icon { color: #4ade80; }
+    .block-type-result .folded-tool-name { color: #166534; }
+    html.dark .block-type-result .folded-tool-name { color: #86efac; }
+    .block-type-result .folded-tool-desc { color: #15803d; }
+    html.dark .block-type-result .folded-tool-desc { color: #4ade80; }
+    .block-type-result > .folded-tool-body { border-top-color: #bbf7d0; }
+    html.dark .block-type-result > .folded-tool-body { border-top-color: #166534; }
+
+    .block-type-error { background: #fef2f2; }
+    html.dark .block-type-error { background: #1c0f0f; }
+    .block-type-error.folded-tool > .folded-tool-bar { background: #fee2e2; }
+    html.dark .block-type-error.folded-tool > .folded-tool-bar { background: #2c1010; }
+    .block-type-error.folded-tool > .folded-tool-bar:hover { background: #fecaca; }
+    html.dark .block-type-error.folded-tool > .folded-tool-bar:hover { background: #451a1a; }
+    .block-type-error.folded-tool > .folded-tool-bar::before { color: #ef4444; }
+    html.dark .block-type-error.folded-tool > .folded-tool-bar::before { color: #f87171; }
+    .block-type-error .folded-tool-icon { color: #ef4444; }
+    html.dark .block-type-error .folded-tool-icon { color: #f87171; }
+    .block-type-error .folded-tool-name { color: #991b1b; }
+    html.dark .block-type-error .folded-tool-name { color: #fca5a5; }
+    .block-type-error .folded-tool-desc { color: #b91c1c; }
+    html.dark .block-type-error .folded-tool-desc { color: #f87171; }
+    .block-type-error > .folded-tool-body { border-top-color: #fecaca; }
+    html.dark .block-type-error > .folded-tool-body { border-top-color: #7f1d1d; }
+
+    .block-type-image { background: #fdf2f8; }
+    html.dark .block-type-image { background: #1f0a1a; }
+
+    .block-type-plan { background: #eff6ff; }
+    html.dark .block-type-plan { background: #0c1929; }
+
+    .block-type-usage { background: #f9fafb; }
+    html.dark .block-type-usage { background: #1f2937; }
+
+    .block-type-premature { background: #fffbeb; }
+    html.dark .block-type-premature { background: #1c1507; }
+
+    .block-type-tool_status { background: #f0f9ff; }
+    html.dark .block-type-tool_status { background: #0c1929; }
+
+    .block-type-generic { background: #f9fafb; }
+    html.dark .block-type-generic { background: #1f2937; }
+
+    /* --- Code block header (non-collapsible) --- */
+    .code-block-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.3rem 0.75rem;
+      background: #1f2937;
+      color: #9ca3af;
+      font-family: 'Monaco','Menlo','Ubuntu Mono', monospace;
+      font-size: 0.75rem;
+    }
+    .code-block-header .copy-code-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 0.125rem;
+      border-radius: 0.25rem;
+      display: flex;
+      align-items: center;
+      transition: all 0.15s;
+    }
+    .code-block-header .copy-code-btn:hover { color: #e5e7eb; background: #4b5563; }
+    .code-block-header .copy-code-btn svg { width: 0.875rem; height: 0.875rem; }
+
+    /* --- Tool result success styling in body --- */
+    .tool-result-success .tool-result-status {
+      background: #dcfce7;
+      padding: 0.4rem 0.75rem;
+    }
+    html.dark .tool-result-success .tool-result-status {
+      background: #0f2b1a;
+    }
+    .tool-result-success .folded-tool-icon { color: #16a34a; }
+    html.dark .tool-result-success .folded-tool-icon { color: #4ade80; }
+    .tool-result-success .folded-tool-name { color: #166534; font-weight: 600; }
+    html.dark .tool-result-success .folded-tool-name { color: #86efac; }
 
     /* --- Consecutive block joining --- */
     .folded-tool + .folded-tool,
