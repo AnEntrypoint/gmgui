@@ -1773,10 +1773,12 @@ const server = http.createServer(async (req, res) => {
         const remoteUrl = result.trim();
         const statusResult = execSync('git status --porcelain', { encoding: 'utf-8', cwd: STARTUP_CWD });
         const hasChanges = statusResult.trim().length > 0;
+        const unpushedResult = execSync('git rev-list --count --not --remotes 2>/dev/null', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const hasUnpushed = parseInt(unpushedResult.trim() || '0', 10) > 0;
         const ownsRemote = !remoteUrl.includes('github.com/') || remoteUrl.includes(process.env.GITHUB_USER || '');
-        sendJSON(req, res, 200, { ownsRemote, hasChanges, remoteUrl });
+        sendJSON(req, res, 200, { ownsRemote, hasChanges, hasUnpushed, remoteUrl });
       } catch {
-        sendJSON(req, res, 200, { ownsRemote: false, hasChanges: false, remoteUrl: '' });
+        sendJSON(req, res, 200, { ownsRemote: false, hasChanges: false, hasUnpushed: false, remoteUrl: '' });
       }
       return;
     }

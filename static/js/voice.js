@@ -296,7 +296,19 @@
     if (!ttsEnabled) return;
     var clean = text.replace(/<[^>]*>/g, '').trim();
     if (!clean) return;
-    speechQueue.push(clean);
+    var parts = [];
+    if (typeof agentGUIClient !== 'undefined' && agentGUIClient && typeof agentGUIClient.parseMarkdownCodeBlocks === 'function') {
+      parts = agentGUIClient.parseMarkdownCodeBlocks(clean);
+    } else {
+      parts = [{ type: 'text', content: clean }];
+    }
+    parts.forEach(function(part) {
+      if (part.type === 'code') return;
+      var segment = part.content.trim();
+      if (segment) {
+        speechQueue.push(segment);
+      }
+    });
     processQueue();
   }
 

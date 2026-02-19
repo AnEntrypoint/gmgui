@@ -788,28 +788,21 @@ class AgentGUIClient {
     this.enableControls();
     this.emit('streaming:complete', data);
 
-    if (data.agentId && this._isACPAgent(data.agentId)) {
-      this._promptPushIfWeOwnRemote();
-    }
-  }
-
-  _isACPAgent(agentId) {
-    const acpAgents = ['opencode', 'gemini', 'goose', 'openhands', 'augment', 'cline', 'kimi', 'qwen', 'codex', 'mistral', 'kiro', 'fast-agent'];
-    return acpAgents.includes(agentId);
+    this._promptPushIfWeOwnRemote();
   }
 
   async _promptPushIfWeOwnRemote() {
     try {
       const result = await fetch(window.__BASE_URL + '/api/git/check-remote-ownership');
-      const { ownsRemote, hasChanges, remoteUrl } = await result.json();
-      if (ownsRemote && hasChanges) {
-        const shouldPush = confirm('Push changes to remote?');
-        if (shouldPush) {
-          await fetch(window.__BASE_URL + '/api/git/push', { method: 'POST' });
+      const { ownsRemote, hasChanges, hasUnpushed, remoteUrl } = await result.json();
+      if (ownsRemote && (hasChanges || hasUnpushed)) {
+        const conv = this.state.currentConversation;
+        if (conv) {
+          this.streamToConversation(conv.id, 'Push the changes to the remote repository.', conv.agentId);
         }
       }
     } catch (e) {
-      console.warn('Failed to check git remote ownership:', e);
+      console.warn('Auto-push check failed:', e);
     }
   }
 
