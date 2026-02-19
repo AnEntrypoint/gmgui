@@ -2305,7 +2305,13 @@ class AgentGUIClient {
           } else {
             this.unlockAgentAndModel();
             if (this.ui.agentSelector && cached.conversation.agentType) this.ui.agentSelector.value = cached.conversation.agentType;
-            if (cached.conversation.agentType) this.loadModelsForAgent(cached.conversation.agentType);
+            if (cached.conversation.agentType) {
+              this.loadModelsForAgent(cached.conversation.agentType).then(() => {
+                if (cached.conversation.model && this.ui.modelSelector) {
+                  this.ui.modelSelector.value = cached.conversation.model;
+                }
+              });
+            }
           }
           this.conversationCache.delete(conversationId);
           this.restoreScrollPosition(conversationId);
@@ -2340,7 +2346,13 @@ class AgentGUIClient {
       } else {
         this.unlockAgentAndModel();
         if (this.ui.agentSelector && conversation.agentType) this.ui.agentSelector.value = conversation.agentType;
-        if (conversation.agentType) this.loadModelsForAgent(conversation.agentType);
+        if (conversation.agentType) {
+          this.loadModelsForAgent(conversation.agentType).then(() => {
+            if (conversation.model && this.ui.modelSelector) {
+              this.ui.modelSelector.value = conversation.model;
+            }
+          });
+        }
       }
 
       const chunks = (rawChunks || []).map(chunk => ({
