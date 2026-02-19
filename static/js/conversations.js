@@ -48,7 +48,7 @@ class ConversationManager {
     this.setupFolderBrowser();
     this.setupCloneUI();
 
-    setInterval(() => this.loadConversations(), 30000);
+    this._pollInterval = setInterval(() => this.loadConversations(), 30000);
   }
 
   async loadAgents() {

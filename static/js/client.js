@@ -516,11 +516,6 @@ class AgentGUIClient {
       this._serverProcessingEstimate = 0.7 * this._serverProcessingEstimate + 0.3 * serverTime;
     }
 
-    // Show stop and inject buttons when streaming starts
-    if (this.ui.stopButton) this.ui.stopButton.classList.add('visible');
-    if (this.ui.injectButton) this.ui.injectButton.classList.add('visible');
-    if (this.ui.sendButton) this.ui.sendButton.style.display = 'none';
-
     // If this streaming event is for a different conversation than what we are viewing,
     // just track the state but do not modify the DOM or start polling
     if (this.state.currentConversation?.id !== data.conversationId) {
@@ -529,6 +524,11 @@ class AgentGUIClient {
       this.emit('streaming:start', data);
       return;
     }
+
+    // Show stop and inject buttons when streaming starts for current conversation
+    if (this.ui.stopButton) this.ui.stopButton.classList.add('visible');
+    if (this.ui.injectButton) this.ui.injectButton.classList.add('visible');
+    if (this.ui.sendButton) this.ui.sendButton.style.display = 'none';
 
     this.state.streamingConversations.set(data.conversationId, true);
     this.state.currentSession = {
@@ -1884,10 +1884,16 @@ class AgentGUIClient {
       } else if (status.modelsDownloading) {
         this._modelDownloadProgress = status.modelsProgress || { downloading: true };
         this._modelDownloadInProgress = true;
+      } else {
+        this._modelDownloadProgress = { done: false };
+        this._modelDownloadInProgress = false;
       }
       this._updateVoiceTabState();
     } catch (error) {
       console.error('Failed to check speech status:', error);
+      this._modelDownloadProgress = { done: false };
+      this._modelDownloadInProgress = false;
+      this._updateVoiceTabState();
     }
   }
 
@@ -2057,6 +2063,11 @@ class AgentGUIClient {
             window._voiceProgressDialog = null;
           }
         }, 500);
+      }
+      if (window._voiceTabPendingOpen) {
+        window._voiceTabPendingOpen = false;
+        var voiceBtn = document.querySelector('[data-view="voice"]');
+        if (voiceBtn) voiceBtn.click();
       }
       return;
     }

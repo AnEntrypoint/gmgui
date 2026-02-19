@@ -189,7 +189,7 @@
       btn.addEventListener('click', function() {
         var view = btn.dataset.view;
         if (view === 'voice' && !isVoiceReady()) {
-          showToast('Downloading voice models... please wait', 'info');
+          triggerVoiceModelDownload();
           return;
         }
         switchView(view);
@@ -198,11 +198,35 @@
   }
 
   function isVoiceReady() {
-    if (window.agentGUIClient && !window.agentGUIClient._modelDownloadInProgress) {
-      return window.agentGUIClient._modelDownloadProgress?.done === true ||
-             window.agentGUIClient._modelDownloadProgress?.complete === true;
+    var client = window.agentGUIClient;
+    if (!client) return false;
+    if (client._modelDownloadInProgress) return false;
+    var p = client._modelDownloadProgress;
+    return p != null && (p.done === true || p.complete === true);
+  }
+
+  function triggerVoiceModelDownload() {
+    var client = window.agentGUIClient;
+    if (client && client._modelDownloadInProgress) {
+      showToast('Voice models downloading... please wait', 'info');
+      return;
     }
-    return false;
+    showToast('Starting voice model download...', 'info');
+    fetch((window.__BASE_URL || '') + '/api/speech-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forceDownload: true })
+    }).then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        showToast('Downloading voice models... will auto-open when ready', 'info');
+        window._voiceTabPendingOpen = true;
+      } else {
+        showToast('Failed to start download: ' + (data.error || 'unknown'), 'error');
+      }
+    }).catch(function(err) {
+      showToast('Download request failed: ' + err.message, 'error');
+    });
   }
 
   window.__checkVoiceReady = isVoiceReady;
