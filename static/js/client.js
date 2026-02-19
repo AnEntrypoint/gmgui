@@ -2217,6 +2217,8 @@ class AgentGUIClient {
       this.cacheCurrentConversation();
       this.stopChunkPolling();
       if (this.renderer.resetScrollState) this.renderer.resetScrollState();
+      this._userScrolledUp = false;
+      this._removeNewContentPill();
       var prevId = this.state.currentConversation?.id;
       if (prevId && prevId !== conversationId) {
         if (this.wsManager.isConnected && !this.state.streamingConversations.has(prevId)) {
