@@ -300,6 +300,10 @@ class StreamingRenderer {
         return this.renderBlock(event.block, event);
       }
 
+      if (event.type === 'streaming_error' && event.isPrematureEnd) {
+        return this.renderBlockPremature({ type: 'premature', error: event.error, exitCode: event.exitCode });
+      }
+
       switch (event.type) {
         case 'streaming_start':
           return this.renderStreamingStart(event);
@@ -366,6 +370,8 @@ class StreamingRenderer {
           return this.renderBlockUsage(block, context);
         case 'plan':
           return this.renderBlockPlan(block, context);
+        case 'premature':
+          return this.renderBlockPremature(block, context);
         default:
           return this.renderBlockGeneric(block, context);
       }
@@ -415,7 +421,10 @@ class StreamingRenderer {
       'system': 6,
       'result': 7,
       'error': 8,
-      'image': 9
+      'image': 9,
+      'plan': 10,
+      'usage': 11,
+      'premature': 8
     };
     return typeColors[blockType] !== undefined ? typeColors[blockType] : 0;
   }
@@ -465,6 +474,7 @@ class StreamingRenderer {
   renderBlockCode(block, context) {
     const div = document.createElement('div');
     div.className = 'block-code';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('code')})`;
 
     const code = block.code || '';
     const language = (block.language || 'plaintext').toLowerCase();
@@ -510,6 +520,8 @@ class StreamingRenderer {
   renderBlockThinking(block, context) {
     const div = document.createElement('div');
     div.className = 'block-thinking';
+    const colorIndex = this._getBlockColorIndex('thinking');
+    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
     const thinking = block.thinking || '';
     div.innerHTML = `
@@ -1240,6 +1252,7 @@ class StreamingRenderer {
   renderBlockImage(block, context) {
     const div = document.createElement('div');
     div.className = 'block-image';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('image')})`;
 
     let src = block.image || block.src || '';
     const alt = block.alt || 'Image';
@@ -1263,6 +1276,8 @@ class StreamingRenderer {
   renderBlockBash(block, context) {
     const div = document.createElement('div');
     div.className = 'block-bash';
+    const colorIndex = this._getBlockColorIndex('bash');
+    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
     const command = block.command || block.code || '';
     const output = block.output || '';
@@ -1290,6 +1305,7 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = 'folded-tool folded-tool-info';
     details.dataset.eventType = 'system';
+    details.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('system')})`;
     const desc = block.model ? this.escapeHtml(block.model) : 'Session';
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
@@ -1326,6 +1342,9 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
     details.dataset.eventType = 'result';
+    if (!isError) details.setAttribute('open', '');
+    const colorIndex = this._getBlockColorIndex(isError ? 'error' : 'result');
+    details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
@@ -1380,6 +1399,7 @@ class StreamingRenderer {
     const div = document.createElement('div');
     div.className = 'block-tool-status';
     div.dataset.toolUseId = block.tool_use_id || '';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('tool_use')})`;
     div.innerHTML = `
       <div style="display:flex;align-items:center;gap:0.5rem;padding:0.25rem 0.5rem;font-size:0.75rem;color:var(--color-text-secondary)">
         ${statusIcons[status] || statusIcons.pending}
@@ -1400,6 +1420,7 @@ class StreamingRenderer {
 
     const div = document.createElement('div');
     div.className = 'block-usage';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('usage')})`;
     div.innerHTML = `
       <div style="display:flex;gap:1rem;padding:0.25rem 0.5rem;font-size:0.7rem;color:var(--color-text-secondary);background:var(--color-bg-secondary);border-radius:0.25rem">
         ${used ? `<span><strong>Used:</strong> ${used.toLocaleString()}</span>` : ''}
@@ -1430,6 +1451,7 @@ class StreamingRenderer {
 
     const div = document.createElement('div');
     div.className = 'block-plan';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('plan')})`;
     div.innerHTML = `
       <details class="folded-tool folded-tool-info">
         <summary class="folded-tool-bar">
@@ -1448,6 +1470,21 @@ class StreamingRenderer {
           </div>
         </div>
       </details>
+    `;
+    return div;
+  }
+
+  renderBlockPremature(block, context) {
+    const div = document.createElement('div');
+    div.className = 'folded-tool folded-tool-error block-premature';
+    div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('premature')})`;
+    const code = block.exitCode != null ? ` (exit ${block.exitCode})` : '';
+    div.innerHTML = `
+      <div class="folded-tool-bar" style="background:rgba(245,158,11,0.1)">
+        <span class="folded-tool-icon" style="color:#f59e0b"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg></span>
+        <span class="folded-tool-name" style="color:#f59e0b">ACP Ended Prematurely${this.escapeHtml(code)}</span>
+        <span class="folded-tool-desc">${this.escapeHtml(block.error || 'Process exited without output')}</span>
+      </div>
     `;
     return div;
   }

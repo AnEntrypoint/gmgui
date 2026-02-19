@@ -35,62 +35,71 @@ const modelDownloadState = {
   complete: false
 };
 
+function broadcastModelProgress(progress) {
+  modelDownloadState.progress = progress;
+  broadcastSync({ type: 'model_download_progress', progress });
+}
+
 async function ensureModelsDownloaded() {
-  const { createRequire: cr } = await import('module');
-  const r = cr(import.meta.url);
-  const models = r('sttttsmodels');
-  const checkAllFilesExist = models.checkAllFilesExist;
-  const downloadModels = models.downloadModels;
-  
-  if (checkAllFilesExist && checkAllFilesExist()) {
-    modelDownloadState.complete = true;
-    return true;
-  }
-  
-  if (!downloadModels) {
-    console.log('[MODELS] Download function not available, skipping');
-    modelDownloadState.complete = true;
-    return true;
-  }
-  
   if (modelDownloadState.downloading) {
-    // Wait for current download
     while (modelDownloadState.downloading) {
       await new Promise(r => setTimeout(r, 100));
     }
     return modelDownloadState.complete;
   }
-  
-  modelDownloadState.downloading = true;
-  modelDownloadState.error = null;
-  
+
   try {
-    await downloadModels((progress) => {
-      modelDownloadState.progress = progress;
-      // Broadcast progress to all connected clients
-      broadcastSync({
-        type: 'model_download_progress',
-        progress: {
-          started: progress.started,
-          done: progress.done,
-          error: progress.error,
-          downloading: progress.downloading,
-          type: progress.type,
-          completedFiles: progress.completedFiles,
-          totalFiles: progress.totalFiles,
-          totalDownloaded: progress.totalDownloaded,
-          totalBytes: progress.totalBytes
-        }
-      });
-    });
+    const { createRequire: cr } = await import('module');
+    const r = cr(import.meta.url);
+    const sttttsmodels = r('sttttsmodels');
+    const { sttDir, ttsDir } = sttttsmodels;
+
+    const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
+    const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;
+
+    if (sttOk && ttsOk) {
+      console.log('[MODELS] All model files present');
+      modelDownloadState.complete = true;
+      return true;
+    }
+
+    modelDownloadState.downloading = true;
+    modelDownloadState.error = null;
+
+    const webtalkWhisper = r('webtalk/whisper-models');
+    const webtalkTTS = r('webtalk/tts-models');
+    const { createConfig } = r('webtalk/config');
+    const config = createConfig({ sdkDir: path.dirname(fileURLToPath(import.meta.url)) });
+    config.modelsDir = path.dirname(sttDir);
+    config.ttsModelsDir = ttsDir;
+    config.sttModelsDir = sttDir;
+    config.whisperBaseUrl = 'https://huggingface.co/onnx-community/whisper-base/resolve/main/';
+    config.ttsBaseUrl = 'https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/';
+
+    const totalFiles = 16;
+    let completedFiles = 0;
+
+    if (!sttOk) {
+      console.log('[MODELS] Downloading STT model...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', completedFiles, totalFiles });
+      await webtalkWhisper.ensureModel('whisper-base', config);
+      completedFiles += 10;
+    }
+
+    if (!ttsOk) {
+      console.log('[MODELS] Downloading TTS models...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', completedFiles, totalFiles });
+      await webtalkTTS.ensureTTSModels(config);
+      completedFiles += 6;
+    }
+
     modelDownloadState.complete = true;
+    broadcastModelProgress({ started: true, done: true, downloading: false, completedFiles: totalFiles, totalFiles });
     return true;
   } catch (err) {
+    console.error('[MODELS] Download error:', err.message);
     modelDownloadState.error = err.message;
-    broadcastSync({
-      type: 'model_download_progress',
-      progress: { error: err.message, done: true }
-    });
+    broadcastModelProgress({ done: true, error: err.message });
     return false;
   } finally {
     modelDownloadState.downloading = false;
@@ -327,10 +336,55 @@ const AGENT_DEFAULT_MODELS = {
   ]
 };
 
+async function fetchClaudeModelsFromAPI() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const https = await import('https');
+    return new Promise((resolve) => {
+      const req = https.default.request({
+        hostname: 'api.anthropic.com', path: '/v1/models', method: 'GET',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        timeout: 8000
+      }, (res) => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            const items = (data.data || []).filter(m => m.id && m.id.startsWith('claude-'));
+            if (items.length === 0) return resolve(null);
+            const models = [{ id: '', label: 'Default' }];
+            for (const m of items) {
+              const label = m.display_name || m.id.replace(/^claude-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              models.push({ id: m.id, label });
+            }
+            resolve(models);
+          } catch { resolve(null); }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+      req.end();
+    });
+  } catch { return null; }
+}
+
 async function getModelsForAgent(agentId) {
   const cached = modelCache.get(agentId);
-  if (cached && Date.now() - cached.timestamp < 300000) {
+  if (cached && Date.now() - cached.timestamp < 3600000) {
     return cached.models;
+  }
+
+  if (agentId === 'claude-code') {
+    const apiModels = await fetchClaudeModelsFromAPI();
+    if (apiModels) {
+      modelCache.set(agentId, { models: apiModels, timestamp: Date.now() });
+      return apiModels;
+    }
+    const models = AGENT_DEFAULT_MODELS[agentId];
+    modelCache.set(agentId, { models, timestamp: Date.now() });
+    return models;
   }
 
   if (AGENT_DEFAULT_MODELS[agentId]) {
@@ -2975,6 +3029,8 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       sessionId,
       conversationId,
       error: error.message,
+      isPrematureEnd: error.isPrematureEnd || false,
+      exitCode: error.exitCode,
       recoverable: elapsed < 60000,
       timestamp: Date.now()
     });
