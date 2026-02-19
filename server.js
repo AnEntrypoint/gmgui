@@ -68,8 +68,9 @@ async function ensureModelsDownloaded() {
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    const webtalkWhisper = r('webtalk/whisper-models');
-    const webtalkTTS = r('webtalk/tts-models');
+    const webtalkDir = path.dirname(r.resolve('webtalk'));
+    const webtalkWhisper = r(path.join(webtalkDir, 'whisper-models'));
+    const webtalkTTS = r(path.join(webtalkDir, 'tts-models'));
     const { createConfig } = r('webtalk/config');
     const config = createConfig({ sdkDir: path.dirname(fileURLToPath(import.meta.url)) });
     config.modelsDir = gmguiModels;
