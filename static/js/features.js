@@ -188,13 +188,49 @@
     buttons.forEach(function(btn) {
       btn.addEventListener('click', function() {
         var view = btn.dataset.view;
-        if (view === 'voice' && !isVoiceReady()) {
-          triggerVoiceModelDownload();
+        if (view === 'voice') {
+          handleVoiceTabClick();
           return;
         }
         switchView(view);
       });
     });
+  }
+
+  function handleVoiceTabClick() {
+    if (isVoiceReady()) {
+      switchView('voice');
+      return;
+    }
+    var client = window.agentGUIClient;
+    if (client && client._modelDownloadProgress == null) {
+      fetch((window.__BASE_URL || '') + '/api/speech-status')
+        .then(function(res) { return res.json(); })
+        .then(function(status) {
+          if (status.modelsComplete) {
+            if (client) {
+              client._modelDownloadProgress = { done: true, complete: true };
+              client._modelDownloadInProgress = false;
+            }
+            switchView('voice');
+          } else if (status.modelsDownloading) {
+            if (client) {
+              client._modelDownloadProgress = status.modelsProgress || { downloading: true };
+              client._modelDownloadInProgress = true;
+            }
+            showVoiceDownloadProgress();
+          } else {
+            triggerVoiceModelDownload();
+          }
+        })
+        .catch(function() { triggerVoiceModelDownload(); });
+      return;
+    }
+    if (client && client._modelDownloadInProgress) {
+      showVoiceDownloadProgress();
+      return;
+    }
+    triggerVoiceModelDownload();
   }
 
   function showVoiceDownloadProgress() {
@@ -266,7 +302,18 @@
       body: JSON.stringify({ forceDownload: true })
     }).then(function(res) { return res.json(); })
     .then(function(data) {
-      if (data.ok) {
+      if (data.ok && data.modelsComplete) {
+        if (window._voiceProgressDialog) {
+          window._voiceProgressDialog.close();
+          window._voiceProgressDialog = null;
+        }
+        var client = window.agentGUIClient;
+        if (client) {
+          client._modelDownloadProgress = { done: true, complete: true };
+          client._modelDownloadInProgress = false;
+        }
+        switchView('voice');
+      } else if (data.ok) {
         window._voiceTabPendingOpen = true;
         if (window._voiceProgressDialog) {
           window._voiceProgressDialog.update(0, 'Starting download...');

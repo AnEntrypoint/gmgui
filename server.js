@@ -2516,20 +2516,24 @@ const server = http.createServer(async (req, res) => {
     if (pathOnly === '/api/speech-status' && req.method === 'POST') {
       const body = await parseBody(req);
       if (body.forceDownload) {
-        modelDownloadState.complete = false;
-        modelDownloadState.downloading = false;
-        modelDownloadState.error = null;
-        ensureModelsDownloaded().then(ok => {
-          broadcastSync({
-            type: 'model_download_progress',
-            progress: { done: true, complete: ok, error: ok ? null : 'Download failed' }
+        if (modelDownloadState.complete) {
+          sendJSON(req, res, 200, { ok: true, modelsComplete: true, message: 'Models already ready' });
+          return;
+        }
+        if (!modelDownloadState.downloading) {
+          modelDownloadState.error = null;
+          ensureModelsDownloaded().then(ok => {
+            broadcastSync({
+              type: 'model_download_progress',
+              progress: { done: true, complete: ok, error: ok ? null : 'Download failed' }
+            });
+          }).catch(err => {
+            broadcastSync({
+              type: 'model_download_progress',
+              progress: { done: true, error: err.message }
+            });
           });
-        }).catch(err => {
-          broadcastSync({
-            type: 'model_download_progress',
-            progress: { done: true, error: err.message }
-          });
-        });
+        }
         sendJSON(req, res, 200, { ok: true, message: 'Starting model download' });
         return;
       }
