@@ -49,6 +49,15 @@ class ConversationManager {
     this.setupCloneUI();
 
     this._pollInterval = setInterval(() => this.loadConversations(), 30000);
+
+    window.addEventListener('beforeunload', () => this.destroy());
+  }
+
+  destroy() {
+    if (this._pollInterval) {
+      clearInterval(this._pollInterval);
+      this._pollInterval = null;
+    }
   }
 
   async loadAgents() {
