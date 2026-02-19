@@ -793,6 +793,20 @@ class AgentGUIClient {
     // Stop polling for chunks
     this.stopChunkPolling();
 
+    // If this is a premature ACP end, render distinct warning block
+    if (data.isPrematureEnd) {
+      this.renderer.queueEvent({
+        type: 'streaming_error',
+        isPrematureEnd: true,
+        exitCode: data.exitCode,
+        error: data.error,
+        stderrText: data.stderrText,
+        sessionId: data.sessionId,
+        conversationId: data.conversationId,
+        timestamp: data.timestamp || Date.now()
+      });
+    }
+
     const sessionId = data.sessionId || this.state.currentSession?.id;
     const streamingEl = document.getElementById(`streaming-${sessionId}`);
     if (streamingEl) {

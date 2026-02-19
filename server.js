@@ -3031,6 +3031,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       error: error.message,
       isPrematureEnd: error.isPrematureEnd || false,
       exitCode: error.exitCode,
+      stderrText: error.stderrText,
       recoverable: elapsed < 60000,
       timestamp: Date.now()
     });
