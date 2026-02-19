@@ -422,6 +422,12 @@ class StreamingRenderer {
     return validTypes.includes(blockType) ? `block-type-${blockType}` : 'block-type-generic';
   }
 
+  _getToolColorClass(toolName) {
+    const n = (toolName || '').replace(/^mcp__[^_]+__/, '').toLowerCase();
+    const map = { read: 'read', write: 'write', edit: 'edit', bash: 'bash', glob: 'glob', grep: 'grep', webfetch: 'web', websearch: 'web', todowrite: 'todo', task: 'task', notebookedit: 'edit' };
+    return `tool-color-${map[n] || 'default'}`;
+  }
+
   containsHtmlTags(text) {
     const htmlPattern = /<(?:div|table|section|article|ul|ol|dl|nav|header|footer|main|aside|figure|details|summary|h[1-6]|p|blockquote|pre|code|span|strong|em|a|img|br|hr|li|td|tr|th|thead|tbody|tfoot)\b[^>]*>/i;
     return htmlPattern.test(text);
@@ -737,6 +743,7 @@ class StreamingRenderer {
     details.className = 'block-tool-use folded-tool';
     if (block.id) details.dataset.toolUseId = block.id;
     details.classList.add(this._getBlockTypeClass('tool_use'));
+    details.classList.add(this._getToolColorClass(toolName));
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
     const displayName = this.getToolUseDisplayName(toolName);
@@ -1625,6 +1632,8 @@ class StreamingRenderer {
     const fileName = event.path ? event.path.split('/').pop() : 'unknown';
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
+    details.classList.add(this._getBlockTypeClass('tool_use'));
+    details.classList.add(this._getToolColorClass('Read'));
     details.dataset.eventId = event.id || '';
     details.dataset.eventType = 'file_read';
     const summary = document.createElement('summary');
@@ -1656,6 +1665,8 @@ class StreamingRenderer {
     const fileName = event.path ? event.path.split('/').pop() : 'unknown';
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
+    details.classList.add(this._getBlockTypeClass('tool_use'));
+    details.classList.add(this._getToolColorClass('Write'));
     details.dataset.eventId = event.id || '';
     details.dataset.eventType = 'file_write';
     const summary = document.createElement('summary');
@@ -1719,6 +1730,8 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
+    details.classList.add(this._getBlockTypeClass('tool_use'));
+    details.classList.add(this._getToolColorClass('Bash'));
     details.dataset.eventId = event.id || '';
     details.dataset.eventType = 'command_execute';
     const summary = document.createElement('summary');

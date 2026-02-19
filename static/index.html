@@ -1854,22 +1854,176 @@
     .block-type-text { background: #f8fafc; }
     html.dark .block-type-text { background: #1e293b; }
 
-    .block-type-tool_use { background: #ecfeff; }
-    html.dark .block-type-tool_use { background: #0c1a24; }
-    .block-type-tool_use.folded-tool > .folded-tool-bar { background: #cffafe; }
-    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar { background: #0e2a3a; }
-    .block-type-tool_use.folded-tool > .folded-tool-bar:hover { background: #a5f3fc; }
-    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar:hover { background: #164e63; }
-    .block-type-tool_use.folded-tool > .folded-tool-bar::before { color: #0891b2; }
-    html.dark .block-type-tool_use.folded-tool > .folded-tool-bar::before { color: #22d3ee; }
-    .block-type-tool_use .folded-tool-icon { color: #0891b2; }
-    html.dark .block-type-tool_use .folded-tool-icon { color: #22d3ee; }
-    .block-type-tool_use .folded-tool-name { color: #155e75; }
-    html.dark .block-type-tool_use .folded-tool-name { color: #67e8f9; }
-    .block-type-tool_use .folded-tool-desc { color: #0e7490; }
-    html.dark .block-type-tool_use .folded-tool-desc { color: #22d3ee; }
-    .block-type-tool_use > .folded-tool-body { border-top-color: #a5f3fc; }
-    html.dark .block-type-tool_use > .folded-tool-body { border-top-color: #164e63; }
+    /* --- Per-tool-name header colors (tool-color-*) --- */
+    .tool-color-read.folded-tool > .folded-tool-bar { background: #dbeafe; }
+    html.dark .tool-color-read.folded-tool > .folded-tool-bar { background: #1e3a5f; }
+    .tool-color-read.folded-tool > .folded-tool-bar:hover { background: #bfdbfe; }
+    html.dark .tool-color-read.folded-tool > .folded-tool-bar:hover { background: #1e40af; }
+    .tool-color-read.folded-tool > .folded-tool-bar::before { color: #2563eb; }
+    html.dark .tool-color-read.folded-tool > .folded-tool-bar::before { color: #60a5fa; }
+    .tool-color-read .folded-tool-icon { color: #2563eb; }
+    html.dark .tool-color-read .folded-tool-icon { color: #60a5fa; }
+    .tool-color-read .folded-tool-name { color: #1e40af; }
+    html.dark .tool-color-read .folded-tool-name { color: #93bbfd; }
+    .tool-color-read .folded-tool-desc { color: #1d4ed8; }
+    html.dark .tool-color-read .folded-tool-desc { color: #60a5fa; }
+    .tool-color-read { background: #eff6ff; }
+    html.dark .tool-color-read { background: #0c1929; }
+    .tool-color-read > .folded-tool-body { border-top-color: #bfdbfe; }
+    html.dark .tool-color-read > .folded-tool-body { border-top-color: #1e3a5f; }
+
+    .tool-color-write.folded-tool > .folded-tool-bar { background: #fef3c7; }
+    html.dark .tool-color-write.folded-tool > .folded-tool-bar { background: #422006; }
+    .tool-color-write.folded-tool > .folded-tool-bar:hover { background: #fde68a; }
+    html.dark .tool-color-write.folded-tool > .folded-tool-bar:hover { background: #78350f; }
+    .tool-color-write.folded-tool > .folded-tool-bar::before { color: #d97706; }
+    html.dark .tool-color-write.folded-tool > .folded-tool-bar::before { color: #fbbf24; }
+    .tool-color-write .folded-tool-icon { color: #d97706; }
+    html.dark .tool-color-write .folded-tool-icon { color: #fbbf24; }
+    .tool-color-write .folded-tool-name { color: #92400e; }
+    html.dark .tool-color-write .folded-tool-name { color: #fcd34d; }
+    .tool-color-write .folded-tool-desc { color: #b45309; }
+    html.dark .tool-color-write .folded-tool-desc { color: #fbbf24; }
+    .tool-color-write { background: #fffbeb; }
+    html.dark .tool-color-write { background: #1c1507; }
+    .tool-color-write > .folded-tool-body { border-top-color: #fde68a; }
+    html.dark .tool-color-write > .folded-tool-body { border-top-color: #422006; }
+
+    .tool-color-edit.folded-tool > .folded-tool-bar { background: #ede9fe; }
+    html.dark .tool-color-edit.folded-tool > .folded-tool-bar { background: #2e1065; }
+    .tool-color-edit.folded-tool > .folded-tool-bar:hover { background: #ddd6fe; }
+    html.dark .tool-color-edit.folded-tool > .folded-tool-bar:hover { background: #4c1d95; }
+    .tool-color-edit.folded-tool > .folded-tool-bar::before { color: #7c3aed; }
+    html.dark .tool-color-edit.folded-tool > .folded-tool-bar::before { color: #a78bfa; }
+    .tool-color-edit .folded-tool-icon { color: #7c3aed; }
+    html.dark .tool-color-edit .folded-tool-icon { color: #a78bfa; }
+    .tool-color-edit .folded-tool-name { color: #5b21b6; }
+    html.dark .tool-color-edit .folded-tool-name { color: #c4b5fd; }
+    .tool-color-edit .folded-tool-desc { color: #6d28d9; }
+    html.dark .tool-color-edit .folded-tool-desc { color: #a78bfa; }
+    .tool-color-edit { background: #f5f3ff; }
+    html.dark .tool-color-edit { background: #1a0a2e; }
+    .tool-color-edit > .folded-tool-body { border-top-color: #ddd6fe; }
+    html.dark .tool-color-edit > .folded-tool-body { border-top-color: #2e1065; }
+
+    .tool-color-bash.folded-tool > .folded-tool-bar { background: #e2e8f0; }
+    html.dark .tool-color-bash.folded-tool > .folded-tool-bar { background: #1e293b; }
+    .tool-color-bash.folded-tool > .folded-tool-bar:hover { background: #cbd5e1; }
+    html.dark .tool-color-bash.folded-tool > .folded-tool-bar:hover { background: #334155; }
+    .tool-color-bash.folded-tool > .folded-tool-bar::before { color: #475569; }
+    html.dark .tool-color-bash.folded-tool > .folded-tool-bar::before { color: #94a3b8; }
+    .tool-color-bash .folded-tool-icon { color: #475569; }
+    html.dark .tool-color-bash .folded-tool-icon { color: #94a3b8; }
+    .tool-color-bash .folded-tool-name { color: #334155; }
+    html.dark .tool-color-bash .folded-tool-name { color: #cbd5e1; }
+    .tool-color-bash .folded-tool-desc { color: #475569; }
+    html.dark .tool-color-bash .folded-tool-desc { color: #94a3b8; }
+    .tool-color-bash { background: #f8fafc; }
+    html.dark .tool-color-bash { background: #0f172a; }
+    .tool-color-bash > .folded-tool-body { border-top-color: #cbd5e1; }
+    html.dark .tool-color-bash > .folded-tool-body { border-top-color: #334155; }
+
+    .tool-color-glob.folded-tool > .folded-tool-bar { background: #d1fae5; }
+    html.dark .tool-color-glob.folded-tool > .folded-tool-bar { background: #064e3b; }
+    .tool-color-glob.folded-tool > .folded-tool-bar:hover { background: #a7f3d0; }
+    html.dark .tool-color-glob.folded-tool > .folded-tool-bar:hover { background: #065f46; }
+    .tool-color-glob.folded-tool > .folded-tool-bar::before { color: #059669; }
+    html.dark .tool-color-glob.folded-tool > .folded-tool-bar::before { color: #34d399; }
+    .tool-color-glob .folded-tool-icon { color: #059669; }
+    html.dark .tool-color-glob .folded-tool-icon { color: #34d399; }
+    .tool-color-glob .folded-tool-name { color: #065f46; }
+    html.dark .tool-color-glob .folded-tool-name { color: #6ee7b7; }
+    .tool-color-glob .folded-tool-desc { color: #047857; }
+    html.dark .tool-color-glob .folded-tool-desc { color: #34d399; }
+    .tool-color-glob { background: #ecfdf5; }
+    html.dark .tool-color-glob { background: #022c22; }
+    .tool-color-glob > .folded-tool-body { border-top-color: #a7f3d0; }
+    html.dark .tool-color-glob > .folded-tool-body { border-top-color: #064e3b; }
+
+    .tool-color-grep.folded-tool > .folded-tool-bar { background: #ffe4e6; }
+    html.dark .tool-color-grep.folded-tool > .folded-tool-bar { background: #4c0519; }
+    .tool-color-grep.folded-tool > .folded-tool-bar:hover { background: #fecdd3; }
+    html.dark .tool-color-grep.folded-tool > .folded-tool-bar:hover { background: #881337; }
+    .tool-color-grep.folded-tool > .folded-tool-bar::before { color: #e11d48; }
+    html.dark .tool-color-grep.folded-tool > .folded-tool-bar::before { color: #fb7185; }
+    .tool-color-grep .folded-tool-icon { color: #e11d48; }
+    html.dark .tool-color-grep .folded-tool-icon { color: #fb7185; }
+    .tool-color-grep .folded-tool-name { color: #9f1239; }
+    html.dark .tool-color-grep .folded-tool-name { color: #fda4af; }
+    .tool-color-grep .folded-tool-desc { color: #be123c; }
+    html.dark .tool-color-grep .folded-tool-desc { color: #fb7185; }
+    .tool-color-grep { background: #fff1f2; }
+    html.dark .tool-color-grep { background: #2a0a10; }
+    .tool-color-grep > .folded-tool-body { border-top-color: #fecdd3; }
+    html.dark .tool-color-grep > .folded-tool-body { border-top-color: #4c0519; }
+
+    .tool-color-web.folded-tool > .folded-tool-bar { background: #e0f2fe; }
+    html.dark .tool-color-web.folded-tool > .folded-tool-bar { background: #0c4a6e; }
+    .tool-color-web.folded-tool > .folded-tool-bar:hover { background: #bae6fd; }
+    html.dark .tool-color-web.folded-tool > .folded-tool-bar:hover { background: #075985; }
+    .tool-color-web.folded-tool > .folded-tool-bar::before { color: #0284c7; }
+    html.dark .tool-color-web.folded-tool > .folded-tool-bar::before { color: #38bdf8; }
+    .tool-color-web .folded-tool-icon { color: #0284c7; }
+    html.dark .tool-color-web .folded-tool-icon { color: #38bdf8; }
+    .tool-color-web .folded-tool-name { color: #075985; }
+    html.dark .tool-color-web .folded-tool-name { color: #7dd3fc; }
+    .tool-color-web .folded-tool-desc { color: #0369a1; }
+    html.dark .tool-color-web .folded-tool-desc { color: #38bdf8; }
+    .tool-color-web { background: #f0f9ff; }
+    html.dark .tool-color-web { background: #0a1929; }
+    .tool-color-web > .folded-tool-body { border-top-color: #bae6fd; }
+    html.dark .tool-color-web > .folded-tool-body { border-top-color: #0c4a6e; }
+
+    .tool-color-todo.folded-tool > .folded-tool-bar { background: #ffedd5; }
+    html.dark .tool-color-todo.folded-tool > .folded-tool-bar { background: #431407; }
+    .tool-color-todo.folded-tool > .folded-tool-bar:hover { background: #fed7aa; }
+    html.dark .tool-color-todo.folded-tool > .folded-tool-bar:hover { background: #7c2d12; }
+    .tool-color-todo.folded-tool > .folded-tool-bar::before { color: #ea580c; }
+    html.dark .tool-color-todo.folded-tool > .folded-tool-bar::before { color: #fb923c; }
+    .tool-color-todo .folded-tool-icon { color: #ea580c; }
+    html.dark .tool-color-todo .folded-tool-icon { color: #fb923c; }
+    .tool-color-todo .folded-tool-name { color: #9a3412; }
+    html.dark .tool-color-todo .folded-tool-name { color: #fdba74; }
+    .tool-color-todo .folded-tool-desc { color: #c2410c; }
+    html.dark .tool-color-todo .folded-tool-desc { color: #fb923c; }
+    .tool-color-todo { background: #fff7ed; }
+    html.dark .tool-color-todo { background: #1c0f02; }
+    .tool-color-todo > .folded-tool-body { border-top-color: #fed7aa; }
+    html.dark .tool-color-todo > .folded-tool-body { border-top-color: #431407; }
+
+    .tool-color-task.folded-tool > .folded-tool-bar { background: #e0e7ff; }
+    html.dark .tool-color-task.folded-tool > .folded-tool-bar { background: #1e1b4b; }
+    .tool-color-task.folded-tool > .folded-tool-bar:hover { background: #c7d2fe; }
+    html.dark .tool-color-task.folded-tool > .folded-tool-bar:hover { background: #312e81; }
+    .tool-color-task.folded-tool > .folded-tool-bar::before { color: #4f46e5; }
+    html.dark .tool-color-task.folded-tool > .folded-tool-bar::before { color: #818cf8; }
+    .tool-color-task .folded-tool-icon { color: #4f46e5; }
+    html.dark .tool-color-task .folded-tool-icon { color: #818cf8; }
+    .tool-color-task .folded-tool-name { color: #3730a3; }
+    html.dark .tool-color-task .folded-tool-name { color: #a5b4fc; }
+    .tool-color-task .folded-tool-desc { color: #4338ca; }
+    html.dark .tool-color-task .folded-tool-desc { color: #818cf8; }
+    .tool-color-task { background: #eef2ff; }
+    html.dark .tool-color-task { background: #0f0d29; }
+    .tool-color-task > .folded-tool-body { border-top-color: #c7d2fe; }
+    html.dark .tool-color-task > .folded-tool-body { border-top-color: #1e1b4b; }
+
+    .tool-color-default.folded-tool > .folded-tool-bar { background: #cffafe; }
+    html.dark .tool-color-default.folded-tool > .folded-tool-bar { background: #0e2a3a; }
+    .tool-color-default.folded-tool > .folded-tool-bar:hover { background: #a5f3fc; }
+    html.dark .tool-color-default.folded-tool > .folded-tool-bar:hover { background: #164e63; }
+    .tool-color-default.folded-tool > .folded-tool-bar::before { color: #0891b2; }
+    html.dark .tool-color-default.folded-tool > .folded-tool-bar::before { color: #22d3ee; }
+    .tool-color-default .folded-tool-icon { color: #0891b2; }
+    html.dark .tool-color-default .folded-tool-icon { color: #22d3ee; }
+    .tool-color-default .folded-tool-name { color: #155e75; }
+    html.dark .tool-color-default .folded-tool-name { color: #67e8f9; }
+    .tool-color-default .folded-tool-desc { color: #0e7490; }
+    html.dark .tool-color-default .folded-tool-desc { color: #22d3ee; }
+    .tool-color-default { background: #ecfeff; }
+    html.dark .tool-color-default { background: #0c1a24; }
+    .tool-color-default > .folded-tool-body { border-top-color: #a5f3fc; }
+    html.dark .tool-color-default > .folded-tool-body { border-top-color: #164e63; }
 
     .block-type-tool_result { background: #f0fdf4; }
     html.dark .block-type-tool_result { background: #0a1f0f; }

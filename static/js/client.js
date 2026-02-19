@@ -1188,9 +1188,10 @@ class AgentGUIClient {
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
             const typeClass = hasRenderer && this.renderer ? this.renderer._getBlockTypeClass('tool_use') : 'block-type-tool_use';
+            const toolColorClass = hasRenderer && this.renderer ? this.renderer._getToolColorClass(tn) : 'tool-color-default';
             const nextBlock = blocks[blockIdx + 1];
             const resultClass = nextBlock?.type === 'tool_result' ? (nextBlock.is_error ? 'has-error' : 'has-success') : '';
-            html += `<details class="block-tool-use folded-tool ${typeClass} ${resultClass}"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            html += `<details class="block-tool-use folded-tool ${typeClass} ${toolColorClass} ${resultClass}"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
             pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
