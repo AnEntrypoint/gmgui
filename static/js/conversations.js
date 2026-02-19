@@ -475,7 +475,10 @@ class ConversationManager {
   }
 
   async confirmDelete(convId, title) {
-    const confirmed = confirm(`Delete conversation "${title || 'Untitled'}"?\n\nThis will also delete any associated Claude Code session data. This action cannot be undone.`);
+    const confirmed = await window.UIDialog.confirm(
+      `Delete conversation "${title || 'Untitled'}"?\n\nThis will also delete any associated Claude Code session data. This action cannot be undone.`,
+      'Delete Conversation'
+    );
     if (!confirmed) return;
 
     try {
@@ -486,15 +489,14 @@ class ConversationManager {
 
       if (res.ok) {
         console.log(`[ConversationManager] Deleted conversation ${convId}`);
-        // Remove from local list immediately for responsive UI
         this.deleteConversation(convId);
       } else {
         const error = await res.json().catch(() => ({ error: 'Failed to delete' }));
-        alert('Failed to delete conversation: ' + (error.error || 'Unknown error'));
+        window.UIDialog.alert('Failed to delete conversation: ' + (error.error || 'Unknown error'), 'Error');
       }
     } catch (err) {
       console.error('[ConversationManager] Delete error:', err);
-      alert('Failed to delete conversation: ' + err.message);
+      window.UIDialog.alert('Failed to delete conversation: ' + err.message, 'Error');
     }
   }
 

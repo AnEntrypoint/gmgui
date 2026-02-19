@@ -678,8 +678,8 @@ function closeNewChatModal() {
   }
 }
 
-function createChatInWorkspace() {
-  const title = prompt('Enter a title for the conversation:', 'New Conversation');
+async function createChatInWorkspace() {
+  const title = await window.UIDialog.prompt('Enter a title for the conversation:', 'New Conversation', 'New Chat');
   if (title) {
     app.createConversation(title);
     closeNewChatModal();

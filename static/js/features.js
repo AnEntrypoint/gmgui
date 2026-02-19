@@ -123,7 +123,7 @@
       overlay.classList.remove('visible');
 
       if (!currentConversation) {
-        showToast('Select a conversation first', 'error');
+        if (window.UIDialog) window.UIDialog.showToast('Select a conversation first', 'error');
         return;
       }
 
@@ -136,7 +136,7 @@
 
   function uploadFiles(files) {
     if (!currentConversation) {
-      showToast('No conversation selected', 'error');
+      if (window.UIDialog) window.UIDialog.showToast('No conversation selected', 'error');
       return;
     }
 
@@ -145,7 +145,7 @@
       formData.append('file', files[i]);
     }
 
-    showToast('Uploading ' + files.length + ' file(s)...', 'info');
+    if (window.UIDialog) window.UIDialog.showToast('Uploading ' + files.length + ' file(s)...', 'info');
 
     fetch(BASE + '/api/upload/' + currentConversation, {
       method: 'POST',
@@ -154,13 +154,13 @@
     .then(function(res) { return res.json(); })
     .then(function(data) {
       if (data.ok) {
-        showToast(data.count + ' file(s) uploaded', 'success');
+        if (window.UIDialog) window.UIDialog.showToast(data.count + ' file(s) uploaded', 'success');
       } else {
-        showToast('Upload failed: ' + (data.error || 'Unknown error'), 'error');
+        if (window.UIDialog) window.UIDialog.showToast('Upload failed: ' + (data.error || 'Unknown error'), 'error');
       }
     })
     .catch(function(err) {
-      showToast('Upload failed: ' + err.message, 'error');
+      if (window.UIDialog) window.UIDialog.showToast('Upload failed: ' + err.message, 'error');
     });
   }
 
@@ -196,6 +196,42 @@
       });
     });
   }
+
+  function showVoiceDownloadProgress() {
+    if (window._voiceProgressDialog) return;
+    
+    window._voiceProgressDialog = window.UIDialog.showProgress({
+      title: 'Downloading Voice Models',
+      message: 'Preparing speech recognition and synthesis models...'
+    });
+    
+    var checkInterval = setInterval(function() {
+      if (isVoiceReady()) {
+        clearInterval(checkInterval);
+        if (window._voiceProgressDialog) {
+          window._voiceProgressDialog.close();
+          window._voiceProgressDialog = null;
+        }
+        switchView('voice');
+      }
+    }, 500);
+    
+    setTimeout(function() {
+      clearInterval(checkInterval);
+      if (window._voiceProgressDialog) {
+        window._voiceProgressDialog.close();
+        window._voiceProgressDialog = null;
+      }
+    }, 120000);
+  }
+
+  function updateVoiceProgress(percent, message) {
+    if (window._voiceProgressDialog) {
+      window._voiceProgressDialog.update(percent, message);
+    }
+  }
+
+  window.__updateVoiceProgress = updateVoiceProgress;
 
   function isVoiceReady() {
     var client = window.agentGUIClient;

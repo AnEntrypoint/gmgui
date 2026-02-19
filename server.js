@@ -2555,9 +2555,9 @@ const server = http.createServer(async (req, res) => {
         const isWindows = os.platform() === 'win32';
         const result = execSync('git remote get-url origin' + (isWindows ? '' : ' 2>/dev/null'), { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         const remoteUrl = result.trim();
-        const statusResult = execSync('git status --porcelain', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const statusResult = execSync('git status --porcelain' + (isWindows ? '' : ' 2>/dev/null'), { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         const hasChanges = statusResult.trim().length > 0;
-        const unpushedResult = execSync('git rev-list --count --not --remotes 2>/dev/null', { encoding: 'utf-8', cwd: STARTUP_CWD });
+        const unpushedResult = execSync('git rev-list --count --not --remotes' + (isWindows ? '' : ' 2>/dev/null'), { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         const hasUnpushed = parseInt(unpushedResult.trim() || '0', 10) > 0;
         const ownsRemote = !remoteUrl.includes('github.com/') || remoteUrl.includes(process.env.GITHUB_USER || '');
         sendJSON(req, res, 200, { ownsRemote, hasChanges, hasUnpushed, remoteUrl });
@@ -2570,7 +2570,10 @@ const server = http.createServer(async (req, res) => {
     if (pathOnly === '/api/git/push' && req.method === 'POST') {
       try {
         const isWindows = os.platform() === 'win32';
-        execSync('git add -A && git commit -m "Auto-commit" && git push', { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
+        const gitCommand = isWindows 
+          ? 'git add -A & git commit -m "Auto-commit" & git push'
+          : 'git add -A && git commit -m "Auto-commit" && git push';
+        execSync(gitCommand, { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         sendJSON(req, res, 200, { success: true });
       } catch (err) {
         sendJSON(req, res, 500, { error: err.message });
