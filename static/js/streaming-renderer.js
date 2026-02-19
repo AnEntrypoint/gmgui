@@ -424,7 +424,9 @@ class StreamingRenderer {
       'image': 9,
       'plan': 10,
       'usage': 11,
-      'premature': 8
+      'premature': 8,
+      'tool_status': 7,
+      'generic': 0
     };
     return typeColors[blockType] !== undefined ? typeColors[blockType] : 0;
   }
@@ -1501,6 +1503,8 @@ class StreamingRenderer {
   renderBlockGeneric(block, context) {
     const div = document.createElement('div');
     div.className = 'block-generic';
+    const colorIndex = this._getBlockColorIndex('generic');
+    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
     // Show key-value pairs instead of raw JSON
     const fieldsHtml = Object.entries(block)
@@ -1532,6 +1536,8 @@ class StreamingRenderer {
   renderBlockError(block, error) {
     const div = document.createElement('div');
     div.className = 'block-error';
+    const colorIndex = this._getBlockColorIndex('error');
+    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
     div.innerHTML = `
       <div style="display:flex;align-items:flex-start;gap:0.625rem">
