@@ -32,12 +32,31 @@ const modelDownloadState = {
   downloading: false,
   progress: null,
   error: null,
-  complete: false
+  complete: false,
+  startTime: null,
+  downloadMetrics: new Map()
 };
 
 function broadcastModelProgress(progress) {
   modelDownloadState.progress = progress;
-  broadcastSync({ type: 'model_download_progress', progress });
+  const broadcastData = {
+    type: 'model_download_progress',
+    modelId: progress.type || 'unknown',
+    bytesDownloaded: progress.bytesDownloaded || 0,
+    bytesRemaining: progress.bytesRemaining || 0,
+    totalBytes: progress.totalBytes || 0,
+    downloadSpeed: progress.downloadSpeed || 0,
+    eta: progress.eta || 0,
+    retryCount: progress.retryCount || 0,
+    currentGateway: progress.currentGateway || '',
+    status: progress.status || (progress.done ? 'completed' : progress.downloading ? 'downloading' : 'paused'),
+    percentComplete: progress.percentComplete || 0,
+    completedFiles: progress.completedFiles || 0,
+    totalFiles: progress.totalFiles || 0,
+    timestamp: Date.now(),
+    ...progress
+  };
+  broadcastSync(broadcastData);
 }
 
 async function ensureModelsDownloaded() {
@@ -85,14 +104,22 @@ async function ensureModelsDownloaded() {
     if (!sttOk) {
       console.log('[MODELS] Downloading STT model...');
       broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', completedFiles, totalFiles });
-      await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
+      try {
+        await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
+      } catch (err) {
+        console.warn('[MODELS] STT download failed, falling back to HuggingFace:', err.message);
+      }
       completedFiles += 10;
     }
 
     if (!ttsOk) {
       console.log('[MODELS] Downloading TTS models...');
       broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', completedFiles, totalFiles });
-      await webtalkTTS.ensureTTSModels(config);
+      try {
+        await webtalkTTS.ensureTTSModels(config);
+      } catch (err) {
+        console.warn('[MODELS] TTS download failed, falling back to HuggingFace:', err.message);
+      }
       completedFiles += 6;
     }
 
@@ -3274,7 +3301,8 @@ const BROADCAST_TYPES = new Set([
   'message_created', 'conversation_created', 'conversation_updated',
   'conversations_updated', 'conversation_deleted', 'queue_status', 'queue_updated',
   'rate_limit_hit', 'rate_limit_clear',
-  'script_started', 'script_stopped', 'script_output'
+  'script_started', 'script_stopped', 'script_output',
+  'model_download_progress'
 ]);
 
 const wsBatchQueues = new Map();

@@ -139,3 +139,142 @@ During TTS setup on first use, WebSocket broadcasts:
 
 ### Testing
 Setup validates by running pocket-tts binary with `--version` flag to confirm functional installation, not just file existence.
+
+## Model Download Fallback Chain Architecture (Task 1C)
+
+Three-layer resilient fallback for speech models (280MB whisper-base + 197MB TTS). Designed to eliminate single points of failure while maintaining backward compatibility.
+
+### Layer 1: IPFS Gateway (Primary)
+
+Decentralized distribution across three gateways with automatic failover:
+
+```
+Cloudflare IPFS     https://cloudflare-ipfs.com/ipfs/        Priority 1 (99.9% reliable)
+dweb.link           https://dweb.link/ipfs/                  Priority 2 (99% reliable)
+Pinata              https://gateway.pinata.cloud/ipfs/       Priority 3 (99.5% reliable)
+```
+
+**Model Distribution**:
+- Whisper Base (280MB): `TBD_WHISPER_HASH` → encoder (78.6MB) + decoder (198.9MB) + configs
+- TTS Models (197MB): `TBD_TTS_HASH` → mimi_encoder (73MB) + decoders + text_conditioner + flow_lm
+
+**Characteristics**: 30s timeout per gateway, 2 retries before fallback, SHA-256 per-file verification against IPFS-stored manifest
+
+### Layer 2: HuggingFace (Secondary)
+
+Current working implementation via webtalk package. Proven reliable with region-dependent latency.
+
+```
+Whisper  https://huggingface.co/onnx-community/whisper-base/resolve/main/
+TTS      https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/
+```
+
+**Characteristics**: 3 retries with exponential backoff (2^attempt seconds), 30s timeout, file size validation (minBytes thresholds: encoder ≥40MB, decoder ≥100MB, TTS files ≥18-61MB range)
+
+**Implementation Location**: webtalk/whisper-models.js, webtalk/tts-models.js (unchanged, wrapped by fallback logic)
+
+### Layer 3: Local Cache + Fallbacks
+
+**Primary Cache**: `~/.gmgui/models/` with manifest at `~/.gmgui/models/.manifests.json`
+
+**Verification Algorithms**:
+1. Size check (minBytes threshold) → corrupted: delete & retry
+2. SHA-256 hash against manifest → mismatch: delete & re-download
+3. ONNX format validation (header check) → invalid: delete & escalate to primary
+
+**Bundled Models** (future): `agentgui/bundled-models.tar.gz` (~50-80MB) for offline-first deployments
+
+**Peer-to-Peer** (future): mDNS discovery for LAN sharing across multiple AgentGUI instances
+
+### Download Decision Logic
+
+```
+1. Check local cache validity → RETURN if valid, record cache_hit metric
+2. TRY PRIMARY (IPFS): attempt 3 gateways sequentially, 2 retries each
+   - VERIFY size + sha256 → ON SUCCESS: record primary_success, return
+3. TRY SECONDARY (HuggingFace): 3 attempts with exponential backoff
+   - VERIFY file size → ON SUCCESS: record secondary_success, return
+4. TRY TERTIARY (Bundled): extract tarball if present
+   - VERIFY extraction → ON SUCCESS: record tertiary_bundled_success, return
+5. TRY TERTIARY (Peer): query mDNS if enabled, fetch from peer
+   - VERIFY checksum → ON SUCCESS: record tertiary_peer_success, return
+6. FAILURE: record all_layers_exhausted metric, throw error (optional: activate degraded mode)
+```
+
+### Metrics Collection
+
+**Storage**: `~/.gmgui/models/.metrics.json` (append-only, rotated daily)
+
+**Per-Download Fields**: timestamp, modelType, layer, gateway, status, latency_ms, bytes_downloaded/total, error_type/message
+
+**Aggregations**: per-layer success rate, per-gateway success rate, avg latency per layer, cache effectiveness
+
+**Dashboard Endpoints**:
+- `GET /api/metrics/downloads` - all metrics
+- `GET /api/metrics/downloads/summary` - aggregated stats
+- `GET /api/metrics/downloads/health` - per-layer health
+- `POST /api/metrics/downloads/reset` - clear history
+
+### Cache Invalidation Strategy
+
+**Version Manifest** (`~/.gmgui/models/.manifests.json`):
+```json
+{
+  "whisper-base": {
+    "currentVersion": "1.0.0",
+    "ipfsHash": "QmXXXX...",
+    "huggingfaceTag": "revision-hash",
+    "downloadedAt": "ISO8601",
+    "sha256": { "file": "hash...", ... }
+  },
+  "tts-models": { ... }
+}
+```
+
+**Version Mismatch Detection** (on startup + periodic background check):
+- Query HuggingFace API HEAD for latest revision
+- Query IPFS gateway for latest dag-json manifest
+- If new version: log warning, set flag in `/api/status`, prompt user (not auto-download)
+- If corrupted: quarantine to `.bak`, mark invalid, trigger auto-download from primary on next request
+
+**Stale Cache Handling**:
+- Max age: 90 days → background check queries IPFS for new hash
+- Stale window: 7 days after max age → serve stale if live fetch fails
+- Offline degradation: serve even if 365 days old when network down
+
+**Cleanup Policy**:
+- Backup retention: 1 previous version (`.bak`) for 7 days
+- Failed downloads: delete `*.tmp` after 1 hour idle
+- Old versions: delete if > 90 days old
+- Disk threshold: warn if `~/.gmgui/models` exceeds 2GB
+
+### Design Rationale
+
+**Why Three Layers?** IPFS (decentralized, no SPoF) + HuggingFace (proven, existing) + Local (offline-ready, LAN-resilient)
+
+**Why Metrics First?** Enables data-driven gateway selection, identifies reliability in production, guides timeout/retry tuning
+
+**Why No Auto-Upgrade?** User controls timing, allows staged rollout, supports version pinning, reduces surprise breakage
+
+**Why Bundled Models?** Enables air-gapped deployments, reduces network load, supports edge environments with poor connectivity
+
+### Implementation Roadmap
+
+| Phase | Description | Priority |
+|-------|-------------|----------|
+| 1 | Integrate IPFS gateway discovery (default configurable) | HIGH |
+| 2 | Refactor `ensureModelsDownloaded()` to use fallback chain | HIGH |
+| 3 | Add metrics collection to download layer | HIGH |
+| 4 | Implement manifest-based version tracking | MEDIUM |
+| 5 | Add stale-while-revalidate background checks | MEDIUM |
+| 6 | Integrate bundled models option | LOW |
+| 7 | Add peer-to-peer discovery | LOW |
+
+### Critical TODOs Before Implementation
+
+1. Publish whisper-base to IPFS → obtain ipfsHash
+2. Publish TTS models to IPFS → obtain ipfsHash
+3. Create manifest templates for both models
+4. Design metrics storage schema (SQLite vs JSON)
+5. Plan background check scheduler
+6. Define dashboard UI for metrics visualization

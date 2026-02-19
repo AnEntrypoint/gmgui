@@ -133,6 +133,40 @@ function initSchema() {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_unique ON chunks(sessionId, sequence);
     CREATE INDEX IF NOT EXISTS idx_chunks_conv_created ON chunks(conversationId, created_at);
     CREATE INDEX IF NOT EXISTS idx_chunks_sess_created ON chunks(sessionId, created_at);
+
+    CREATE TABLE IF NOT EXISTS ipfs_cids (
+      id TEXT PRIMARY KEY,
+      cid TEXT NOT NULL UNIQUE,
+      modelName TEXT NOT NULL,
+      modelType TEXT NOT NULL,
+      modelHash TEXT,
+      gatewayUrl TEXT,
+      cached_at INTEGER NOT NULL,
+      last_accessed_at INTEGER NOT NULL,
+      success_count INTEGER DEFAULT 0,
+      failure_count INTEGER DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ipfs_cids_model ON ipfs_cids(modelName);
+    CREATE INDEX IF NOT EXISTS idx_ipfs_cids_type ON ipfs_cids(modelType);
+    CREATE INDEX IF NOT EXISTS idx_ipfs_cids_hash ON ipfs_cids(modelHash);
+
+    CREATE TABLE IF NOT EXISTS ipfs_downloads (
+      id TEXT PRIMARY KEY,
+      cidId TEXT NOT NULL,
+      downloadPath TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      downloaded_bytes INTEGER DEFAULT 0,
+      total_bytes INTEGER,
+      error_message TEXT,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      FOREIGN KEY (cidId) REFERENCES ipfs_cids(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ipfs_downloads_cid ON ipfs_downloads(cidId);
+    CREATE INDEX IF NOT EXISTS idx_ipfs_downloads_status ON ipfs_downloads(status);
+    CREATE INDEX IF NOT EXISTS idx_ipfs_downloads_started ON ipfs_downloads(started_at);
   `);
 }
 
@@ -253,6 +287,27 @@ try {
   }
 } catch (err) {
   console.error('[Migration] Error:', err.message);
+}
+
+// Migration: Add resume capability columns to ipfs_downloads if needed
+try {
+  const result = db.prepare("PRAGMA table_info(ipfs_downloads)").all();
+  const columnNames = result.map(r => r.name);
+  const resumeColumns = {
+    attempts: 'INTEGER DEFAULT 0',
+    lastAttempt: 'INTEGER',
+    currentSize: 'INTEGER DEFAULT 0',
+    hash: 'TEXT'
+  };
+
+  for (const [colName, colDef] of Object.entries(resumeColumns)) {
+    if (!columnNames.includes(colName)) {
+      db.exec(`ALTER TABLE ipfs_downloads ADD COLUMN ${colName} ${colDef}`);
+      console.log(`[Migration] Added column ${colName} to ipfs_downloads table`);
+    }
+  }
+} catch (err) {
+  console.error('[Migration] IPFS schema update warning:', err.message);
 }
 
 const stmtCache = new Map();
@@ -1228,6 +1283,104 @@ export const queries = {
     }
 
     return deletedCount;
+  },
+
+  recordIpfsCid(cid, modelName, modelType, modelHash, gatewayUrl) {
+    const id = generateId('ipfs');
+    const now = Date.now();
+    const stmt = prep(`
+      INSERT INTO ipfs_cids (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(cid) DO UPDATE SET last_accessed_at = ?, success_count = success_count + 1
+    `);
+    stmt.run(id, cid, modelName, modelType, modelHash, gatewayUrl, now, now, now);
+    return id;
+  },
+
+  getIpfsCid(cid) {
+    const stmt = prep('SELECT * FROM ipfs_cids WHERE cid = ?');
+    return stmt.get(cid);
+  },
+
+  getIpfsCidByModel(modelName, modelType) {
+    const stmt = prep('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ? ORDER BY last_accessed_at DESC LIMIT 1');
+    return stmt.get(modelName, modelType);
+  },
+
+  recordDownloadStart(cidId, downloadPath, totalBytes) {
+    const id = generateId('dl');
+    const stmt = prep(`
+      INSERT INTO ipfs_downloads (id, cidId, downloadPath, status, total_bytes, started_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(id, cidId, downloadPath, 'in_progress', totalBytes, Date.now());
+    return id;
+  },
+
+  updateDownloadProgress(downloadId, downloadedBytes) {
+    const stmt = prep(`
+      UPDATE ipfs_downloads SET downloaded_bytes = ? WHERE id = ?
+    `);
+    stmt.run(downloadedBytes, downloadId);
+  },
+
+  completeDownload(downloadId, cidId) {
+    const now = Date.now();
+    prep(`
+      UPDATE ipfs_downloads SET status = ?, completed_at = ? WHERE id = ?
+    `).run('success', now, downloadId);
+    prep(`
+      UPDATE ipfs_cids SET last_accessed_at = ? WHERE id = ?
+    `).run(now, cidId);
+  },
+
+  recordDownloadError(downloadId, cidId, errorMessage) {
+    const now = Date.now();
+    prep(`
+      UPDATE ipfs_downloads SET status = ?, error_message = ?, completed_at = ? WHERE id = ?
+    `).run('failed', errorMessage, now, downloadId);
+    prep(`
+      UPDATE ipfs_cids SET failure_count = failure_count + 1 WHERE id = ?
+    `).run(cidId);
+  },
+
+  getDownload(downloadId) {
+    const stmt = prep('SELECT * FROM ipfs_downloads WHERE id = ?');
+    return stmt.get(downloadId);
+  },
+
+  getDownloadsByCid(cidId) {
+    const stmt = prep('SELECT * FROM ipfs_downloads WHERE cidId = ? ORDER BY started_at DESC');
+    return stmt.all(cidId);
+  },
+
+  getDownloadsByStatus(status) {
+    const stmt = prep('SELECT * FROM ipfs_downloads WHERE status = ? ORDER BY started_at DESC');
+    return stmt.all(status);
+  },
+
+  updateDownloadResume(downloadId, currentSize, attempts, lastAttempt, status) {
+    const stmt = prep(`
+      UPDATE ipfs_downloads
+      SET downloaded_bytes = ?, attempts = ?, lastAttempt = ?, status = ?
+      WHERE id = ?
+    `);
+    stmt.run(currentSize, attempts, lastAttempt, status, downloadId);
+  },
+
+  updateDownloadHash(downloadId, hash) {
+    const stmt = prep('UPDATE ipfs_downloads SET hash = ? WHERE id = ?');
+    stmt.run(hash, downloadId);
+  },
+
+  markDownloadResuming(downloadId) {
+    const stmt = prep('UPDATE ipfs_downloads SET status = ?, lastAttempt = ? WHERE id = ?');
+    stmt.run('resuming', Date.now(), downloadId);
+  },
+
+  markDownloadPaused(downloadId, errorMessage) {
+    const stmt = prep('UPDATE ipfs_downloads SET status = ?, error_message = ?, lastAttempt = ? WHERE id = ?');
+    stmt.run('paused', errorMessage, Date.now(), downloadId);
   }
 };
 

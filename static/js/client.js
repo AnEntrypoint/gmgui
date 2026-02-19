@@ -494,7 +494,7 @@ class AgentGUIClient {
           this.handleRateLimitClear(data);
           break;
         case 'model_download_progress':
-          this._handleModelDownloadProgress(data.progress);
+          this._handleModelDownloadProgress(data.progress || data);
           break;
         default:
           break;
@@ -2028,16 +2028,16 @@ class AgentGUIClient {
 
   _handleModelDownloadProgress(progress) {
     this._modelDownloadProgress = progress;
-    
-    if (progress.error) {
+
+    if (progress.status === 'failed' || progress.error) {
       this._modelDownloadInProgress = false;
-      console.error('[Models] Download error:', progress.error);
+      console.error('[Models] Download error:', progress.error || progress.status);
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
       if (window._voiceProgressDialog) {
         window._voiceProgressDialog.close();
         window._voiceProgressDialog = null;
       }
-      const errorMsg = 'Failed to download voice models: ' + progress.error;
+      const errorMsg = 'Failed to download voice models: ' + (progress.error || 'unknown error');
       if (window.UIDialog) {
         window.UIDialog.alert(errorMsg, 'Download Error');
       } else {
@@ -2045,8 +2045,8 @@ class AgentGUIClient {
       }
       return;
     }
-    
-    if (progress.done) {
+
+    if (progress.done || progress.status === 'completed') {
       this._modelDownloadInProgress = false;
       console.log('[Models] Download complete');
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
@@ -2067,8 +2067,8 @@ class AgentGUIClient {
       }
       return;
     }
-    
-    if (progress.started || progress.downloading) {
+
+    if (progress.started || progress.downloading || progress.status === 'downloading' || progress.status === 'connecting') {
       this._modelDownloadInProgress = true;
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
 
@@ -2076,13 +2076,26 @@ class AgentGUIClient {
         window.__showVoiceDownloadProgress();
       }
 
-      if (window._voiceProgressDialog && progress.totalBytes > 0) {
-        var pct = Math.round((progress.totalDownloaded / progress.totalBytes) * 100);
-        var mb = Math.round(progress.totalBytes / 1024 / 1024);
-        var downloaded = Math.round((progress.totalDownloaded || 0) / 1024 / 1024);
-        window._voiceProgressDialog.update(pct, 'Downloading ' + downloaded + 'MB / ' + mb + 'MB');
-      } else if (window._voiceProgressDialog && progress.file) {
-        window._voiceProgressDialog.update(0, 'Loading ' + progress.file + '...');
+      if (window._voiceProgressDialog) {
+        let displayText = 'Downloading models...';
+
+        if (progress.status === 'connecting') {
+          displayText = 'Connecting to ' + (progress.currentGateway || 'gateway') + '...';
+        } else if (progress.totalBytes > 0) {
+          const downloaded = (progress.bytesDownloaded || 0) / 1024 / 1024;
+          const total = progress.totalBytes / 1024 / 1024;
+          const speed = progress.downloadSpeed ? (progress.downloadSpeed / 1024 / 1024).toFixed(2) : '0';
+          const eta = progress.eta ? Math.ceil(progress.eta) + 's' : '...';
+          const retryInfo = progress.retryCount > 0 ? ` (retry ${progress.retryCount})` : '';
+
+          displayText = `Downloading ${downloaded.toFixed(1)}MB / ${total.toFixed(1)}MB @ ${speed}MB/s (ETA: ${eta})${retryInfo}`;
+        } else if (progress.file) {
+          displayText = 'Loading ' + progress.file + '...';
+        } else if (progress.completedFiles && progress.totalFiles) {
+          displayText = `Downloaded ${progress.completedFiles}/${progress.totalFiles} files`;
+        }
+
+        window._voiceProgressDialog.update(progress.percentComplete || 0, displayText);
       }
     }
   }
