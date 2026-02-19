@@ -42,11 +42,14 @@ class EventConsolidator {
     for (const c of chunks) {
       if (c.block?.type === 'text') {
         if (pending) {
-          const combined = (pending.block.text || '') + '\n' + (c.block.text || '');
+          const pendingText = pending.block.text || '';
+          const newText = c.block.text || '';
+          const combined = pendingText + newText;
           if (combined.length <= MAX_MERGE) {
+            const needsSpace = pendingText.length > 0 && !pendingText.endsWith(' ') && !pendingText.endsWith('\n') && newText.length > 0 && !newText.startsWith(' ') && !newText.startsWith('\n');
             pending = {
               ...pending,
-              block: { ...pending.block, text: combined },
+              block: { ...pending.block, text: needsSpace ? pendingText + ' ' + newText : combined },
               created_at: c.created_at,
               _mergedSequences: [...(pending._mergedSequences || [pending.sequence]), c.sequence]
             };

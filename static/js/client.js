@@ -632,7 +632,7 @@ class AgentGUIClient {
         </div>
       `;
       messagesEl.appendChild(streamingDiv);
-      this.scrollToBottom();
+      this.scrollToBottom(true);
     }
 
     // Start polling for chunks from database
@@ -687,12 +687,12 @@ class AgentGUIClient {
     return `<div style="padding:0.5rem;background:var(--color-bg-secondary);border-radius:0.375rem;border:1px solid var(--color-border)"><div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;margin-bottom:0.25rem">${this.escapeHtml(block.type)}</div>${fieldsHtml}</div>`;
   }
 
-  scrollToBottom() {
+  scrollToBottom(force = false) {
     const scrollContainer = document.getElementById('output-scroll');
     if (!scrollContainer) return;
     const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
 
-    if (distFromBottom > 150) {
+    if (!force && distFromBottom > 150) {
       this._unseenCount = (this._unseenCount || 0) + 1;
       this._showNewContentPill();
       return;
@@ -701,7 +701,7 @@ class AgentGUIClient {
     const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
     const isStreaming = this.state.streamingConversations.size > 0;
 
-    if (!isStreaming || !this._scrollKalman || Math.abs(maxScroll - scrollContainer.scrollTop) > 2000) {
+    if (!isStreaming || !this._scrollKalman || Math.abs(maxScroll - scrollContainer.scrollTop) > 2000 || force) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
       this._removeNewContentPill();
       this._scrollAnimating = false;
@@ -1275,7 +1275,7 @@ class AgentGUIClient {
     div.id = pendingId;
     div.innerHTML = `<div class="message-role">User</div><div class="message-text">${this.escapeHtml(content)}</div><div class="message-timestamp" style="opacity:0.5">Sending...</div>`;
     messagesEl.appendChild(div);
-    this.scrollToBottom();
+    this.scrollToBottom(true);
   }
 
   _confirmOptimisticMessage(pendingId) {
