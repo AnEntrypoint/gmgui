@@ -98,6 +98,14 @@ class StreamingRenderer {
    * Setup scroll optimization and auto-scroll
    */
   setupScrollOptimization() {
+    if (!this.scrollContainer) return;
+    this._userScrolledUp = false;
+    this.scrollContainer.addEventListener('scroll', () => {
+      if (this._programmaticScroll) return;
+      const sc = this.scrollContainer;
+      const distFromBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+      this._userScrolledUp = distFromBottom > 80;
+    });
   }
 
   /**
@@ -749,7 +757,6 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
-    details.setAttribute('open', '');
     if (block.id) details.dataset.toolUseId = block.id;
     const colorIndex = this._getBlockColorIndex('tool_use');
     details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
@@ -856,7 +863,7 @@ class StreamingRenderer {
   /**
    * Static HTML version of smart content rendering for use in string templates
    */
-  static renderSmartContentHTML(contentStr, escapeHtml) {
+  static renderSmartContentHTML(contentStr, escapeHtml, flat = false) {
     const trimmed = contentStr.trim();
     const esc = escapeHtml || window._escHtml;
 
@@ -874,8 +881,7 @@ class StreamingRenderer {
           const textParts = parsed.filter(b => b.type === 'text' && b.text);
           if (textParts.length > 0) {
             const combined = textParts.map(b => b.text).join('\n');
-            // Re-enter renderSmartContentHTML with the extracted text
-            return StreamingRenderer.renderSmartContentHTML(combined, esc);
+            return StreamingRenderer.renderSmartContentHTML(combined, esc, flat);
           }
         }
 
@@ -905,7 +911,7 @@ class StreamingRenderer {
       const cleanedContent = cleanedLines.join('\n');
 
       // Try to detect and highlight code based on content patterns
-      return StreamingRenderer.renderCodeWithHighlight(cleanedContent, esc);
+      return StreamingRenderer.renderCodeWithHighlight(cleanedContent, esc, flat);
     }
 
     // Check for system reminder tags and format them specially
@@ -1001,7 +1007,7 @@ class StreamingRenderer {
 
         // Add highlighted code
         if (codeContent.trim()) {
-          html += StreamingRenderer.renderCodeWithHighlight(codeContent, esc);
+          html += StreamingRenderer.renderCodeWithHighlight(codeContent, esc, flat);
         }
 
         // Add system reminders if any
@@ -1021,7 +1027,7 @@ class StreamingRenderer {
       if (contentWithoutReminders) {
         // Check if remaining content looks like code
         if (StreamingRenderer.detectCodeContent(contentWithoutReminders)) {
-          html += StreamingRenderer.renderCodeWithHighlight(contentWithoutReminders, esc);
+          html += StreamingRenderer.renderCodeWithHighlight(contentWithoutReminders, esc, flat);
         } else {
           html += `<pre class="tool-result-pre">${esc(contentWithoutReminders)}</pre>`;
         }
@@ -1050,7 +1056,7 @@ class StreamingRenderer {
     // Check if this looks like code
     const looksLikeCode = StreamingRenderer.detectCodeContent(trimmed);
     if (looksLikeCode) {
-      return StreamingRenderer.renderCodeWithHighlight(trimmed, esc);
+      return StreamingRenderer.renderCodeWithHighlight(trimmed, esc, flat);
     }
 
     const displayContent = trimmed.length > 2000 ? trimmed.substring(0, 2000) + '\n... (truncated)' : trimmed;
@@ -1109,11 +1115,12 @@ class StreamingRenderer {
   /**
    * Render code with basic syntax highlighting
    */
-  static renderCodeWithHighlight(code, esc) {
-    const preStyle = "background:#1e293b;padding:1rem;border-radius:0 0 0.375rem 0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;border-top:none;margin:0";
+  static renderCodeWithHighlight(code, esc, flat = false) {
+    const preStyle = "background:#1e293b;padding:1rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.875rem;line-height:1.6;color:#e2e8f0;border:1px solid #334155;margin:0";
+    const codeHtml = `<pre style="${preStyle}"><code class="lazy-hl">${esc(code)}</code></pre>`;
+    if (flat) return codeHtml;
     const lineCount = code.split('\n').length;
     const summaryLabel = `code - ${lineCount} line${lineCount !== 1 ? 's' : ''}`;
-    const codeHtml = `<pre style="${preStyle}"><code class="lazy-hl">${esc(code)}</code></pre>`;
     return `<details class="collapsible-code"><summary class="collapsible-code-summary">${summaryLabel}</summary>${codeHtml}</details>`;
   }
 
@@ -1240,7 +1247,7 @@ class StreamingRenderer {
     `;
     wrapper.appendChild(header);
 
-    const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this));
+    const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this), true);
     const body = document.createElement('div');
     body.className = 'folded-tool-body';
     if (!parentIsOpen) {
@@ -1348,7 +1355,6 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
     details.dataset.eventType = 'result';
-    if (!isError) details.setAttribute('open', '');
     const colorIndex = this._getBlockColorIndex(isError ? 'error' : 'result');
     details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
@@ -2003,14 +2009,20 @@ class StreamingRenderer {
    * Auto-scroll to bottom of container
    */
   autoScroll() {
-    if (this._scrollRafPending) return;
+    if (this._scrollRafPending || this._userScrolledUp) return;
     this._scrollRafPending = true;
     requestAnimationFrame(() => {
       this._scrollRafPending = false;
       if (this.scrollContainer) {
+        this._programmaticScroll = true;
         try { this.scrollContainer.scrollTop = this.scrollContainer.scrollHeight; } catch (_) {}
+        this._programmaticScroll = false;
       }
     });
+  }
+
+  resetScrollState() {
+    this._userScrolledUp = false;
   }
 
   updateVirtualScroll() {

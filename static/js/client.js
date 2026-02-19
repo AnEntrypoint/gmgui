@@ -315,14 +315,24 @@ class AgentGUIClient {
     const scrollContainer = document.getElementById(this.config.scrollContainerId);
     if (!scrollContainer) return;
 
+    this._userScrolledUp = false;
     let scrollTimer = null;
+    let lastScrollTop = scrollContainer.scrollTop;
     scrollContainer.addEventListener('scroll', () => {
+      const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+      if (scrollContainer.scrollTop < lastScrollTop && distFromBottom > 200) {
+        this._userScrolledUp = true;
+      } else if (distFromBottom < 50) {
+        this._userScrolledUp = false;
+        this._removeNewContentPill();
+      }
+      lastScrollTop = scrollContainer.scrollTop;
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => {
         if (this.state.currentConversation?.id) {
           this.saveScrollPosition(this.state.currentConversation.id);
         }
-      }, 500); // Debounce 500ms
+      }, 500);
     });
   }
 
@@ -706,50 +716,21 @@ class AgentGUIClient {
     if (!scrollContainer) return;
     const distFromBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
 
+    if (this._userScrolledUp && !force) {
+      this._unseenCount = (this._unseenCount || 0) + 1;
+      this._showNewContentPill();
+      return;
+    }
+
     if (!force && distFromBottom > 150) {
       this._unseenCount = (this._unseenCount || 0) + 1;
       this._showNewContentPill();
       return;
     }
 
-    const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-    const isStreaming = this.state.streamingConversations.size > 0;
-
-    if (!isStreaming || !this._scrollKalman || Math.abs(maxScroll - scrollContainer.scrollTop) > 2000 || force) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      this._removeNewContentPill();
-      this._scrollAnimating = false;
-      return;
-    }
-
-    this._scrollKalman.update(maxScroll);
-    this._scrollTarget = this._scrollKalman.predict();
-
-    const conf = this._chunkArrivalConfidence();
-    if (conf > 0.5) {
-      const estHeight = this._estimatedBlockHeight('text') * 0.5 * conf;
-      this._scrollTarget += estHeight;
-      const trueMax = scrollContainer.scrollHeight - scrollContainer.clientHeight;
-      if (this._scrollTarget > trueMax + 100) this._scrollTarget = trueMax + 100;
-    }
-
-    if (!this._scrollAnimating) {
-      this._scrollAnimating = true;
-      const animate = () => {
-        if (!this._scrollAnimating) return;
-        const sc = document.getElementById('output-scroll');
-        if (!sc) { this._scrollAnimating = false; return; }
-        const diff = this._scrollTarget - sc.scrollTop;
-        if (Math.abs(diff) < 1) {
-          sc.scrollTop = this._scrollTarget;
-          if (this.state.streamingConversations.size === 0) { this._scrollAnimating = false; return; }
-        }
-        sc.scrollTop += diff * this._scrollLerpFactor;
-        this._removeNewContentPill();
-        requestAnimationFrame(animate);
-      };
-      requestAnimationFrame(animate);
-    }
+    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+    this._removeNewContentPill();
+    this._scrollAnimating = false;
   }
 
   _showNewContentPill() {
@@ -1205,11 +1186,11 @@ class AgentGUIClient {
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
             const colorIdx = hasRenderer && this.renderer ? this.renderer._getBlockColorIndex('tool_use') : 1;
-            html += `<details class="block-tool-use folded-tool" open style="border-left:3px solid var(--block-color-${colorIdx})"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            html += `<details class="block-tool-use folded-tool" style="border-left:3px solid var(--block-color-${colorIdx})"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
             pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
-            const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this)) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
+            const smartHtml = typeof StreamingRenderer !== 'undefined' ? StreamingRenderer.renderSmartContentHTML(content, this.escapeHtml.bind(this), true) : `<pre class="tool-result-pre">${this.escapeHtml(content.length > 2000 ? content.substring(0, 2000) + '\n... (truncated)' : content)}</pre>`;
             const resultPreview = content.length > 80 ? content.substring(0, 77).replace(/\n/g, ' ') + '...' : content.replace(/\n/g, ' ');
             const resultIcon = block.is_error
               ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
@@ -2235,6 +2216,7 @@ class AgentGUIClient {
 
       this.cacheCurrentConversation();
       this.stopChunkPolling();
+      if (this.renderer.resetScrollState) this.renderer.resetScrollState();
       var prevId = this.state.currentConversation?.id;
       if (prevId && prevId !== conversationId) {
         if (this.wsManager.isConnected && !this.state.streamingConversations.has(prevId)) {

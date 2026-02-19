@@ -306,6 +306,7 @@ const discoveredAgents = discoverAgents();
 const modelCache = new Map();
 
 const AGENT_MODEL_COMMANDS = {
+  'claude-code': 'claude models',
   'opencode': 'opencode models',
   'kilo': 'kilo models',
 };
@@ -317,6 +318,7 @@ const AGENT_DEFAULT_MODELS = {
     { id: 'opus', label: 'Opus' },
     { id: 'haiku', label: 'Haiku' },
     { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
+    { id: 'claude-sonnet-4-6-20260219', label: 'Sonnet 4.6' },
     { id: 'claude-opus-4-6', label: 'Opus 4.6' },
     { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
   ],
@@ -390,25 +392,25 @@ async function getModelsForAgent(agentId) {
     return models;
   }
 
-  if (AGENT_DEFAULT_MODELS[agentId]) {
-    const models = AGENT_DEFAULT_MODELS[agentId];
-    modelCache.set(agentId, { models, timestamp: Date.now() });
-    return models;
-  }
-
   if (AGENT_MODEL_COMMANDS[agentId]) {
     try {
       const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
       const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
-      const models = [{ id: '', label: 'Default' }];
-      for (const line of lines) {
-        models.push({ id: line, label: line });
+      if (lines.length > 0) {
+        const models = [{ id: '', label: 'Default' }];
+        for (const line of lines) {
+          models.push({ id: line, label: line });
+        }
+        modelCache.set(agentId, { models, timestamp: Date.now() });
+        return models;
       }
-      modelCache.set(agentId, { models, timestamp: Date.now() });
-      return models;
-    } catch (_) {
-      return [{ id: '', label: 'Default' }];
-    }
+    } catch (_) {}
+  }
+
+  if (AGENT_DEFAULT_MODELS[agentId]) {
+    const models = AGENT_DEFAULT_MODELS[agentId];
+    modelCache.set(agentId, { models, timestamp: Date.now() });
+    return models;
   }
 
   const { getRegisteredAgents } = await import('./lib/claude-runner.js');
@@ -1964,6 +1966,41 @@ const server = http.createServer(async (req, res) => {
       });
       child.on('close', (code) => {
         activeScripts.delete(conversationId);
+        broadcastSync({ type: 'script_stopped', conversationId, code: code || 0, timestamp: Date.now() });
+      });
+      sendJSON(req, res, 200, { ok: true, agentId, pid: child.pid });
+      return;
+    }
+
+    const agentUpdateMatch = pathOnly.match(/^\/api\/agents\/([^/]+)\/update$/);
+    if (agentUpdateMatch && req.method === 'POST') {
+      const agentId = agentUpdateMatch[1];
+      const updateCommands = {
+        'claude-code': { cmd: 'claude', args: ['update', '--yes'] },
+      };
+      const updateCmd = updateCommands[agentId];
+      if (!updateCmd) { sendJSON(req, res, 400, { error: 'No update command for this agent' }); return; }
+      const conversationId = '__agent_update__';
+      if (activeScripts.has(conversationId)) { sendJSON(req, res, 409, { error: 'Update already running' }); return; }
+      const child = spawn(updateCmd.cmd, updateCmd.args, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, FORCE_COLOR: '1' },
+        shell: os.platform() === 'win32'
+      });
+      activeScripts.set(conversationId, { process: child, script: 'update-' + agentId, startTime: Date.now() });
+      broadcastSync({ type: 'script_started', conversationId, script: 'update-' + agentId, agentId, timestamp: Date.now() });
+      const onData = (stream) => (chunk) => {
+        broadcastSync({ type: 'script_output', conversationId, data: chunk.toString(), stream, timestamp: Date.now() });
+      };
+      child.stdout.on('data', onData('stdout'));
+      child.stderr.on('data', onData('stderr'));
+      child.on('error', (err) => {
+        activeScripts.delete(conversationId);
+        broadcastSync({ type: 'script_stopped', conversationId, code: 1, error: err.message, timestamp: Date.now() });
+      });
+      child.on('close', (code) => {
+        activeScripts.delete(conversationId);
+        modelCache.delete(agentId);
         broadcastSync({ type: 'script_stopped', conversationId, code: code || 0, timestamp: Date.now() });
       });
       sendJSON(req, res, 200, { ok: true, agentId, pid: child.pid });
