@@ -51,8 +51,10 @@ async function ensureModelsDownloaded() {
   try {
     const { createRequire: cr } = await import('module');
     const r = cr(import.meta.url);
-    const sttttsmodels = r('sttttsmodels');
-    const { sttDir, ttsDir } = sttttsmodels;
+
+    const gmguiModels = path.join(os.homedir(), '.gmgui', 'models');
+    const sttDir = path.join(gmguiModels, 'onnx-community', 'whisper-base');
+    const ttsDir = path.join(gmguiModels, 'tts');
 
     const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
     const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;
@@ -70,7 +72,7 @@ async function ensureModelsDownloaded() {
     const webtalkTTS = r('webtalk/tts-models');
     const { createConfig } = r('webtalk/config');
     const config = createConfig({ sdkDir: path.dirname(fileURLToPath(import.meta.url)) });
-    config.modelsDir = path.dirname(sttDir);
+    config.modelsDir = gmguiModels;
     config.ttsModelsDir = ttsDir;
     config.sttModelsDir = sttDir;
     config.whisperBaseUrl = 'https://huggingface.co/';
