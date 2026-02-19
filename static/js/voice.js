@@ -17,6 +17,7 @@
   var isLoadingHistory = false;
   var _lastVoiceBlockText = null;
   var _lastVoiceBlockTime = 0;
+  var _voiceBreakNext = false;
   var selectedVoiceId = localStorage.getItem('voice-selected-id') || 'default';
   var ttsAudioCache = new Map();
   var TTS_CLIENT_CACHE_MAX = 50;
@@ -549,7 +550,7 @@
     var emptyMsg = container.querySelector('.voice-empty');
     if (emptyMsg) emptyMsg.remove();
     var lastChild = container.lastElementChild;
-    if (!isUser && lastChild && lastChild.classList.contains('voice-block') && !lastChild.classList.contains('voice-block-user')) {
+    if (!isUser && !_voiceBreakNext && lastChild && lastChild.classList.contains('voice-block') && !lastChild.classList.contains('voice-block-user')) {
       var contentSpan = lastChild.querySelector('.voice-block-content');
       if (contentSpan) {
         contentSpan.textContent += '\n' + stripHtml(text);
@@ -558,6 +559,7 @@
         return lastChild;
       }
     }
+    _voiceBreakNext = false;
     var div = document.createElement('div');
     div.className = 'voice-block' + (isUser ? ' voice-block-user' : '');
     if (isUser) {
@@ -666,6 +668,7 @@
         if (data.conversationId && data.conversationId !== currentConversationId) return;
         spokenChunks = new Set();
         renderedSeqs = new Set();
+        _voiceBreakNext = false;
       }
     });
     window.addEventListener('conversation-selected', function(e) {
@@ -682,7 +685,6 @@
   function handleVoiceBlock(block, isNew) {
     if (!block || !block.type) return;
     if (block.type === 'text' && block.text) {
-      // Deduplicate: prevent rendering the same text block twice within 500ms
       var now = Date.now();
       if (_lastVoiceBlockText === block.text && (now - _lastVoiceBlockTime) < 500) {
         return;
@@ -697,7 +699,10 @@
         setTimeout(function() { div.classList.remove('speaking'); }, 2000);
       }
     } else if (block.type === 'result') {
+      _voiceBreakNext = true;
       addVoiceResultBlock(block, isNew);
+    } else {
+      _voiceBreakNext = true;
     }
   }
 
@@ -705,9 +710,9 @@
     var container = document.getElementById('voiceMessages');
     if (!container) return;
     container.innerHTML = '';
-    // Reset dedup state when loading a new conversation
     _lastVoiceBlockText = null;
     _lastVoiceBlockTime = 0;
+    _voiceBreakNext = false;
     if (!conversationId) {
       showVoiceEmpty(container);
       return;
@@ -722,6 +727,7 @@
           return;
         }
         var hasContent = false;
+        _voiceBreakNext = false;
         data.chunks.forEach(function(chunk) {
           if (chunk.sequence !== undefined) renderedSeqs.add(chunk.sequence);
           var block = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
@@ -730,8 +736,11 @@
             addVoiceBlock(block.text, false);
             hasContent = true;
           } else if (block.type === 'result') {
+            _voiceBreakNext = true;
             addVoiceResultBlock(block, false);
             hasContent = true;
+          } else {
+            _voiceBreakNext = true;
           }
         });
         if (!hasContent) showVoiceEmpty(container);
