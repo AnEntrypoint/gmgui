@@ -598,12 +598,18 @@ class AgentGUIClient {
                 const bFrag = document.createDocumentFragment();
                 sList.forEach(chunk => {
                   if (!chunk.block?.type) return;
-                  const el = this.renderer.renderBlock(chunk.block, chunk, bFrag);
-                  if (!el) return;
                   if (chunk.block.type === 'tool_result') {
                     const lastInFrag = bFrag.lastElementChild;
-                    if (lastInFrag?.classList?.contains('block-tool-use')) { lastInFrag.appendChild(el); return; }
+                    if (lastInFrag?.classList?.contains('block-tool-use')) {
+                      const parentIsOpen = lastInFrag.hasAttribute('open');
+                      const contextWithParent = { ...chunk, parentIsOpen };
+                      const el = this.renderer.renderBlock(chunk.block, contextWithParent, bFrag);
+                      if (el) { lastInFrag.appendChild(el); }
+                      return;
+                    }
                   }
+                  const el = this.renderer.renderBlock(chunk.block, chunk, bFrag);
+                  if (!el) return;
                   bFrag.appendChild(el);
                 });
                 bEl.appendChild(bFrag);
@@ -1759,14 +1765,20 @@ class AgentGUIClient {
     if (!streamingEl) return;
     const blocksEl = streamingEl.querySelector('.streaming-blocks');
     if (!blocksEl) return;
-    const element = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
-    if (!element) { this.scrollToBottom(); return; }
     if (chunk.block.type === 'tool_result') {
       const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
       const lastEl = blocksEl.lastElementChild;
       const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
-      if (toolUseEl) { toolUseEl.appendChild(element); this.scrollToBottom(); return; }
+      if (toolUseEl) {
+        const parentIsOpen = toolUseEl.hasAttribute('open');
+        const contextWithParent = { ...chunk, parentIsOpen };
+        const element = this.renderer.renderBlock(chunk.block, contextWithParent, blocksEl);
+        if (element) { toolUseEl.appendChild(element); this.scrollToBottom(); }
+        return;
+      }
     }
+    const element = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
+    if (!element) { this.scrollToBottom(); return; }
     blocksEl.appendChild(element);
     this.scrollToBottom();
   }
@@ -1813,18 +1825,20 @@ class AgentGUIClient {
       const blocksEl = streamingEl.querySelector('.streaming-blocks');
       if (!blocksEl) continue;
       for (const chunk of groups[sid]) {
-        const el = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
-        if (!el) { appended = true; continue; }
         if (chunk.block.type === 'tool_result') {
           const matchById = chunk.block.tool_use_id && blocksEl.querySelector(`.block-tool-use[data-tool-use-id="${chunk.block.tool_use_id}"]`);
           const lastEl = blocksEl.lastElementChild;
           const toolUseEl = matchById || (lastEl?.classList?.contains('block-tool-use') ? lastEl : null);
           if (toolUseEl) {
-            toolUseEl.appendChild(el);
-            appended = true;
+            const parentIsOpen = toolUseEl.hasAttribute('open');
+            const contextWithParent = { ...chunk, parentIsOpen };
+            const el = this.renderer.renderBlock(chunk.block, contextWithParent, blocksEl);
+            if (el) { toolUseEl.appendChild(el); appended = true; }
             continue;
           }
         }
+        const el = this.renderer.renderBlock(chunk.block, chunk, blocksEl);
+        if (!el) { appended = true; continue; }
         blocksEl.appendChild(el);
         appended = true;
       }
@@ -2368,12 +2382,18 @@ class AgentGUIClient {
             const blockFrag = document.createDocumentFragment();
             sessionChunkList.forEach(chunk => {
               if (!chunk.block?.type) return;
-              const element = this.renderer.renderBlock(chunk.block, chunk, blockFrag);
-              if (!element) return;
               if (chunk.block.type === 'tool_result') {
                 const lastInFrag = blockFrag.lastElementChild;
-                if (lastInFrag?.classList?.contains('block-tool-use')) { lastInFrag.appendChild(element); return; }
+                if (lastInFrag?.classList?.contains('block-tool-use')) {
+                  const parentIsOpen = lastInFrag.hasAttribute('open');
+                  const contextWithParent = { ...chunk, parentIsOpen };
+                  const element = this.renderer.renderBlock(chunk.block, contextWithParent, blockFrag);
+                  if (element) { lastInFrag.appendChild(element); }
+                  return;
+                }
               }
+              const element = this.renderer.renderBlock(chunk.block, chunk, blockFrag);
+              if (!element) return;
               blockFrag.appendChild(element);
             });
             blocksEl.appendChild(blockFrag);

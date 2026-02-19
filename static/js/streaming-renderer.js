@@ -1216,6 +1216,7 @@ class StreamingRenderer {
     const isError = block.is_error || false;
     const content = block.content || '';
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+    const parentIsOpen = context.parentIsOpen !== undefined ? context.parentIsOpen : true;
 
     const wrapper = document.createElement('div');
     wrapper.className = 'tool-result-inline' + (isError ? ' tool-result-error' : '');
@@ -1240,6 +1241,9 @@ class StreamingRenderer {
     const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this));
     const body = document.createElement('div');
     body.className = 'folded-tool-body';
+    if (!parentIsOpen) {
+      body.style.display = 'none';
+    }
     body.innerHTML = renderedContent;
     wrapper.appendChild(body);
 
@@ -1479,12 +1483,14 @@ class StreamingRenderer {
     div.className = 'folded-tool folded-tool-error block-premature';
     div.style.borderLeft = `3px solid var(--block-color-${this._getBlockColorIndex('premature')})`;
     const code = block.exitCode != null ? ` (exit ${block.exitCode})` : '';
+    const stderrDisplay = block.stderrText ? `<div class="folded-tool-content" style="margin-top:8px;padding:8px;background:rgba(0,0,0,0.05);border-radius:4px;font-family:monospace;font-size:0.9em;white-space:pre-wrap;">${this.escapeHtml(block.stderrText)}</div>` : '';
     div.innerHTML = `
       <div class="folded-tool-bar" style="background:rgba(245,158,11,0.1)">
         <span class="folded-tool-icon" style="color:#f59e0b"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg></span>
         <span class="folded-tool-name" style="color:#f59e0b">ACP Ended Prematurely${this.escapeHtml(code)}</span>
         <span class="folded-tool-desc">${this.escapeHtml(block.error || 'Process exited without output')}</span>
       </div>
+      ${stderrDisplay}
     `;
     return div;
   }
