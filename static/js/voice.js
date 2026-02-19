@@ -672,7 +672,11 @@
       }
     });
     window.addEventListener('conversation-selected', function(e) {
-      currentConversationId = e.detail.conversationId;
+      var newConversationId = e.detail.conversationId;
+      if (currentConversationId && currentConversationId !== newConversationId) {
+        unsubscribeFromConversation();
+      }
+      currentConversationId = newConversationId;
       stopSpeaking();
       spokenChunks = new Set();
       renderedSeqs = new Set();
@@ -715,9 +719,11 @@
     _voiceBreakNext = false;
     if (!conversationId) {
       showVoiceEmpty(container);
+      unsubscribeFromConversation();
       return;
     }
     isLoadingHistory = true;
+    subscribeToConversation(conversationId);
     fetch(BASE + '/api/conversations/' + conversationId + '/chunks')
       .then(function(res) { return res.json(); })
       .then(function(data) {
@@ -751,6 +757,20 @@
       });
   }
 
+  function subscribeToConversation(conversationId) {
+    if (!conversationId || typeof agentGUIClient === 'undefined' || !agentGUIClient || !agentGUIClient.wsManager) {
+      return;
+    }
+    agentGUIClient.wsManager.sendMessage({ type: 'subscribe', conversationId: conversationId, timestamp: Date.now() });
+  }
+
+  function unsubscribeFromConversation() {
+    if (typeof agentGUIClient === 'undefined' || !agentGUIClient || !agentGUIClient.wsManager || !currentConversationId) {
+      return;
+    }
+    agentGUIClient.wsManager.sendMessage({ type: 'unsubscribe', conversationId: currentConversationId, timestamp: Date.now() });
+  }
+
   function showVoiceEmpty(container) {
     container.innerHTML = '<div class="voice-empty"><div class="voice-empty-icon"><svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div><div>Hold the microphone button to record.<br>Release to transcribe. Tap Send to submit.<br>New responses will be read aloud.</div></div>';
   }
@@ -770,6 +790,7 @@
   function deactivate() {
     voiceActive = false;
     stopSpeaking();
+    unsubscribeFromConversation();
   }
 
   function escapeHtml(text) {
