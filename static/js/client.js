@@ -282,10 +282,12 @@ class AgentGUIClient {
 
     try {
       const position = localStorage.getItem(`scroll_${conversationId}`);
+      const scrollContainer = document.getElementById(this.config.scrollContainerId);
+      if (!scrollContainer) return;
+      
       if (position !== null) {
         const scrollTop = parseInt(position, 10);
-        const scrollContainer = document.getElementById(this.config.scrollContainerId);
-        if (scrollContainer && !isNaN(scrollTop)) {
+        if (!isNaN(scrollTop)) {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
               const maxScroll = scrollContainer.scrollHeight - scrollContainer.clientHeight;
@@ -293,6 +295,12 @@ class AgentGUIClient {
             });
           });
         }
+      } else {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            scrollContainer.scrollTop = 0;
+          });
+        });
       }
     } catch (e) {
       console.warn('Failed to restore scroll position:', e);
@@ -368,7 +376,7 @@ class AgentGUIClient {
     if (this.ui.injectButton) {
       this.ui.injectButton.addEventListener('click', async () => {
         if (!this.state.currentConversation) return;
-        const instructions = prompt('Enter instructions to inject into the running agent:');
+        const instructions = await window.UIDialog.prompt('Enter instructions to inject into the running agent:', '', 'Inject Instructions');
         if (!instructions) return;
         try {
           const resp = await fetch(`${window.__BASE_URL}/api/conversations/${this.state.currentConversation.id}/inject`, {
@@ -981,17 +989,17 @@ class AgentGUIClient {
         btn.addEventListener('click', async (e) => {
           const index = parseInt(e.target.dataset.index);
           const msgId = queue[index].messageId;
-          if (confirm('Delete this queued message?')) {
+          if (await window.UIDialog.confirm('Delete this queued message?', 'Delete Message')) {
             await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${msgId}`, { method: 'DELETE' });
           }
         });
       });
 
       queueEl.querySelectorAll('.queue-edit-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           const index = parseInt(e.target.dataset.index);
           const q = queue[index];
-          const newContent = prompt('Edit message:', q.content);
+          const newContent = await window.UIDialog.prompt('Edit message:', q.content, 'Edit Queued Message');
           if (newContent !== null && newContent !== q.content) {
             fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${q.messageId}`, {
               method: 'PATCH',
@@ -1176,7 +1184,8 @@ class AgentGUIClient {
             const dName = hasRenderer ? StreamingRenderer.getToolDisplayName(tn) : tn;
             const tTitle = hasRenderer && block.input ? StreamingRenderer.getToolTitle(tn, block.input) : '';
             const iconHtml = hasRenderer && this.renderer ? `<span class="folded-tool-icon">${this.renderer.getToolIcon(tn)}</span>` : '';
-            html += `<details class="block-tool-use folded-tool"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
+            const colorIdx = hasRenderer && this.renderer ? this.renderer._getBlockColorIndex('tool_use') : 1;
+            html += `<details class="block-tool-use folded-tool" open style="border-left:3px solid var(--block-color-${colorIdx})"><summary class="folded-tool-bar">${iconHtml}<span class="folded-tool-name">${this.escapeHtml(dName)}</span>${tTitle ? `<span class="folded-tool-desc">${this.escapeHtml(tTitle)}</span>` : ''}</summary>${inputHtml}`;
             pendingToolUseClose = true;
           } else if (block.type === 'tool_result') {
             const content = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
@@ -1185,7 +1194,8 @@ class AgentGUIClient {
             const resultIcon = block.is_error
               ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
               : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-            const resultHtml = `<details class="tool-result-inline${block.is_error ? ' tool-result-error' : ''}"><summary class="tool-result-status"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></summary><div class="folded-tool-body">${smartHtml}</div></details>`;
+            const colorIdx = hasRenderer && this.renderer ? this.renderer._getBlockColorIndex('tool_result') : 2;
+            const resultHtml = `<div class="tool-result-inline${block.is_error ? ' tool-result-error' : ''}" style="border-left:3px solid var(--block-color-${colorIdx})"><div class="tool-result-status"><span class="folded-tool-icon">${resultIcon}</span><span class="folded-tool-name">${block.is_error ? 'Error' : 'Success'}</span><span class="folded-tool-desc">${this.escapeHtml(resultPreview)}</span></div><div class="folded-tool-body">${smartHtml}</div></div>`;
             if (pendingToolUseClose) {
               html += resultHtml + '</details>';
               pendingToolUseClose = false;
@@ -1996,6 +2006,13 @@ class AgentGUIClient {
       this._modelDownloadInProgress = false;
       console.error('[Models] Download error:', progress.error);
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+      if (window._voiceProgressDialog) {
+        window._voiceProgressDialog.close();
+        window._voiceProgressDialog = null;
+      }
+      if (window.UIDialog) {
+        window.UIDialog.alert('Failed to download voice models: ' + progress.error, 'Download Error');
+      }
       return;
     }
     
@@ -2004,12 +2021,30 @@ class AgentGUIClient {
       console.log('[Models] Download complete');
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
       this._updateVoiceTabState();
+      if (window._voiceProgressDialog) {
+        window._voiceProgressDialog.update(100, 'Voice models ready!');
+        setTimeout(function() {
+          if (window._voiceProgressDialog) {
+            window._voiceProgressDialog.close();
+            window._voiceProgressDialog = null;
+          }
+        }, 500);
+      }
       return;
     }
     
     if (progress.started || progress.downloading) {
       this._modelDownloadInProgress = true;
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+      
+      if (window._voiceProgressDialog && progress.totalBytes > 0) {
+        var pct = Math.round((progress.totalDownloaded / progress.totalBytes) * 100);
+        var mb = Math.round(progress.totalBytes / 1024 / 1024);
+        var downloaded = Math.round((progress.totalDownloaded || 0) / 1024 / 1024);
+        window._voiceProgressDialog.update(pct, 'Downloading ' + downloaded + 'MB / ' + mb + 'MB');
+      } else if (window._voiceProgressDialog && progress.file) {
+        window._voiceProgressDialog.update(0, 'Loading ' + progress.file + '...');
+      }
     }
   }
 
@@ -2018,8 +2053,7 @@ class AgentGUIClient {
     if (voiceBtn) {
       var isReady = this._modelDownloadProgress?.done === true || 
                     this._modelDownloadProgress?.complete === true;
-      voiceBtn.disabled = !isReady;
-      voiceBtn.title = isReady ? 'Voice' : 'Downloading voice models...';
+      voiceBtn.title = isReady ? 'Voice' : 'Voice (click to download models)';
     }
   }
 
@@ -2438,8 +2472,9 @@ class AgentGUIClient {
    */
   showError(message) {
     console.error(message);
-    // Could display in a toast or alert
-    alert(message);
+    if (window.UIDialog) {
+      window.UIDialog.alert(message, 'Error');
+    }
   }
 
   /**

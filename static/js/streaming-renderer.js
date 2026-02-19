@@ -399,23 +399,25 @@ class StreamingRenderer {
     div.className = 'block-text';
     if (isHtml) div.classList.add('html-content');
     div.innerHTML = html;
-    const colorIndex = this._getUniqueColorIndex(text);
+    const colorIndex = this._getBlockColorIndex('text');
     div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
     return div;
   }
 
-  _getUniqueColorIndex(text) {
-    if (!this._colorIndexMap) {
-      this._colorIndexMap = new Map();
-      this._colorCounter = 0;
-    }
-    let index = this._colorIndexMap.get(text);
-    if (index === undefined) {
-      index = this._colorCounter % 10;
-      this._colorIndexMap.set(text, index);
-      this._colorCounter++;
-    }
-    return index;
+  _getBlockColorIndex(blockType) {
+    const typeColors = {
+      'text': 0,
+      'tool_use': 1,
+      'tool_result': 2,
+      'code': 3,
+      'thinking': 4,
+      'bash': 5,
+      'system': 6,
+      'result': 7,
+      'error': 8,
+      'image': 9
+    };
+    return typeColors[blockType] !== undefined ? typeColors[blockType] : 0;
   }
 
   containsHtmlTags(text) {
@@ -733,7 +735,10 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool';
+    details.setAttribute('open', '');
     if (block.id) details.dataset.toolUseId = block.id;
+    const colorIndex = this._getBlockColorIndex('tool_use');
+    details.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
     const displayName = this.getToolUseDisplayName(toolName);
@@ -1199,33 +1204,34 @@ class StreamingRenderer {
     const isError = block.is_error || false;
     const content = block.content || '';
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-    const preview = contentStr.length > 80 ? contentStr.substring(0, 77).replace(/\n/g, ' ') + '...' : contentStr.replace(/\n/g, ' ');
 
-    const details = document.createElement('details');
-    details.className = 'tool-result-inline' + (isError ? ' tool-result-error' : '');
-    details.dataset.eventType = 'tool_result';
-    if (block.tool_use_id) details.dataset.toolUseId = block.tool_use_id;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tool-result-inline' + (isError ? ' tool-result-error' : '');
+    wrapper.dataset.eventType = 'tool_result';
+    if (block.tool_use_id) wrapper.dataset.toolUseId = block.tool_use_id;
+    const colorIndex = this._getBlockColorIndex('tool_result');
+    wrapper.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
 
+    const header = document.createElement('div');
+    header.className = 'tool-result-status';
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-
-    const summary = document.createElement('summary');
-    summary.className = 'tool-result-status';
-    summary.innerHTML = `
+    const preview = contentStr.length > 80 ? contentStr.substring(0, 77).replace(/\n/g, ' ') + '...' : contentStr.replace(/\n/g, ' ');
+    header.innerHTML = `
       <span class="folded-tool-icon">${iconSvg}</span>
       <span class="folded-tool-name">${isError ? 'Error' : 'Success'}</span>
       <span class="folded-tool-desc">${this.escapeHtml(preview)}</span>
     `;
-    details.appendChild(summary);
+    wrapper.appendChild(header);
 
     const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this));
     const body = document.createElement('div');
     body.className = 'folded-tool-body';
     body.innerHTML = renderedContent;
-    details.appendChild(body);
+    wrapper.appendChild(body);
 
-    return details;
+    return wrapper;
   }
 
   /**
