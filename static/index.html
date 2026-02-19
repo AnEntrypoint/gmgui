@@ -38,6 +38,16 @@
       --sidebar-width: 300px;
       --header-height: 52px;
       --msg-max-width: 100%;
+      --block-color-0: #8b5cf6;
+      --block-color-1: #ec4899;
+      --block-color-2: #14b8a6;
+      --block-color-3: #f97316;
+      --block-color-4: #06b6d4;
+      --block-color-5: #84cc16;
+      --block-color-6: #a855f7;
+      --block-color-7: #f43f5e;
+      --block-color-8: #22c55e;
+      --block-color-9: #eab308;
     }
 
     html.dark {
@@ -46,6 +56,16 @@
       --color-text-primary: #f9fafb;
       --color-text-secondary: #d1d5db;
       --color-border: #374151;
+      --block-color-0: #a78bfa;
+      --block-color-1: #f472b6;
+      --block-color-2: #2dd4bf;
+      --block-color-3: #fb923c;
+      --block-color-4: #22d3ee;
+      --block-color-5: #a3e635;
+      --block-color-6: #c084fc;
+      --block-color-7: #fb7185;
+      --block-color-8: #4ade80;
+      --block-color-9: #facc15;
     }
 
     html, body {
@@ -878,6 +898,45 @@
 
     .send-btn svg { width: 18px; height: 18px; }
 
+    .stop-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background-color: #dc2626;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background-color 0.15s;
+    }
+
+    .stop-btn:hover:not(:disabled) { background-color: #b91c1c; }
+    .stop-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .stop-btn.visible { display: flex; }
+
+    .inject-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background-color: #f59e0b;
+      color: white;
+      border: none;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background-color 0.15s;
+      margin-right: 0.25rem;
+    }
+
+    .inject-btn:hover:not(:disabled) { background-color: #d97706; }
+    .inject-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .inject-btn.visible { display: flex; }
+
     /* ===== OVERLAY for mobile sidebar ===== */
     .sidebar-overlay {
       display: none;
@@ -1275,7 +1334,6 @@
     .streaming-blocks { contain: content; }
     .sidebar-list { contain: strict; content-visibility: auto; }
     .message { contain: layout style; content-visibility: auto; contain-intrinsic-size: auto 80px; }
-    #output-scroll { will-change: transform; }
 
     .voice-block .voice-result-stats {
       font-size: 0.8rem;
@@ -2489,6 +2547,16 @@
             aria-label="Message input"
             rows="1"
           ></textarea>
+          <button class="inject-btn" id="injectBtn" title="Inject instructions into running agent" aria-label="Inject instructions">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/>
+            </svg>
+          </button>
+          <button class="stop-btn" id="stopBtn" title="Stop running agent (emergency)" aria-label="Stop agent">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M6 6h12v12H6z"/>
+            </svg>
+          </button>
           <button class="send-btn" data-send-button title="Send message (Ctrl+Enter)" aria-label="Send message">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>

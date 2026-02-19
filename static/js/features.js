@@ -188,10 +188,24 @@
     buttons.forEach(function(btn) {
       btn.addEventListener('click', function() {
         var view = btn.dataset.view;
+        if (view === 'voice' && !isVoiceReady()) {
+          showToast('Downloading voice models... please wait', 'info');
+          return;
+        }
         switchView(view);
       });
     });
   }
+
+  function isVoiceReady() {
+    if (window.agentGUIClient && window.agentGUIClient._modelDownloadInProgress === false) {
+      return window.agentGUIClient._modelDownloadProgress?.done === true || 
+             window.agentGUIClient._modelDownloadProgress?.complete === true;
+    }
+    return false;
+  }
+
+  window.__checkVoiceReady = isVoiceReady;
 
   function switchView(view) {
     currentView = view;

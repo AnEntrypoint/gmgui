@@ -399,7 +399,23 @@ class StreamingRenderer {
     div.className = 'block-text';
     if (isHtml) div.classList.add('html-content');
     div.innerHTML = html;
+    const colorIndex = this._getUniqueColorIndex(text);
+    div.style.borderLeft = `3px solid var(--block-color-${colorIndex})`;
     return div;
+  }
+
+  _getUniqueColorIndex(text) {
+    if (!this._colorIndexMap) {
+      this._colorIndexMap = new Map();
+      this._colorCounter = 0;
+    }
+    let index = this._colorIndexMap.get(text);
+    if (index === undefined) {
+      index = this._colorCounter % 10;
+      this._colorIndexMap.set(text, index);
+      this._colorCounter++;
+    }
+    return index;
   }
 
   containsHtmlTags(text) {

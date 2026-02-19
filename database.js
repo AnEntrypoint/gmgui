@@ -308,6 +308,11 @@ export const queries = {
     return stmt.all('deleted');
   },
 
+  getConversations() {
+    const stmt = prep('SELECT * FROM conversations WHERE status != ? ORDER BY updated_at DESC');
+    return stmt.all('deleted');
+  },
+
   updateConversation(id, data) {
     const conv = this.getConversation(id);
     if (!conv) return null;
@@ -566,6 +571,28 @@ export const queries = {
       "SELECT * FROM sessions WHERE status IN ('active', 'pending') ORDER BY started_at DESC"
     );
     return stmt.all();
+  },
+
+  getSessionsByConversation(conversationId, limit = 10, offset = 0) {
+    const stmt = prep(
+      'SELECT * FROM sessions WHERE conversationId = ? ORDER BY started_at DESC LIMIT ? OFFSET ?'
+    );
+    return stmt.all(conversationId, limit, offset);
+  },
+
+  getAllSessions(limit = 100) {
+    const stmt = prep(
+      'SELECT * FROM sessions ORDER BY started_at DESC LIMIT ?'
+    );
+    return stmt.all(limit);
+  },
+
+  deleteSession(id) {
+    const stmt = prep('DELETE FROM sessions WHERE id = ?');
+    const result = stmt.run(id);
+    prep('DELETE FROM chunks WHERE sessionId = ?').run(id);
+    prep('DELETE FROM events WHERE sessionId = ?').run(id);
+    return result.changes || 0;
   },
 
   createEvent(type, data, conversationId = null, sessionId = null) {

@@ -1217,7 +1217,7 @@ const server = http.createServer(async (req, res) => {
             startTime: Date.now(),
             duration: 0,
             eventCount: 0
-          }
+              }
         };
 
         if (filterType) {
@@ -1228,6 +1228,163 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
                 sendJSON(req, res, 400, { error: err.message });
       }
+      return;
+    }
+
+    const runsMatch = pathOnly.match(/^\/api\/runs$/);
+    if (runsMatch && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { input, agentId, webhook } = parsed;
+      if (!input) {
+        sendJSON(req, res, 400, { error: 'Missing input in request body' });
+        return;
+      }
+
+      const resolvedAgentId = agentId || 'claude-code';
+      const resolvedModel = parsed.model || null;
+      const cwd = parsed.workingDirectory || STARTUP_CWD;
+
+      const thread = queries.createConversation(resolvedAgentId, 'Stateless Run', cwd);
+      const session = queries.createSession(thread.id, resolvedAgentId, 'pending');
+      const message = queries.createMessage(thread.id, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+      processMessageWithStreaming(thread.id, message.id, session.id, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+
+      sendJSON(req, res, 200, {
+        id: session.id,
+        status: 'pending',
+        started_at: session.started_at,
+        agentId: resolvedAgentId
+      });
+      return;
+    }
+
+    const runsSearchMatch = pathOnly.match(/^\/api\/runs\/search$/);
+    if (runsSearchMatch && req.method === 'POST') {
+      const sessions = queries.getAllSessions();
+      const runs = sessions.slice(0, 50).map(s => ({
+        id: s.id,
+        status: s.status,
+        started_at: s.started_at,
+        completed_at: s.completed_at,
+        agentId: s.agentId,
+        input: null,
+        output: null
+      })).reverse();
+      sendJSON(req, res, 200, runs);
+      return;
+    }
+
+    const runByIdMatch = pathOnly.match(/^\/api\/runs\/([^/]+)$/);
+    if (runByIdMatch) {
+      const runId = runByIdMatch[1];
+      const session = queries.getSession(runId);
+      
+      if (!session) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      if (req.method === 'GET') {
+        sendJSON(req, res, 200, {
+          id: session.id,
+          status: session.status,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          agentId: session.agentId,
+          input: null,
+          output: null
+        });
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        queries.deleteSession(runId);
+        sendJSON(req, res, 204, {});
+        return;
+      }
+
+      if (req.method === 'POST') {
+        if (session.status !== 'interrupted') {
+          sendJSON(req, res, 409, { error: 'Can only resume interrupted runs' });
+          return;
+        }
+
+        let body = '';
+        for await (const chunk of req) { body += chunk; }
+        let parsed = {};
+        try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+        const { input } = parsed;
+        if (!input) {
+          sendJSON(req, res, 400, { error: 'Missing input in request body' });
+          return;
+        }
+
+        const conv = queries.getConversation(session.conversationId);
+        const resolvedAgentId = session.agentId || conv?.agentId || 'claude-code';
+        const resolvedModel = conv?.model || null;
+        const cwd = conv?.workingDirectory || STARTUP_CWD;
+
+        queries.updateSession(runId, { status: 'pending' });
+        
+        const message = queries.createMessage(session.conversationId, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+        processMessageWithStreaming(session.conversationId, message.id, runId, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+
+        sendJSON(req, res, 200, {
+          id: session.id,
+          status: 'pending',
+          started_at: session.started_at,
+          agentId: resolvedAgentId
+        });
+        return;
+      }
+    }
+
+    const runCancelMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/cancel$/);
+    if (runCancelMatch && req.method === 'POST') {
+      const runId = runCancelMatch[1];
+      const session = queries.getSession(runId);
+      
+      if (!session) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      const conversationId = session.conversationId;
+      const entry = activeExecutions.get(conversationId);
+      
+      if (entry && entry.sessionId === runId) {
+        const { pid } = entry;
+        if (pid) {
+          try {
+            process.kill(-pid, 'SIGKILL');
+          } catch {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch (e) {}
+          }
+        }
+      }
+
+      queries.updateSession(runId, { status: 'interrupted', completed_at: Date.now() });
+      queries.setIsStreaming(conversationId, false);
+      activeExecutions.delete(conversationId);
+
+      broadcastSync({
+        type: 'streaming_complete',
+        sessionId: runId,
+        conversationId,
+        interrupted: true,
+        timestamp: Date.now()
+      });
+
+      sendJSON(req, res, 204, {});
       return;
     }
 
@@ -1307,8 +1464,224 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const cancelRunMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/cancel$/);
+    if (cancelRunMatch && req.method === 'POST') {
+      const conversationId = cancelRunMatch[1];
+      const entry = activeExecutions.get(conversationId);
+      
+      if (!entry) {
+        sendJSON(req, res, 404, { error: 'No active execution to cancel' });
+        return;
+      }
+
+      const { pid, sessionId } = entry;
+      
+      if (pid) {
+        try {
+          process.kill(-pid, 'SIGKILL');
+        } catch {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch (e) {}
+        }
+      }
+
+      if (sessionId) {
+        queries.updateSession(sessionId, { 
+          status: 'interrupted', 
+          completed_at: Date.now() 
+        });
+      }
+
+      queries.setIsStreaming(conversationId, false);
+      activeExecutions.delete(conversationId);
+
+      broadcastSync({
+        type: 'streaming_complete',
+        sessionId,
+        conversationId,
+        interrupted: true,
+        timestamp: Date.now()
+      });
+
+      sendJSON(req, res, 200, { ok: true, cancelled: true, conversationId, sessionId });
+      return;
+    }
+
+    const resumeRunMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/resume$/);
+    if (resumeRunMatch && req.method === 'POST') {
+      const conversationId = resumeRunMatch[1];
+      const conv = queries.getConversation(conversationId);
+      
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Conversation not found' });
+        return;
+      }
+
+      const activeEntry = activeExecutions.get(conversationId);
+      if (activeEntry) {
+        sendJSON(req, res, 409, { error: 'Conversation already has an active execution' });
+        return;
+      }
+
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { content, agentId } = parsed;
+      if (!content) {
+        sendJSON(req, res, 400, { error: 'Missing content in request body' });
+        return;
+      }
+
+      const resolvedAgentId = agentId || conv.agentId || 'claude-code';
+      const resolvedModel = parsed.model || conv.model || null;
+      const cwd = conv.workingDirectory || STARTUP_CWD;
+
+      const session = queries.createSession(conversationId, resolvedAgentId, 'pending');
+      
+      const message = queries.createMessage(conversationId, 'user', content);
+
+      processMessageWithStreaming(conversationId, message.id, session.id, content, resolvedAgentId, resolvedModel);
+
+      sendJSON(req, res, 200, { 
+        ok: true, 
+        conversationId, 
+        sessionId: session.id,
+        messageId: message.id,
+        resumed: true 
+      });
+      return;
+    }
+
+    const injectMatch = pathOnly.match(/^\/api\/conversations\/([^/]+)\/inject$/);
+    if (injectMatch && req.method === 'POST') {
+      const conversationId = injectMatch[1];
+      const conv = queries.getConversation(conversationId);
+      
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Conversation not found' });
+        return;
+      }
+
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { content, eager } = parsed;
+      if (!content) {
+        sendJSON(req, res, 400, { error: 'Missing content in request body' });
+        return;
+      }
+
+      const entry = activeExecutions.get(conversationId);
+      
+      if (entry && eager) {
+        sendJSON(req, res, 409, { error: 'Cannot eagerly inject while execution is running - message queued' });
+        return;
+      }
+
+      const message = queries.createMessage(conversationId, 'user', '[INJECTED] ' + content);
+
+      if (!entry) {
+        const resolvedAgentId = conv.agentId || 'claude-code';
+        const resolvedModel = conv.model || null;
+        const cwd = conv.workingDirectory || STARTUP_CWD;
+        const session = queries.createSession(conversationId, resolvedAgentId, 'pending');
+        processMessageWithStreaming(conversationId, message.id, session.id, message.content, resolvedAgentId, resolvedModel);
+      }
+
+      sendJSON(req, res, 200, { ok: true, injected: true, conversationId, messageId: message.id });
+      return;
+    }
+
     if (pathOnly === '/api/agents' && req.method === 'GET') {
             sendJSON(req, res, 200, { agents: discoveredAgents });
+      return;
+    }
+
+    const agentsSearchMatch = pathOnly.match(/^\/api\/agents\/search$/);
+    if (agentsSearchMatch && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { query } = parsed;
+      let results = discoveredAgents;
+
+      if (query) {
+        const q = query.toLowerCase();
+        results = discoveredAgents.filter(a => 
+          a.name.toLowerCase().includes(q) || 
+          a.id.toLowerCase().includes(q) ||
+          (a.description && a.description.toLowerCase().includes(q))
+        );
+      }
+
+      const agents = results.map(a => ({
+        id: a.id,
+        name: a.name,
+        description: a.description || '',
+        icon: a.icon || null,
+        status: 'available'
+      }));
+
+      sendJSON(req, res, 200, agents);
+      return;
+    }
+
+    const agentByIdMatch = pathOnly.match(/^\/api\/agents\/([^/]+)$/);
+    if (agentByIdMatch && req.method === 'GET') {
+      const agentId = agentByIdMatch[1];
+      const agent = discoveredAgents.find(a => a.id === agentId);
+      
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+
+      sendJSON(req, res, 200, {
+        id: agent.id,
+        name: agent.name,
+        description: agent.description || '',
+        icon: agent.icon || null,
+        status: 'available'
+      });
+      return;
+    }
+
+    const agentDescriptorMatch = pathOnly.match(/^\/api\/agents\/([^/]+)\/descriptor$/);
+    if (agentDescriptorMatch && req.method === 'GET') {
+      const agentId = agentDescriptorMatch[1];
+      const agent = discoveredAgents.find(a => a.id === agentId);
+      
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+
+      sendJSON(req, res, 200, {
+        agentId: agent.id,
+        agentName: agent.name,
+        protocol: agent.protocol || 'direct',
+        capabilities: {
+          streaming: true,
+          cancel: true,
+          resume: agent.protocol === 'direct',
+          stateful: true
+        },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            content: { type: 'string', description: 'The prompt to send to the agent' }
+          },
+          required: ['content']
+        },
+        stateFormat: 'opaque'
+      });
       return;
     }
 
@@ -1584,6 +1957,336 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    const threadsMatch = pathOnly.match(/^\/api\/threads$/);
+    if (threadsMatch && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const thread = queries.createConversation(parsed.agentId || 'claude-code', parsed.title || 'New Thread', parsed.workingDirectory || STARTUP_CWD);
+      sendJSON(req, res, 200, { 
+        id: thread.id, 
+        agentId: thread.agentId, 
+        title: thread.title,
+        created_at: thread.created_at,
+        status: thread.status,
+        state: null
+      });
+      return;
+    }
+
+    const threadsSearchMatch = pathOnly.match(/^\/api\/threads\/search$/);
+    if (threadsSearchMatch && req.method === 'POST') {
+      const conversations = queries.getConversations();
+      const threads = conversations.map(c => ({
+        id: c.id,
+        agentId: c.agentId,
+        title: c.title,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        status: c.status,
+        state: null
+      }));
+      sendJSON(req, res, 200, threads);
+      return;
+    }
+
+    const threadByIdMatch = pathOnly.match(/^\/api\/threads\/([^/]+)$/);
+    if (threadByIdMatch) {
+      const threadId = threadByIdMatch[1];
+      const conv = queries.getConversation(threadId);
+      
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      if (req.method === 'GET') {
+        sendJSON(req, res, 200, {
+          id: conv.id,
+          agentId: conv.agentId,
+          title: conv.title,
+          created_at: conv.created_at,
+          updated_at: conv.updated_at,
+          status: conv.status,
+          state: null
+        });
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        const activeEntry = activeExecutions.get(threadId);
+        if (activeEntry) {
+          sendJSON(req, res, 409, { error: 'Thread has an active run, cannot delete' });
+          return;
+        }
+        queries.deleteConversation(threadId);
+        sendJSON(req, res, 204, {});
+        return;
+      }
+
+      if (req.method === 'PATCH') {
+        let body = '';
+        for await (const chunk of req) { body += chunk; }
+        let parsed = {};
+        try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+        const updates = {};
+        if (parsed.title !== undefined) updates.title = parsed.title;
+        if (parsed.state !== undefined) updates.state = parsed.state;
+        
+        if (Object.keys(updates).length > 0) {
+          queries.updateConversation(threadId, updates);
+        }
+        
+        const updated = queries.getConversation(threadId);
+        sendJSON(req, res, 200, {
+          id: updated.id,
+          agentId: updated.agentId,
+          title: updated.title,
+          created_at: updated.created_at,
+          updated_at: updated.updated_at,
+          status: updated.status,
+          state: updated.state
+        });
+        return;
+      }
+    }
+
+    const threadHistoryMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/history$/);
+    if (threadHistoryMatch && req.method === 'GET') {
+      const threadId = threadHistoryMatch[1];
+      const conv = queries.getConversation(threadId);
+      
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      const limit = parseInt(new URL(req.url, 'http://localhost').searchParams.get('limit') || '10', 10);
+      const sessions = queries.getSessionsByConversation(threadId, limit);
+      
+      const history = sessions.map(s => ({
+        checkpoint: s.id,
+        state: null,
+        created_at: s.started_at,
+        runId: s.id,
+        status: s.status
+      })).reverse();
+
+      sendJSON(req, res, 200, history);
+      return;
+    }
+
+    const threadCopyMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/copy$/);
+    if (threadCopyMatch && req.method === 'POST') {
+      const threadId = threadCopyMatch[1];
+      const original = queries.getConversation(threadId);
+      
+      if (!original) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      const newThread = queries.createConversation(original.agentId, original.title + ' (copy)', original.workingDirectory);
+
+      const messages = queries.getMessages(threadId, 1000, 0);
+      for (const msg of messages) {
+        queries.createMessage(newThread.id, msg.role, msg.content);
+      }
+
+      sendJSON(req, res, 200, {
+        id: newThread.id,
+        agentId: newThread.agentId,
+        title: newThread.title,
+        created_at: newThread.created_at,
+        status: newThread.status,
+        state: null
+      });
+      return;
+    }
+
+    const threadRunsMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs$/);
+    if (threadRunsMatch) {
+      const threadId = threadRunsMatch[1];
+      const conv = queries.getConversation(threadId);
+      
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      if (req.method === 'GET') {
+        const limit = parseInt(new URL(req.url, 'http://localhost').searchParams.get('limit') || '10', 10);
+        const offset = parseInt(new URL(req.url, 'http://localhost').searchParams.get('offset') || '0', 10);
+        const sessions = queries.getSessionsByConversation(threadId, limit, offset);
+        
+        const runs = sessions.map(s => ({
+          id: s.id,
+          threadId: s.conversationId,
+          status: s.status,
+          started_at: s.started_at,
+          completed_at: s.completed_at,
+          agentId: s.agentId,
+          input: null,
+          output: null
+        }));
+
+        sendJSON(req, res, 200, runs);
+        return;
+      }
+
+      if (req.method === 'POST') {
+        const activeEntry = activeExecutions.get(threadId);
+        if (activeEntry) {
+          sendJSON(req, res, 409, { error: 'Thread already has an active run' });
+          return;
+        }
+
+        let body = '';
+        for await (const chunk of req) { body += chunk; }
+        let parsed = {};
+        try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+        const { input, agentId, webhook } = parsed;
+        if (!input) {
+          sendJSON(req, res, 400, { error: 'Missing input in request body' });
+          return;
+        }
+
+        const resolvedAgentId = agentId || conv.agentId || 'claude-code';
+        const resolvedModel = parsed.model || conv.model || null;
+        const cwd = conv.workingDirectory || STARTUP_CWD;
+
+        const session = queries.createSession(threadId, resolvedAgentId, 'pending');
+        const message = queries.createMessage(threadId, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+        processMessageWithStreaming(threadId, message.id, session.id, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+
+        sendJSON(req, res, 200, {
+          id: session.id,
+          threadId: threadId,
+          status: 'pending',
+          started_at: session.started_at,
+          agentId: resolvedAgentId
+        });
+        return;
+      }
+    }
+
+    const threadRunByIdMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)$/);
+    if (threadRunByIdMatch) {
+      const threadId = threadRunByIdMatch[1];
+      const runId = threadRunByIdMatch[2];
+      const session = queries.getSession(runId);
+      
+      if (!session || session.conversationId !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      if (req.method === 'GET') {
+        sendJSON(req, res, 200, {
+          id: session.id,
+          threadId: session.conversationId,
+          status: session.status,
+          started_at: session.started_at,
+          completed_at: session.completed_at,
+          agentId: session.agentId,
+          input: null,
+          output: null
+        });
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        queries.deleteSession(runId);
+        sendJSON(req, res, 204, {});
+        return;
+      }
+
+      if (req.method === 'POST') {
+        if (session.status !== 'interrupted') {
+          sendJSON(req, res, 409, { error: 'Can only resume interrupted runs' });
+          return;
+        }
+
+        let body = '';
+        for await (const chunk of req) { body += chunk; }
+        let parsed = {};
+        try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+        const { input } = parsed;
+        if (!input) {
+          sendJSON(req, res, 400, { error: 'Missing input in request body' });
+          return;
+        }
+
+        const conv = queries.getConversation(threadId);
+        const resolvedAgentId = session.agentId || conv.agentId || 'claude-code';
+        const resolvedModel = conv?.model || null;
+        const cwd = conv?.workingDirectory || STARTUP_CWD;
+
+        queries.updateSession(runId, { status: 'pending' });
+        
+        const message = queries.createMessage(threadId, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+        processMessageWithStreaming(threadId, message.id, runId, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+
+        sendJSON(req, res, 200, {
+          id: session.id,
+          threadId: threadId,
+          status: 'pending',
+          started_at: session.started_at,
+          agentId: resolvedAgentId
+        });
+        return;
+      }
+    }
+
+    const threadRunCancelMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)\/cancel$/);
+    if (threadRunCancelMatch && req.method === 'POST') {
+      const threadId = threadRunCancelMatch[1];
+      const runId = threadRunCancelMatch[2];
+      const session = queries.getSession(runId);
+      
+      if (!session || session.conversationId !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      const entry = activeExecutions.get(threadId);
+      
+      if (entry && entry.sessionId === runId) {
+        const { pid } = entry;
+        if (pid) {
+          try {
+            process.kill(-pid, 'SIGKILL');
+          } catch {
+            try {
+              process.kill(pid, 'SIGKILL');
+            } catch (e) {}
+          }
+        }
+      }
+
+      queries.updateSession(runId, { status: 'interrupted', completed_at: Date.now() });
+      queries.setIsStreaming(threadId, false);
+      activeExecutions.delete(threadId);
+
+      broadcastSync({
+        type: 'streaming_complete',
+        sessionId: runId,
+        conversationId: threadId,
+        interrupted: true,
+        timestamp: Date.now()
+      });
+
+      sendJSON(req, res, 204, {});
+      return;
+    }
+
     if (pathOnly === '/api/stt' && req.method === 'POST') {
       try {
         const chunks = [];
@@ -1713,6 +2416,30 @@ const server = http.createServer(async (req, res) => {
           modelsError: modelDownloadState.error,
         });
       }
+      return;
+    }
+
+    if (pathOnly === '/api/speech-status' && req.method === 'POST') {
+      const body = await parseBody(req);
+      if (body.forceDownload) {
+        modelDownloadState.complete = false;
+        modelDownloadState.downloading = false;
+        modelDownloadState.error = null;
+        ensureModelsDownloaded().then(ok => {
+          broadcastSync({
+            type: 'model_download_progress',
+            progress: { done: true, complete: ok, error: ok ? null : 'Download failed' }
+          });
+        }).catch(err => {
+          broadcastSync({
+            type: 'model_download_progress',
+            progress: { done: true, error: err.message }
+          });
+        });
+        sendJSON(req, res, 200, { ok: true, message: 'Starting model download' });
+        return;
+      }
+      sendJSON(req, res, 400, { error: 'Unknown request' });
       return;
     }
 

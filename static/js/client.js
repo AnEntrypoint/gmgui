@@ -110,6 +110,9 @@ class AgentGUIClient {
       await this.loadAgents();
       await this.loadConversations();
 
+      // Check speech model status
+      await this.checkSpeechStatus();
+
       // Enable controls for initial interaction
       this.enableControls();
 
@@ -344,6 +347,43 @@ class AgentGUIClient {
       this.ui.sendButton.addEventListener('click', () => this.startExecution());
     }
 
+    this.ui.stopButton = document.getElementById('stopBtn');
+    this.ui.injectButton = document.getElementById('injectBtn');
+
+    if (this.ui.stopButton) {
+      this.ui.stopButton.addEventListener('click', async () => {
+        if (!this.state.currentConversation) return;
+        try {
+          const resp = await fetch(`${window.__BASE_URL}/api/conversations/${this.state.currentConversation.id}/cancel`, {
+            method: 'POST'
+          });
+          const data = await resp.json();
+          console.log('Stop response:', data);
+        } catch (err) {
+          console.error('Failed to stop:', err);
+        }
+      });
+    }
+
+    if (this.ui.injectButton) {
+      this.ui.injectButton.addEventListener('click', async () => {
+        if (!this.state.currentConversation) return;
+        const instructions = prompt('Enter instructions to inject into the running agent:');
+        if (!instructions) return;
+        try {
+          const resp = await fetch(`${window.__BASE_URL}/api/conversations/${this.state.currentConversation.id}/inject`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: instructions })
+          });
+          const data = await resp.json();
+          console.log('Inject response:', data);
+        } catch (err) {
+          console.error('Failed to inject:', err);
+        }
+      });
+    }
+
     if (this.ui.messageInput) {
       this.ui.messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
@@ -467,6 +507,11 @@ class AgentGUIClient {
       const serverTime = Math.max(500, actual - predicted);
       this._serverProcessingEstimate = 0.7 * this._serverProcessingEstimate + 0.3 * serverTime;
     }
+
+    // Show stop and inject buttons when streaming starts
+    if (this.ui.stopButton) this.ui.stopButton.classList.add('visible');
+    if (this.ui.injectButton) this.ui.injectButton.classList.add('visible');
+    if (this.ui.sendButton) this.ui.sendButton.style.display = 'none';
 
     // If this streaming event is for a different conversation than what we are viewing,
     // just track the state but do not modify the DOM or start polling
@@ -720,6 +765,11 @@ class AgentGUIClient {
     console.error('Streaming error:', data);
     this._clearThinkingCountdown();
 
+    // Hide stop and inject buttons on error
+    if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
+    if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
+    if (this.ui.sendButton) this.ui.sendButton.style.display = '';
+
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
 
     // If this event is for a conversation we are NOT currently viewing, just track state
@@ -751,6 +801,11 @@ class AgentGUIClient {
   handleStreamingComplete(data) {
     console.log('Streaming completed:', data);
     this._clearThinkingCountdown();
+
+    // Hide stop and inject buttons when streaming completes
+    if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
+    if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
+    if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
     if (conversationId) this.invalidateCache(conversationId);
@@ -1781,6 +1836,23 @@ class AgentGUIClient {
     });
   }
 
+  async checkSpeechStatus() {
+    try {
+      const response = await fetch(window.__BASE_URL + '/api/speech-status');
+      const status = await response.json();
+      if (status.modelsComplete) {
+        this._modelDownloadProgress = { done: true, complete: true };
+        this._modelDownloadInProgress = false;
+      } else if (status.modelsDownloading) {
+        this._modelDownloadProgress = status.modelsProgress || { downloading: true };
+        this._modelDownloadInProgress = true;
+      }
+      this._updateVoiceTabState();
+    } catch (error) {
+      console.error('Failed to check speech status:', error);
+    }
+  }
+
   async loadModelsForAgent(agentId) {
     if (!agentId || !this.ui.modelSelector) return;
     const cached = this._modelCache.get(agentId);
@@ -1931,12 +2003,23 @@ class AgentGUIClient {
       this._modelDownloadInProgress = false;
       console.log('[Models] Download complete');
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+      this._updateVoiceTabState();
       return;
     }
     
     if (progress.started || progress.downloading) {
       this._modelDownloadInProgress = true;
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
+    }
+  }
+
+  _updateVoiceTabState() {
+    var voiceBtn = document.querySelector('[data-view="voice"]');
+    if (voiceBtn) {
+      var isReady = this._modelDownloadProgress?.done === true || 
+                    this._modelDownloadProgress?.complete === true;
+      voiceBtn.disabled = !isReady;
+      voiceBtn.title = isReady ? 'Voice' : 'Downloading voice models...';
     }
   }
 
