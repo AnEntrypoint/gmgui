@@ -2,9 +2,8 @@ name: Build and Release Windows Portable
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -16,6 +15,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -27,6 +29,33 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Bump patch version
+        id: version
+        shell: bash
+        run: |
+          current=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor patch <<< "$current"
+          new_patch=$((patch + 1))
+          new_version="${major}.${minor}.${new_patch}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${new_version}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "version=${new_version}" >> $GITHUB_OUTPUT
+          echo "Bumped ${current} -> ${new_version}"
+
+      - name: Commit version bump and push tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin main --follow-tags
+
       - name: Install dependencies
         run: npm install
 
@@ -34,11 +63,6 @@ jobs:
         env:
           NO_BUNDLE_MODELS: 'true'
         run: node build-portable.js
-
-      - name: Get version from package.json
-        id: version
-        shell: bash
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
 
       - name: Create zip archive
         shell: pwsh
@@ -53,7 +77,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.version) }}
+          tag_name: v${{ steps.version.outputs.version }}
           name: AgentGUI v${{ steps.version.outputs.version }}
           body: |
             ## AgentGUI v${{ steps.version.outputs.version }} - Windows Portable

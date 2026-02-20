@@ -111,6 +111,12 @@ copyDir(path.join(hfNmSrc, 'onnxruntime-common'), path.join(hfNmDest, 'onnxrunti
 log('Copying webtalk...');
 copyDir(path.join(nm, 'webtalk'), path.join(destNm, 'webtalk'));
 
+log('Copying audio-decode...');
+copyDir(path.join(nm, 'audio-decode'), path.join(destNm, 'audio-decode'));
+const audioDeps = new Set();
+collectDeps('audio-decode', audioDeps);
+for (const dep of audioDeps) copyPkg(dep);
+
 log('Copying @anthropic-ai/claude-code ripgrep (win32)...');
 const claudeSrc = path.join(nm, '@anthropic-ai', 'claude-code');
 const claudeDest = path.join(destNm, '@anthropic-ai', 'claude-code');
