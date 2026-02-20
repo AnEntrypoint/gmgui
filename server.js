@@ -2611,13 +2611,20 @@ const server = http.createServer(async (req, res) => {
       try {
         const { getStatus } = await getSpeech();
         const baseStatus = getStatus();
-        const r = createRequire(import.meta.url);
-        const serverTTS = r('webtalk/server-tts');
-        const pyInfo = serverTTS.detectPython();
+        let pythonDetected = false, pythonVersion = null;
+        try {
+          const r = createRequire(import.meta.url);
+          const serverTTS = r('webtalk/server-tts');
+          if (typeof serverTTS.detectPython === 'function') {
+            const pyInfo = serverTTS.detectPython();
+            pythonDetected = pyInfo.found;
+            pythonVersion = pyInfo.version || null;
+          }
+        } catch(e) {}
         sendJSON(req, res, 200, {
           ...baseStatus,
-          pythonDetected: pyInfo.found,
-          pythonVersion: pyInfo.version || null,
+          pythonDetected,
+          pythonVersion,
           setupMessage: baseStatus.ttsReady ? 'pocket-tts ready' : 'Will setup on first TTS request',
           modelsDownloading: modelDownloadState.downloading,
           modelsComplete: modelDownloadState.complete,
