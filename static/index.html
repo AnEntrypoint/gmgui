@@ -970,6 +970,10 @@
     details { margin: 0.25rem 0; }
     summary { cursor: pointer; user-select: none; padding: 0.375rem; border-radius: 0.25rem; transition: background-color 0.2s; }
     summary:hover { background-color: var(--color-bg-secondary); }
+    .permanently-expanded > summary { cursor: default; }
+    .permanently-expanded > summary::before { display: none; }
+    .permanently-expanded > summary::-webkit-details-marker { display: none; }
+    .permanently-expanded > summary::marker { display: none; content: ''; }
 
     /* ===== Folder Browser Modal ===== */
     .folder-modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center; }

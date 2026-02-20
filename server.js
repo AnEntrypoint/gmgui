@@ -2821,6 +2821,19 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     return;
   }
   
+  if (activeExecutions.has(conversationId)) {
+    debugLog(`[stream] Conversation ${conversationId} already has active execution, aborting duplicate`);
+    return;
+  }
+  
+  if (rateLimitState.has(conversationId)) {
+    const rlState = rateLimitState.get(conversationId);
+    if (rlState.retryAt > Date.now()) {
+      debugLog(`[stream] Conversation ${conversationId} is in rate limit cooldown, aborting`);
+      return;
+    }
+  }
+  
   activeExecutions.set(conversationId, { pid: null, startTime, sessionId, lastActivity: startTime });
   queries.setIsStreaming(conversationId, true);
   queries.updateSession(sessionId, { status: 'active' });
