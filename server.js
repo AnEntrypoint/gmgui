@@ -88,31 +88,27 @@ async function ensureModelsDownloaded() {
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    const webtalkDir = path.dirname(r.resolve('webtalk'));
-    const webtalkWhisper = r(path.join(webtalkDir, 'whisper-models'));
-    const webtalkTTS = r(path.join(webtalkDir, 'tts-models'));
-    const { createConfig } = r('webtalk/config');
-    const config = createConfig({ sdkDir: path.dirname(fileURLToPath(import.meta.url)) });
-    config.modelsDir = gmguiModels;
-    config.ttsModelsDir = ttsDir;
-    config.sttModelsDir = sttDir;
-    config.whisperBaseUrl = 'https://huggingface.co/';
-    config.ttsBaseUrl = 'https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/';
-
     const totalFiles = 16;
     let completedFiles = 0;
 
     if (!sttOk) {
-      console.log('[MODELS] Downloading STT model...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs-fallback', completedFiles, totalFiles });
+      console.log('[MODELS] Downloading STT model via IPFS...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs', completedFiles, totalFiles });
 
-      let sttDownloaded = false;
-
-      // Try IPFS first with fallback to HuggingFace
       try {
         const ipfsCid = queries.getIpfsCidByModel('whisper-base', 'stt');
-        if (ipfsCid) {
-          console.log('[MODELS] Attempting IPFS download for STT model:', ipfsCid.cid);
+        if (!ipfsCid) {
+          console.warn('[MODELS] STT IPFS CID not registered in database');
+          console.warn('[MODELS] To enable STT: Pin whisper-base model to IPFS and register CID via: queries.recordIpfsCid(cid, "whisper-base", "stt", hash, gateway)');
+          broadcastModelProgress({
+            done: true,
+            error: 'STT model CID not registered - speech will be unavailable. Register via IPFS.',
+            type: 'stt',
+            completedFiles,
+            totalFiles
+          });
+        } else {
+          console.log('[MODELS] Downloading STT from IPFS:', ipfsCid.cid);
           const sttFile = path.join(sttDir, 'model.onnx');
           fs.mkdirSync(sttDir, { recursive: true });
           await IPFSDownloader.downloadWithProgress(
@@ -131,38 +127,39 @@ async function ensureModelsDownloaded() {
               });
             }
           );
-          sttDownloaded = true;
-          console.log('[MODELS] STT model downloaded via IPFS');
+          console.log('[MODELS] STT model downloaded successfully from IPFS');
         }
       } catch (err) {
-        console.warn('[MODELS] IPFS STT download failed:', err.message);
-      }
-
-      // Fall back to webtalk/HuggingFace if IPFS didn't work
-      if (!sttDownloaded) {
-        try {
-          console.log('[MODELS] Falling back to HuggingFace for STT model');
-          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'huggingface', completedFiles, totalFiles });
-          await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
-          console.log('[MODELS] STT model downloaded via HuggingFace');
-        } catch (err) {
-          console.warn('[MODELS] HuggingFace STT download also failed:', err.message);
-        }
+        console.error('[MODELS] IPFS STT download failed:', err.message);
+        broadcastModelProgress({
+          done: true,
+          error: `IPFS STT download failed: ${err.message}`,
+          type: 'stt',
+          completedFiles,
+          totalFiles
+        });
       }
       completedFiles += 10;
     }
 
     if (!ttsOk) {
-      console.log('[MODELS] Downloading TTS models...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs-fallback', completedFiles, totalFiles });
+      console.log('[MODELS] Downloading TTS models via IPFS...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs', completedFiles, totalFiles });
 
-      let ttsDownloaded = false;
-
-      // Try IPFS first with fallback to HuggingFace
       try {
         const ipfsCid = queries.getIpfsCidByModel('tts', 'voice');
-        if (ipfsCid) {
-          console.log('[MODELS] Attempting IPFS download for TTS models:', ipfsCid.cid);
+        if (!ipfsCid) {
+          console.warn('[MODELS] TTS IPFS CID not registered in database');
+          console.warn('[MODELS] To enable TTS: Pin TTS models to IPFS and register CID via: queries.recordIpfsCid(cid, "tts", "voice", hash, gateway)');
+          broadcastModelProgress({
+            done: true,
+            error: 'TTS model CID not registered - speech synthesis will be unavailable. Register via IPFS.',
+            type: 'tts',
+            completedFiles,
+            totalFiles
+          });
+        } else {
+          console.log('[MODELS] Downloading TTS from IPFS:', ipfsCid.cid);
           const ttsFile = path.join(ttsDir, 'models.tar.gz');
           fs.mkdirSync(ttsDir, { recursive: true });
           await IPFSDownloader.downloadWithProgress(
@@ -181,23 +178,17 @@ async function ensureModelsDownloaded() {
               });
             }
           );
-          ttsDownloaded = true;
-          console.log('[MODELS] TTS models downloaded via IPFS');
+          console.log('[MODELS] TTS models downloaded successfully from IPFS');
         }
       } catch (err) {
-        console.warn('[MODELS] IPFS TTS download failed:', err.message);
-      }
-
-      // Fall back to webtalk/HuggingFace if IPFS didn't work
-      if (!ttsDownloaded) {
-        try {
-          console.log('[MODELS] Falling back to HuggingFace for TTS models');
-          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'huggingface', completedFiles, totalFiles });
-          await webtalkTTS.ensureTTSModels(config);
-          console.log('[MODELS] TTS models downloaded via HuggingFace');
-        } catch (err) {
-          console.warn('[MODELS] HuggingFace TTS download also failed:', err.message);
-        }
+        console.error('[MODELS] IPFS TTS download failed:', err.message);
+        broadcastModelProgress({
+          done: true,
+          error: `IPFS TTS download failed: ${err.message}`,
+          type: 'tts',
+          completedFiles,
+          totalFiles
+        });
       }
       completedFiles += 6;
     }
