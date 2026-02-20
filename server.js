@@ -9,6 +9,9 @@ import { WebSocketServer } from 'ws';
 import { execSync, spawn } from 'child_process';
 import { createRequire } from 'module';
 import { OAuth2Client } from 'google-auth-library';
+import express from 'express';
+import Busboy from 'busboy';
+import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import IPFSDownloader from './lib/ipfs-downloader.js';
@@ -276,10 +279,6 @@ function pushTTSAudio(cacheKey, wav, conversationId, sessionId, voiceId) {
   });
 }
 
-const require = createRequire(import.meta.url);
-const express = require('express');
-const Busboy = require('busboy');
-const fsbrowse = require('fsbrowse');
 
 const SYSTEM_PROMPT = `Your output will be spoken aloud by a text-to-speech system. Write ONLY plain conversational sentences that sound natural when read aloud. Never use markdown, bold, italics, headers, bullet points, numbered lists, tables, or any formatting. Never use colons to introduce lists or options. Never use labels like "Option A" or "1." followed by a title. Instead of listing options, describe them conversationally in flowing sentences. For example, instead of "**Option 1**: Do X" say "One approach would be to do X." Keep sentences short and simple. Use transition words like "also", "another option", "or alternatively" to connect ideas. When mentioning file names, spell out the dot between the name and extension as the word "dot" so it is spoken clearly. For example, say "server dot js" instead of "server.js", "index dot html" instead of "index.html", and "package dot json" instead of "package.json". Write as if you are speaking to someone in a casual conversation.`;
 
@@ -3714,21 +3713,21 @@ function onServerReady() {
 
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
 
-  ensureModelsDownloaded().then(ok => {
+  ensureModelsDownloaded().then(async ok => {
     if (ok) console.log('[MODELS] Speech models ready');
     else console.log('[MODELS] Speech model download failed');
     try {
-      const { getVoices } = require('./lib/speech.js');
+      const { getVoices } = await getSpeech();
       const voices = getVoices();
       broadcastSync({ type: 'voice_list', voices });
     } catch (err) {
       debugLog('[VOICE] Failed to broadcast voices: ' + err.message);
       broadcastSync({ type: 'voice_list', voices: [] });
     }
-  }).catch(err => {
+  }).catch(async err => {
     console.error('[MODELS] Download error:', err.message);
     try {
-      const { getVoices } = require('./lib/speech.js');
+      const { getVoices } = await getSpeech();
       const voices = getVoices();
       broadcastSync({ type: 'voice_list', voices });
     } catch (err2) {

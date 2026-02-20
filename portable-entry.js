@@ -35,6 +35,8 @@ console.log(`[AgentGUI Portable] Exe directory: ${exeDir}`);
 console.log(`[AgentGUI Portable] Data directory: ${dataDir}`);
 console.log(`[AgentGUI Portable] Server starting on ${url}`);
 
+process.chdir(exeDir);
+
 setTimeout(() => {
   const cmd = process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   spawn(cmd, [url], { shell: true, detached: true, stdio: 'ignore' }).unref();

@@ -50,18 +50,8 @@ rmrf(out);
 fs.mkdirSync(out, { recursive: true });
 
 log('Compiling Windows executable...');
-const onWindows = process.platform === 'win32';
-const icoPath = path.join(src, 'agentgui.ico');
-const winFlags = onWindows ? [
-  '--windows-hide-console',
-  '--windows-title=AgentGUI',
-  '--windows-description=Multi-agent GUI client for AI coding agents',
-  '--windows-version=1.0.0.0',
-  ...(fs.existsSync(icoPath) ? [`--windows-icon=${icoPath}`] : []),
-] : [];
 execSync(
-  [`~/.bun/bin/bun build --compile --target=bun-windows-x64`, ...winFlags,
-   `--outfile=${path.join(out, 'agentgui.exe')}`, path.join(src, 'portable-entry.js')].join(' '),
+  `~/.bun/bin/bun build --compile --target=bun-windows-x64 --outfile=${path.join(out, 'agentgui.exe')} ${path.join(src, 'portable-entry.js')}`,
   { stdio: 'inherit', cwd: src }
 );
 
@@ -77,6 +67,30 @@ log('Copying static files...');
 copyDir(path.join(src, 'static'), path.join(out, 'static'));
 
 const destNm = path.join(out, 'node_modules');
+
+function collectDeps(pkgName, visited = new Set()) {
+  if (visited.has(pkgName)) return;
+  visited.add(pkgName);
+  const pkgJson = path.join(nm, pkgName, 'package.json');
+  if (!fs.existsSync(pkgJson)) return;
+  const p = JSON.parse(fs.readFileSync(pkgJson, 'utf8'));
+  for (const dep of Object.keys(p.dependencies || {})) collectDeps(dep, visited);
+  return visited;
+}
+
+function copyPkg(pkgName) {
+  const src2 = path.join(nm, pkgName);
+  const dest2 = path.join(destNm, pkgName);
+  if (!fs.existsSync(src2) || fs.existsSync(dest2)) return;
+  copyDir(src2, dest2);
+}
+
+log('Copying runtime JS deps (express, fsbrowse, busboy, ws, better-sqlite3 trees)...');
+const runtimeRoots = ['express', 'fsbrowse', 'busboy', 'ws', 'better-sqlite3'];
+const allDeps = new Set();
+for (const root of runtimeRoots) collectDeps(root, allDeps);
+for (const dep of allDeps) copyPkg(dep);
+log(`Copied ${allDeps.size} runtime dep packages`);
 
 log('Copying @huggingface/transformers (dist + win32 natives)...');
 const hfSrc = path.join(nm, '@huggingface', 'transformers');
