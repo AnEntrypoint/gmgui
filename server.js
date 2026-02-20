@@ -108,11 +108,16 @@ async function ensureModelsDownloaded() {
             totalFiles
           });
         } else {
-          console.log('[MODELS] Downloading STT from IPFS:', ipfsCid.cid);
-          const sttFile = path.join(sttDir, 'model.onnx');
+          console.log('[MODELS] Downloading STT from Lighthouse IPFS:', ipfsCid.cid);
           fs.mkdirSync(sttDir, { recursive: true });
+
+          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/stt/onnx-community/whisper-base/
+          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
+          const sttUrl = `${lighthouseGateway}/${ipfsCid.cid}/stt/onnx-community/whisper-base/onnx/`;
+          const sttFile = path.join(sttDir, 'whisper-onnx.tar');
+
           await IPFSDownloader.downloadWithProgress(
-            `https://ipfs.io/ipfs/${ipfsCid.cid}`,
+            sttUrl,
             sttFile,
             (progress) => {
               broadcastModelProgress({
@@ -120,14 +125,15 @@ async function ensureModelsDownloaded() {
                 done: false,
                 downloading: true,
                 type: 'stt',
-                source: 'ipfs',
+                source: 'lighthouse-ipfs',
+                gateway: 'gateway.lighthouse.storage',
                 ...progress,
                 completedFiles,
                 totalFiles
               });
             }
           );
-          console.log('[MODELS] STT model downloaded successfully from IPFS');
+          console.log('[MODELS] STT model downloaded successfully from Lighthouse IPFS');
         }
       } catch (err) {
         console.error('[MODELS] IPFS STT download failed:', err.message);
@@ -159,11 +165,16 @@ async function ensureModelsDownloaded() {
             totalFiles
           });
         } else {
-          console.log('[MODELS] Downloading TTS from IPFS:', ipfsCid.cid);
-          const ttsFile = path.join(ttsDir, 'models.tar.gz');
+          console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', ipfsCid.cid);
           fs.mkdirSync(ttsDir, { recursive: true });
+
+          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/tts/
+          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
+          const ttsUrl = `${lighthouseGateway}/${ipfsCid.cid}/tts/`;
+          const ttsFile = path.join(ttsDir, 'tts-models.tar');
+
           await IPFSDownloader.downloadWithProgress(
-            `https://ipfs.io/ipfs/${ipfsCid.cid}`,
+            ttsUrl,
             ttsFile,
             (progress) => {
               broadcastModelProgress({
@@ -171,14 +182,15 @@ async function ensureModelsDownloaded() {
                 done: false,
                 downloading: true,
                 type: 'tts',
-                source: 'ipfs',
+                source: 'lighthouse-ipfs',
+                gateway: 'gateway.lighthouse.storage',
                 ...progress,
                 completedFiles,
                 totalFiles
               });
             }
           );
-          console.log('[MODELS] TTS models downloaded successfully from IPFS');
+          console.log('[MODELS] TTS models downloaded successfully from Lighthouse IPFS');
         }
       } catch (err) {
         console.error('[MODELS] IPFS TTS download failed:', err.message);

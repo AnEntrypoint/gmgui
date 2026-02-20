@@ -310,6 +310,36 @@ try {
   console.error('[Migration] IPFS schema update warning:', err.message);
 }
 
+// Register official IPFS CIDs for voice models
+try {
+  const LIGHTHOUSE_GATEWAY = 'https://gateway.lighthouse.storage/ipfs';
+  const WHISPER_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
+  const TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
+
+  // Check if CIDs are already registered
+  const existingWhisper = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('whisper-base', 'stt');
+  if (!existingWhisper) {
+    const cidId = `cid-${Date.now()}-whisper`;
+    db.prepare(
+      `INSERT INTO ipfs_cids (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(cidId, WHISPER_CID, 'whisper-base', 'stt', 'sha256-verified', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
+    console.log('[MODELS] Registered Whisper STT IPFS CID:', WHISPER_CID);
+  }
+
+  const existingTTS = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('tts', 'voice');
+  if (!existingTTS) {
+    const cidId = `cid-${Date.now()}-tts`;
+    db.prepare(
+      `INSERT INTO ipfs_cids (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(cidId, TTS_CID, 'tts', 'voice', 'sha256-verified', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
+    console.log('[MODELS] Registered TTS IPFS CID:', TTS_CID);
+  }
+} catch (err) {
+  console.warn('[MODELS] IPFS CID registration warning:', err.message);
+}
+
 const stmtCache = new Map();
 function prep(sql) {
   let s = stmtCache.get(sql);
