@@ -30,7 +30,7 @@
     "fsbrowse": "^0.2.18",
     "google-auth-library": "^10.5.0",
     "onnxruntime-node": "^1.24.1",
-    "webtalk": "^1.0.13",
+    "webtalk": "^1.0.14",
     "ws": "^8.14.2"
   },
   "overrides": {

@@ -14,7 +14,7 @@ import Busboy from 'busboy';
 import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
-import IPFSDownloader from './lib/ipfs-downloader.js';
+const { downloadWithProgress } = createRequire(import.meta.url)('webtalk/ipfs-downloader');
 
 const ttsTextAccumulators = new Map();
 
@@ -121,7 +121,7 @@ async function ensureModelsDownloaded() {
           const sttUrl = `${lighthouseGateway}/${ipfsCid.cid}/stt/onnx-community/whisper-base/onnx/`;
           const sttFile = path.join(sttDir, 'whisper-onnx.tar');
 
-          await IPFSDownloader.downloadWithProgress(
+          await downloadWithProgress(
             sttUrl,
             sttFile,
             (progress) => {
@@ -178,7 +178,7 @@ async function ensureModelsDownloaded() {
           const ttsUrl = `${lighthouseGateway}/${ipfsCid.cid}/tts/`;
           const ttsFile = path.join(ttsDir, 'tts-models.tar');
 
-          await IPFSDownloader.downloadWithProgress(
+          await downloadWithProgress(
             ttsUrl,
             ttsFile,
             (progress) => {
