@@ -4,7 +4,23 @@ import os from 'os';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const dbDir = path.join(os.homedir(), '.gmgui');
+
+function getDataDir() {
+  if (process.env.PORTABLE_DATA_DIR) {
+    return process.env.PORTABLE_DATA_DIR;
+  }
+  const exeDir = process.pkg?.path ? path.dirname(process.pkg.path) : null;
+  if (exeDir) {
+    return path.join(exeDir, 'data');
+  }
+  if (process.env.BUN_BE_BUN && process.argv[1]) {
+    return path.join(path.dirname(process.argv[1]), 'data');
+  }
+  return path.join(os.homedir(), '.gmgui');
+}
+
+export const dataDir = getDataDir();
+const dbDir = dataDir;
 const dbFilePath = path.join(dbDir, 'data.db');
 const oldJsonPath = path.join(dbDir, 'data.json');
 

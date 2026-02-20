@@ -9,7 +9,7 @@ import { WebSocketServer } from 'ws';
 import { execSync, spawn } from 'child_process';
 import { createRequire } from 'module';
 import { OAuth2Client } from 'google-auth-library';
-import { queries } from './database.js';
+import { queries, dataDir } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import IPFSDownloader from './lib/ipfs-downloader.js';
 
@@ -72,7 +72,7 @@ async function ensureModelsDownloaded() {
     const { createRequire: cr } = await import('module');
     const r = cr(import.meta.url);
 
-    const gmguiModels = path.join(os.homedir(), '.gmgui', 'models');
+    const gmguiModels = path.join(dataDir, 'models');
     const sttDir = path.join(gmguiModels, 'onnx-community', 'whisper-base');
     const ttsDir = path.join(gmguiModels, 'tts');
 
@@ -302,7 +302,9 @@ const BASE_URL = (process.env.BASE_URL || '/gm').replace(/\/+$/, '');
 const watch = process.argv.includes('--no-watch') ? false : (process.argv.includes('--watch') || process.env.HOT_RELOAD !== 'false');
 
 const STARTUP_CWD = process.env.STARTUP_CWD || process.cwd();
-const staticDir = path.join(__dirname, 'static');
+const staticDir = process.env.PORTABLE_EXE_DIR 
+  ? path.join(process.env.PORTABLE_EXE_DIR, 'static')
+  : path.join(__dirname, 'static');
 if (!fs.existsSync(staticDir)) fs.mkdirSync(staticDir, { recursive: true });
 
 // Express sub-app for fsbrowse file browser and file upload
@@ -2903,11 +2905,8 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   }
   
   if (activeExecutions.has(conversationId)) {
-    const existing = activeExecutions.get(conversationId);
-    if (existing.sessionId !== sessionId) {
-      debugLog(`[stream] Conversation ${conversationId} already has active execution (different session), aborting duplicate`);
-      return;
-    }
+    debugLog(`[stream] Conversation ${conversationId} already has active execution, aborting duplicate`);
+    return;
   }
   
   if (rateLimitState.has(conversationId)) {
@@ -3252,9 +3251,6 @@ function scheduleRetry(conversationId, messageId, content, agentId, model) {
     timestamp: Date.now()
   });
 
-  const startTime = Date.now();
-  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: newSession.id, lastActivity: startTime });
-
   debugLog(`[rate-limit] Calling processMessageWithStreaming for retry`);
   processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId, model)
     .catch(err => {
@@ -3290,9 +3286,6 @@ function drainMessageQueue(conversationId) {
     queueLength: queue?.length || 0,
     timestamp: Date.now()
   });
-
-  const startTime = Date.now();
-  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: session.id, lastActivity: startTime });
 
   processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.model)
     .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));

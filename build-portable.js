@@ -1,13 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync, execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = __dirname;
 const out = path.join(src, '..', 'wagentgui');
 const nm = path.join(src, 'node_modules');
-const BUN_WIN_CACHE = path.join(process.env.HOME, '.bun', 'install', 'cache', 'bun-windows-x64-v1.3.9');
 
 function log(msg) { console.log('[BUILD] ' + msg); }
 
@@ -46,55 +45,17 @@ function sizeOf(dir) {
   return sz;
 }
 
-function ensureWinBun() {
-  if (fs.existsSync(BUN_WIN_CACHE)) {
-    const stat = fs.statSync(BUN_WIN_CACHE);
-    if (stat.size > 50 * 1024 * 1024) {
-      // Verify it's a PE file
-      const buf = Buffer.alloc(2);
-      const fd = fs.openSync(BUN_WIN_CACHE, 'r');
-      fs.readSync(fd, buf, 0, 2, 0);
-      fs.closeSync(fd);
-      if (buf[0] === 0x4D && buf[1] === 0x5A) return BUN_WIN_CACHE;
-    }
-  }
-  log('Downloading Windows Bun binary...');
-  execSync(
-    `~/.bun/bin/bun build --compile --target=bun-windows-x64 --outfile=/tmp/_bun_trigger.exe /dev/null 2>/dev/null || true`,
-    { stdio: 'inherit' }
-  );
-  if (fs.existsSync(BUN_WIN_CACHE)) return BUN_WIN_CACHE;
-  throw new Error(`Windows Bun binary not found at ${BUN_WIN_CACHE}. Run: bun build --compile --target=bun-windows-x64 --outfile=/tmp/x.exe /dev/null`);
-}
-
 log('Output: ' + out);
 rmrf(out);
 fs.mkdirSync(out, { recursive: true });
 
-log('Building JS bundle...');
+log('Compiling Windows executable...');
 execSync(
-  `~/.bun/bin/bun build --minify --target=bun --outfile=${path.join(out, 'bundle.js')} ${path.join(src, 'portable-entry.js')}`,
+  `~/.bun/bin/bun build --compile --target=bun-windows-x64 --outfile=${path.join(out, 'agentgui.exe')} ${path.join(src, 'portable-entry.js')}`,
   { stdio: 'inherit', cwd: src }
 );
-const bundleSize = fs.statSync(path.join(out, 'bundle.js')).size;
-log(`Bundle: ${Math.round(bundleSize / 1024)}KB`);
-
-log('Locating Windows Bun binary...');
-const bunWinPath = ensureWinBun();
-log(`Windows Bun: ${bunWinPath} (${Math.round(fs.statSync(bunWinPath).size / 1024 / 1024)}MB)`);
-
-log('Injecting bundle into Windows Bun exe (.bun PE section)...');
-const injector = path.join(src, 'scripts', 'inject-pe-section.py');
-execFileSync('python3', [
-  injector,
-  bunWinPath,
-  path.join(out, 'bundle.js'),
-  path.join(out, 'agentgui.exe')
-], { stdio: 'inherit' });
-fs.unlinkSync(path.join(out, 'bundle.js'));
 
 const exeSize = fs.statSync(path.join(out, 'agentgui.exe')).size;
-// Verify PE magic
 const buf = Buffer.alloc(2);
 const fd = fs.openSync(path.join(out, 'agentgui.exe'), 'r');
 fs.readSync(fd, buf, 0, 2, 0);

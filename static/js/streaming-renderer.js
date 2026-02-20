@@ -740,7 +740,8 @@ class StreamingRenderer {
     const input = block.input || {};
 
     const details = document.createElement('details');
-    details.className = 'block-tool-use folded-tool';
+    details.className = 'block-tool-use folded-tool permanently-expanded';
+    details.setAttribute('open', '');
     if (block.id) details.dataset.toolUseId = block.id;
     details.classList.add(this._getBlockTypeClass('tool_use'));
     details.classList.add(this._getToolColorClass(toolName));
@@ -1296,7 +1297,8 @@ class StreamingRenderer {
    */
   renderBlockSystem(block, context) {
     const details = document.createElement('details');
-    details.className = 'folded-tool folded-tool-info';
+    details.className = 'folded-tool folded-tool-info permanently-expanded';
+    details.setAttribute('open', '');
     details.dataset.eventType = 'system';
     details.classList.add(this._getBlockTypeClass('system'));
     const desc = block.model ? this.escapeHtml(block.model) : 'Session';
@@ -1333,7 +1335,8 @@ class StreamingRenderer {
     const statsDesc = [duration, cost, turns ? turns + ' turns' : ''].filter(Boolean).join(' / ');
 
     const details = document.createElement('details');
-    details.className = isError ? 'folded-tool folded-tool-error' : 'folded-tool';
+    details.className = isError ? 'folded-tool folded-tool-error permanently-expanded' : 'folded-tool permanently-expanded';
+    details.setAttribute('open', '');
     details.dataset.eventType = 'result';
     details.classList.add(this._getBlockTypeClass(isError ? 'error' : 'result'));
 
