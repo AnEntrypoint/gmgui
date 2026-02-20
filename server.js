@@ -1,4 +1,5 @@
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -63,6 +64,45 @@ function broadcastModelProgress(progress) {
   broadcastSync(broadcastData);
 }
 
+const LIGHTHOUSE_STT_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/stt/onnx-community/whisper-base/';
+const LIGHTHOUSE_STT_ONNX_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/stt/onnx-community/whisper-base/onnx/';
+const LIGHTHOUSE_TTS_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/tts/';
+
+const STT_BASE_FILES = ['config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'vocab.json', 'merges.txt', 'model_quantized.onnx'];
+const STT_ONNX_FILES = ['encoder_model.onnx', 'decoder_model_merged_q4.onnx', 'decoder_model_merged.onnx'];
+const TTS_FILES = ['mimi_encoder.onnx', 'text_conditioner.onnx', 'flow_lm_main_int8.onnx', 'flow_lm_flow_int8.onnx', 'mimi_decoder_int8.onnx', 'tokenizer.model'];
+
+function lighthouseDownload(url, dest, retries = 3, attempt = 1) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: 120000 }, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode)) {
+        return lighthouseDownload(res.headers.location, dest, retries, attempt).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        const err = new Error(`Lighthouse HTTP ${res.statusCode} for ${url}`);
+        if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
+        return reject(err);
+      }
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      const file = fs.createWriteStream(dest);
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+      file.on('error', (e) => { try { fs.unlinkSync(dest); } catch (_) {} reject(e); });
+      res.on('error', (e) => { try { fs.unlinkSync(dest); } catch (_) {} reject(e); });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
+      reject(new Error(`Lighthouse timeout for ${url}`));
+    });
+    req.on('error', (e) => {
+      if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
+      reject(e);
+    });
+  });
+}
+
 async function ensureModelsDownloaded() {
   if (modelDownloadState.downloading) {
     while (modelDownloadState.downloading) {
@@ -76,8 +116,10 @@ async function ensureModelsDownloaded() {
     const sttDir = path.join(gmguiModels, 'onnx-community', 'whisper-base');
     const ttsDir = path.join(gmguiModels, 'tts');
 
-    const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
-    const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;
+    const sttOnnxDir = path.join(sttDir, 'onnx');
+    const sttOk = STT_BASE_FILES.every(f => fs.existsSync(path.join(sttDir, f))) &&
+                  STT_ONNX_FILES.some(f => fs.existsSync(path.join(sttOnnxDir, f)));
+    const ttsOk = TTS_FILES.every(f => fs.existsSync(path.join(ttsDir, f)));
 
     if (sttOk && ttsOk) {
       console.log('[MODELS] All model files present');
@@ -88,96 +130,54 @@ async function ensureModelsDownloaded() {
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    const totalFiles = 16;
+    const totalFiles = STT_BASE_FILES.length + STT_ONNX_FILES.length + TTS_FILES.length;
     let completedFiles = 0;
 
-    const require = createRequire(import.meta.url);
-
     if (!sttOk) {
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs', completedFiles, totalFiles });
-      let sttDownloaded = false;
-
-      const LIGHTHOUSE_STT_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
-      const lighthouseSttBase = `https://gateway.lighthouse.storage/ipfs/${LIGHTHOUSE_STT_CID}/stt/onnx-community/whisper-base/`;
-      const whisperModels = require('webtalk/whisper-models');
-      console.log('[MODELS] Downloading STT from Lighthouse IPFS:', LIGHTHOUSE_STT_CID);
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
+      console.log('[MODELS] Downloading STT from Lighthouse IPFS...');
       fs.mkdirSync(sttDir, { recursive: true });
-      const WHISPER_FILES = [
-        'config.json', 'preprocessor_config.json', 'tokenizer.json',
-        'tokenizer_config.json', 'vocab.json', 'merges.txt',
-        'model_quantized.onnx', 'onnx/encoder_model.onnx',
-        'onnx/decoder_model_merged_q4.onnx', 'onnx/decoder_model_merged.onnx'
-      ];
+      fs.mkdirSync(sttOnnxDir, { recursive: true });
       try {
-        for (const file of WHISPER_FILES) {
+        for (const file of STT_BASE_FILES) {
           const dest = path.join(sttDir, file);
-          if (!fs.existsSync(dest)) {
-            fs.mkdirSync(path.dirname(dest), { recursive: true });
-            await whisperModels.downloadFile(lighthouseSttBase + file, dest, 3);
-          }
+          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_STT_BASE + file, dest);
+          completedFiles++;
+          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
+        }
+        for (const file of STT_ONNX_FILES) {
+          const dest = path.join(sttOnnxDir, file);
+          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_STT_ONNX_BASE + file, dest);
+          completedFiles++;
+          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
         }
         console.log('[MODELS] STT model downloaded from Lighthouse IPFS');
-        sttDownloaded = true;
       } catch (err) {
-        console.error('[MODELS] IPFS STT download failed:', err.message, '- falling back to HuggingFace');
+        const msg = `STT download failed from Lighthouse IPFS: ${err.message}. Check your internet connection and try again.`;
+        console.error('[MODELS]', msg);
+        broadcastModelProgress({ done: true, error: msg, type: 'stt', completedFiles, totalFiles });
+        throw new Error(msg);
       }
-
-      if (!sttDownloaded) {
-        console.log('[MODELS] Downloading STT model via HuggingFace...');
-        broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'huggingface', completedFiles, totalFiles });
-        try {
-          const modelsDir = path.join(dataDir, 'models');
-          fs.mkdirSync(modelsDir, { recursive: true });
-          await whisperModels.ensureModel('onnx-community/whisper-base', {
-            modelsDir,
-            whisperBaseUrl: 'https://huggingface.co/',
-          });
-          console.log('[MODELS] STT model downloaded from HuggingFace');
-        } catch (hfErr) {
-          console.error('[MODELS] HuggingFace STT download failed:', hfErr.message);
-          broadcastModelProgress({ done: true, error: `STT download failed: ${hfErr.message}`, type: 'stt', completedFiles, totalFiles });
-        }
-      }
-      completedFiles += 10;
     }
 
     if (!ttsOk) {
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs', completedFiles, totalFiles });
-      let ttsDownloaded = false;
-
-      const LIGHTHOUSE_TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
-      const lighthouseTtsBase = `https://gateway.lighthouse.storage/ipfs/${LIGHTHOUSE_TTS_CID}/tts/`;
-      const ttsModels = require('webtalk/tts-models');
-      console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', LIGHTHOUSE_TTS_CID);
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'lighthouse', completedFiles, totalFiles });
+      console.log('[MODELS] Downloading TTS from Lighthouse IPFS...');
       fs.mkdirSync(ttsDir, { recursive: true });
       try {
-        await ttsModels.ensureTTSModels({
-          ttsModelsDir: ttsDir,
-          ttsDir: path.join(dataDir, 'models', 'tts'),
-          ttsBaseUrl: lighthouseTtsBase,
-        });
-        console.log('[MODELS] TTS models downloaded from Lighthouse IPFS');
-        ttsDownloaded = true;
-      } catch (err) {
-        console.error('[MODELS] IPFS TTS download failed:', err.message, '- falling back to HuggingFace');
-      }
-
-      if (!ttsDownloaded) {
-        console.log('[MODELS] Downloading TTS models via HuggingFace...');
-        broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'huggingface', completedFiles, totalFiles });
-        try {
-          await ttsModels.ensureTTSModels({
-            ttsModelsDir: ttsDir,
-            ttsDir: path.join(dataDir, 'models', 'tts'),
-            ttsBaseUrl: 'https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/',
-          });
-          console.log('[MODELS] TTS models downloaded from HuggingFace');
-        } catch (hfErr) {
-          console.error('[MODELS] HuggingFace TTS download failed:', hfErr.message);
-          broadcastModelProgress({ done: true, error: `TTS download failed: ${hfErr.message}`, type: 'tts', completedFiles, totalFiles });
+        for (const file of TTS_FILES) {
+          const dest = path.join(ttsDir, file);
+          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_TTS_BASE + file, dest);
+          completedFiles++;
+          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'lighthouse', completedFiles, totalFiles });
         }
+        console.log('[MODELS] TTS models downloaded from Lighthouse IPFS');
+      } catch (err) {
+        const msg = `TTS download failed from Lighthouse IPFS: ${err.message}. Check your internet connection and try again.`;
+        console.error('[MODELS]', msg);
+        broadcastModelProgress({ done: true, error: msg, type: 'tts', completedFiles, totalFiles });
+        throw new Error(msg);
       }
-      completedFiles += 6;
     }
 
     modelDownloadState.complete = true;
