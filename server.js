@@ -1,5 +1,4 @@
 import http from 'http';
-import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -9,11 +8,8 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { execSync, spawn } from 'child_process';
 import { createRequire } from 'module';
-import express from 'express';
-import Busboy from 'busboy';
-import fsbrowse from 'fsbrowse';
 import { OAuth2Client } from 'google-auth-library';
-import { queries, dataDir } from './database.js';
+import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import IPFSDownloader from './lib/ipfs-downloader.js';
 
@@ -64,45 +60,6 @@ function broadcastModelProgress(progress) {
   broadcastSync(broadcastData);
 }
 
-const LIGHTHOUSE_STT_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/stt/onnx-community/whisper-base/';
-const LIGHTHOUSE_STT_ONNX_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/stt/onnx-community/whisper-base/onnx/';
-const LIGHTHOUSE_TTS_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/tts/';
-
-const STT_BASE_FILES = ['config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'vocab.json', 'merges.txt'];
-const STT_ONNX_FILES = ['encoder_model.onnx', 'decoder_model_merged_q4.onnx', 'decoder_model_merged.onnx'];
-const TTS_FILES = ['mimi_encoder.onnx', 'text_conditioner.onnx', 'flow_lm_main_int8.onnx', 'flow_lm_flow_int8.onnx', 'mimi_decoder_int8.onnx', 'tokenizer.model'];
-
-function lighthouseDownload(url, dest, retries = 3, attempt = 1) {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: 120000 }, (res) => {
-      if ([301, 302, 307, 308].includes(res.statusCode)) {
-        return lighthouseDownload(res.headers.location, dest, retries, attempt).then(resolve).catch(reject);
-      }
-      if (res.statusCode !== 200) {
-        res.resume();
-        const err = new Error(`Lighthouse HTTP ${res.statusCode} for ${url}`);
-        if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
-        return reject(err);
-      }
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      const file = fs.createWriteStream(dest);
-      res.pipe(file);
-      file.on('finish', () => { file.close(); resolve(); });
-      file.on('error', (e) => { try { fs.unlinkSync(dest); } catch (_) {} reject(e); });
-      res.on('error', (e) => { try { fs.unlinkSync(dest); } catch (_) {} reject(e); });
-    });
-    req.on('timeout', () => {
-      req.destroy();
-      if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
-      reject(new Error(`Lighthouse timeout for ${url}`));
-    });
-    req.on('error', (e) => {
-      if (attempt < retries) return setTimeout(() => lighthouseDownload(url, dest, retries, attempt + 1).then(resolve).catch(reject), 2000 * attempt);
-      reject(e);
-    });
-  });
-}
-
 async function ensureModelsDownloaded() {
   if (modelDownloadState.downloading) {
     while (modelDownloadState.downloading) {
@@ -112,14 +69,15 @@ async function ensureModelsDownloaded() {
   }
 
   try {
-    const gmguiModels = path.join(dataDir, 'models');
+    const { createRequire: cr } = await import('module');
+    const r = cr(import.meta.url);
+
+    const gmguiModels = path.join(os.homedir(), '.gmgui', 'models');
     const sttDir = path.join(gmguiModels, 'onnx-community', 'whisper-base');
     const ttsDir = path.join(gmguiModels, 'tts');
 
-    const sttOnnxDir = path.join(sttDir, 'onnx');
-    const sttOk = STT_BASE_FILES.every(f => fs.existsSync(path.join(sttDir, f))) &&
-                  STT_ONNX_FILES.some(f => fs.existsSync(path.join(sttOnnxDir, f)));
-    const ttsOk = TTS_FILES.every(f => fs.existsSync(path.join(ttsDir, f)));
+    const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
+    const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;
 
     if (sttOk && ttsOk) {
       console.log('[MODELS] All model files present');
@@ -130,54 +88,121 @@ async function ensureModelsDownloaded() {
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    const totalFiles = STT_BASE_FILES.length + STT_ONNX_FILES.length + TTS_FILES.length;
+    const totalFiles = 16;
     let completedFiles = 0;
 
     if (!sttOk) {
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
-      console.log('[MODELS] Downloading STT from Lighthouse IPFS...');
-      fs.mkdirSync(sttDir, { recursive: true });
-      fs.mkdirSync(sttOnnxDir, { recursive: true });
+      console.log('[MODELS] Downloading STT model via IPFS...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs', completedFiles, totalFiles });
+
       try {
-        for (const file of STT_BASE_FILES) {
-          const dest = path.join(sttDir, file);
-          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_STT_BASE + file, dest);
-          completedFiles++;
-          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
+        const ipfsCid = queries.getIpfsCidByModel('whisper-base', 'stt');
+        if (!ipfsCid) {
+          console.warn('[MODELS] STT IPFS CID not registered in database');
+          console.warn('[MODELS] To enable STT: Pin whisper-base model to IPFS and register CID via: queries.recordIpfsCid(cid, "whisper-base", "stt", hash, gateway)');
+          broadcastModelProgress({
+            done: true,
+            error: 'STT model CID not registered - speech will be unavailable. Register via IPFS.',
+            type: 'stt',
+            completedFiles,
+            totalFiles
+          });
+        } else {
+          console.log('[MODELS] Downloading STT from Lighthouse IPFS:', ipfsCid.cid);
+          fs.mkdirSync(sttDir, { recursive: true });
+
+          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/stt/onnx-community/whisper-base/
+          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
+          const sttUrl = `${lighthouseGateway}/${ipfsCid.cid}/stt/onnx-community/whisper-base/onnx/`;
+          const sttFile = path.join(sttDir, 'whisper-onnx.tar');
+
+          await IPFSDownloader.downloadWithProgress(
+            sttUrl,
+            sttFile,
+            (progress) => {
+              broadcastModelProgress({
+                started: true,
+                done: false,
+                downloading: true,
+                type: 'stt',
+                source: 'lighthouse-ipfs',
+                gateway: 'gateway.lighthouse.storage',
+                ...progress,
+                completedFiles,
+                totalFiles
+              });
+            }
+          );
+          console.log('[MODELS] STT model downloaded successfully from Lighthouse IPFS');
         }
-        for (const file of STT_ONNX_FILES) {
-          const dest = path.join(sttOnnxDir, file);
-          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_STT_ONNX_BASE + file, dest);
-          completedFiles++;
-          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse', completedFiles, totalFiles });
-        }
-        console.log('[MODELS] STT model downloaded from Lighthouse IPFS');
       } catch (err) {
-        const msg = `STT download failed from Lighthouse IPFS: ${err.message}. Check your internet connection and try again.`;
-        console.error('[MODELS]', msg);
-        broadcastModelProgress({ done: true, error: msg, type: 'stt', completedFiles, totalFiles });
-        throw new Error(msg);
+        console.error('[MODELS] IPFS STT download failed:', err.message);
+        broadcastModelProgress({
+          done: true,
+          error: `IPFS STT download failed: ${err.message}`,
+          type: 'stt',
+          completedFiles,
+          totalFiles
+        });
       }
+      completedFiles += 10;
     }
 
     if (!ttsOk) {
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'lighthouse', completedFiles, totalFiles });
-      console.log('[MODELS] Downloading TTS from Lighthouse IPFS...');
-      fs.mkdirSync(ttsDir, { recursive: true });
+      console.log('[MODELS] Downloading TTS models via IPFS...');
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs', completedFiles, totalFiles });
+
       try {
-        for (const file of TTS_FILES) {
-          const dest = path.join(ttsDir, file);
-          if (!fs.existsSync(dest)) await lighthouseDownload(LIGHTHOUSE_TTS_BASE + file, dest);
-          completedFiles++;
-          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'lighthouse', completedFiles, totalFiles });
+        const ipfsCid = queries.getIpfsCidByModel('tts', 'voice');
+        if (!ipfsCid) {
+          console.warn('[MODELS] TTS IPFS CID not registered in database');
+          console.warn('[MODELS] To enable TTS: Pin TTS models to IPFS and register CID via: queries.recordIpfsCid(cid, "tts", "voice", hash, gateway)');
+          broadcastModelProgress({
+            done: true,
+            error: 'TTS model CID not registered - speech synthesis will be unavailable. Register via IPFS.',
+            type: 'tts',
+            completedFiles,
+            totalFiles
+          });
+        } else {
+          console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', ipfsCid.cid);
+          fs.mkdirSync(ttsDir, { recursive: true });
+
+          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/tts/
+          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
+          const ttsUrl = `${lighthouseGateway}/${ipfsCid.cid}/tts/`;
+          const ttsFile = path.join(ttsDir, 'tts-models.tar');
+
+          await IPFSDownloader.downloadWithProgress(
+            ttsUrl,
+            ttsFile,
+            (progress) => {
+              broadcastModelProgress({
+                started: true,
+                done: false,
+                downloading: true,
+                type: 'tts',
+                source: 'lighthouse-ipfs',
+                gateway: 'gateway.lighthouse.storage',
+                ...progress,
+                completedFiles,
+                totalFiles
+              });
+            }
+          );
+          console.log('[MODELS] TTS models downloaded successfully from Lighthouse IPFS');
         }
-        console.log('[MODELS] TTS models downloaded from Lighthouse IPFS');
       } catch (err) {
-        const msg = `TTS download failed from Lighthouse IPFS: ${err.message}. Check your internet connection and try again.`;
-        console.error('[MODELS]', msg);
-        broadcastModelProgress({ done: true, error: msg, type: 'tts', completedFiles, totalFiles });
-        throw new Error(msg);
+        console.error('[MODELS] IPFS TTS download failed:', err.message);
+        broadcastModelProgress({
+          done: true,
+          error: `IPFS TTS download failed: ${err.message}`,
+          type: 'tts',
+          completedFiles,
+          totalFiles
+        });
       }
+      completedFiles += 6;
     }
 
     modelDownloadState.complete = true;
@@ -251,6 +276,10 @@ function pushTTSAudio(cacheKey, wav, conversationId, sessionId, voiceId) {
   });
 }
 
+const require = createRequire(import.meta.url);
+const express = require('express');
+const Busboy = require('busboy');
+const fsbrowse = require('fsbrowse');
 
 const SYSTEM_PROMPT = `Your output will be spoken aloud by a text-to-speech system. Write ONLY plain conversational sentences that sound natural when read aloud. Never use markdown, bold, italics, headers, bullet points, numbered lists, tables, or any formatting. Never use colons to introduce lists or options. Never use labels like "Option A" or "1." followed by a title. Instead of listing options, describe them conversationally in flowing sentences. For example, instead of "**Option 1**: Do X" say "One approach would be to do X." Keep sentences short and simple. Use transition words like "also", "another option", "or alternatively" to connect ideas. When mentioning file names, spell out the dot between the name and extension as the word "dot" so it is spoken clearly. For example, say "server dot js" instead of "server.js", "index dot html" instead of "index.html", and "package dot json" instead of "package.json". Write as if you are speaking to someone in a casual conversation.`;
 
@@ -273,9 +302,7 @@ const BASE_URL = (process.env.BASE_URL || '/gm').replace(/\/+$/, '');
 const watch = process.argv.includes('--no-watch') ? false : (process.argv.includes('--watch') || process.env.HOT_RELOAD !== 'false');
 
 const STARTUP_CWD = process.env.STARTUP_CWD || process.cwd();
-const staticDir = process.env.PORTABLE_EXE_DIR 
-  ? path.join(process.env.PORTABLE_EXE_DIR, 'static')
-  : path.join(__dirname, 'static');
+const staticDir = path.join(__dirname, 'static');
 if (!fs.existsSync(staticDir)) fs.mkdirSync(staticDir, { recursive: true });
 
 // Express sub-app for fsbrowse file browser and file upload
@@ -2547,17 +2574,27 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const speech = await getSpeech();
+        const gen = speech.synthesizeStream(text, voiceId);
+        const firstResult = await gen.next();
+        if (firstResult.done) {
+          sendJSON(req, res, 500, { error: 'TTS stream returned no audio', retryable: true });
+          return;
+        }
         res.writeHead(200, {
           'Content-Type': 'application/octet-stream',
           'Transfer-Encoding': 'chunked',
           'X-Content-Type': 'audio/wav-stream',
           'Cache-Control': 'no-cache'
         });
-        for await (const wavChunk of speech.synthesizeStream(text, voiceId)) {
+        const writeChunk = (wavChunk) => {
           const lenBuf = Buffer.alloc(4);
           lenBuf.writeUInt32BE(wavChunk.length, 0);
           res.write(lenBuf);
           res.write(wavChunk);
+        };
+        writeChunk(firstResult.value);
+        for await (const wavChunk of gen) {
+          writeChunk(wavChunk);
         }
         res.end();
       } catch (err) {
@@ -2876,8 +2913,11 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   }
   
   if (activeExecutions.has(conversationId)) {
-    debugLog(`[stream] Conversation ${conversationId} already has active execution, aborting duplicate`);
-    return;
+    const existing = activeExecutions.get(conversationId);
+    if (existing.sessionId !== sessionId) {
+      debugLog(`[stream] Conversation ${conversationId} already has active execution (different session), aborting duplicate`);
+      return;
+    }
   }
   
   if (rateLimitState.has(conversationId)) {
@@ -3222,6 +3262,9 @@ function scheduleRetry(conversationId, messageId, content, agentId, model) {
     timestamp: Date.now()
   });
 
+  const startTime = Date.now();
+  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: newSession.id, lastActivity: startTime });
+
   debugLog(`[rate-limit] Calling processMessageWithStreaming for retry`);
   processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId, model)
     .catch(err => {
@@ -3257,6 +3300,9 @@ function drainMessageQueue(conversationId) {
     queueLength: queue?.length || 0,
     timestamp: Date.now()
   });
+
+  const startTime = Date.now();
+  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: session.id, lastActivity: startTime });
 
   processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.model)
     .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
@@ -3668,21 +3714,21 @@ function onServerReady() {
 
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
 
-  ensureModelsDownloaded().then(async ok => {
+  ensureModelsDownloaded().then(ok => {
     if (ok) console.log('[MODELS] Speech models ready');
     else console.log('[MODELS] Speech model download failed');
     try {
-      const { getVoices } = await getSpeech();
+      const { getVoices } = require('./lib/speech.js');
       const voices = getVoices();
       broadcastSync({ type: 'voice_list', voices });
     } catch (err) {
       debugLog('[VOICE] Failed to broadcast voices: ' + err.message);
       broadcastSync({ type: 'voice_list', voices: [] });
     }
-  }).catch(async err => {
+  }).catch(err => {
     console.error('[MODELS] Download error:', err.message);
     try {
-      const { getVoices } = await getSpeech();
+      const { getVoices } = require('./lib/speech.js');
       const voices = getVoices();
       broadcastSync({ type: 'voice_list', voices });
     } catch (err2) {
