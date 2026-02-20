@@ -7,7 +7,7 @@ on:
 
 jobs:
   publish:
-    if: "!contains(github.event.head_commit.message, 'chore: bump version')"
+    if: "github.event.head_commit.author.name != 'github-actions'"
     runs-on: ubuntu-latest
     permissions:
       contents: write
