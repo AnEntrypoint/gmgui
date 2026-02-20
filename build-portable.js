@@ -50,8 +50,18 @@ rmrf(out);
 fs.mkdirSync(out, { recursive: true });
 
 log('Compiling Windows executable...');
+const onWindows = process.platform === 'win32';
+const icoPath = path.join(src, 'agentgui.ico');
+const winFlags = onWindows ? [
+  '--windows-hide-console',
+  '--windows-title=AgentGUI',
+  '--windows-description=Multi-agent GUI client for AI coding agents',
+  '--windows-version=1.0.0.0',
+  ...(fs.existsSync(icoPath) ? [`--windows-icon=${icoPath}`] : []),
+] : [];
 execSync(
-  `~/.bun/bin/bun build --compile --target=bun-windows-x64 --outfile=${path.join(out, 'agentgui.exe')} ${path.join(src, 'portable-entry.js')}`,
+  [`~/.bun/bin/bun build --compile --target=bun-windows-x64`, ...winFlags,
+   `--outfile=${path.join(out, 'agentgui.exe')}`, path.join(src, 'portable-entry.js')].join(' '),
   { stdio: 'inherit', cwd: src }
 );
 
