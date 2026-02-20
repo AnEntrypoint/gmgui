@@ -1,0 +1,71 @@
+name: Build and Release Windows Portable
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build portable
+        env:
+          NO_BUNDLE_MODELS: 'true'
+        run: node build-portable.js
+
+      - name: Get version from package.json
+        id: version
+        shell: bash
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+
+      - name: Create zip archive
+        shell: pwsh
+        run: |
+          $src = "${{ github.workspace }}\..\wagentgui"
+          $dest = "${{ github.workspace }}\agentgui-v${{ steps.version.outputs.version }}-windows-portable.zip"
+          Compress-Archive -Path "$src\*" -DestinationPath $dest
+          Write-Host "Archive created: $dest"
+          $size = [math]::Round((Get-Item $dest).Length / 1MB, 1)
+          Write-Host "Size: ${size}MB"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.version) }}
+          name: AgentGUI v${{ steps.version.outputs.version }}
+          body: |
+            ## AgentGUI v${{ steps.version.outputs.version }} - Windows Portable
+
+            No installation required. Extract the zip and run `agentgui.exe`.
+
+            **Web interface**: http://localhost:3000/gm/
+
+            **Notes**:
+            - AI speech models (~477MB) are not bundled - they download automatically on first use
+            - Data is stored in the `data/` folder next to the executable
+            - Requirements: None - fully self-contained
+          files: agentgui-v${{ steps.version.outputs.version }}-windows-portable.zip
+          draft: false
+          prerelease: false

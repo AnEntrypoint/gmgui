@@ -120,13 +120,17 @@ copyDir(path.join(claudeSrc, 'vendor', 'ripgrep', 'x64-win32'), path.join(claude
 log('Creating data directory...');
 fs.mkdirSync(path.join(out, 'data'), { recursive: true });
 
-log('Bundling AI models...');
-const userModels = path.join(os.homedir(), '.gmgui', 'models');
-if (fs.existsSync(userModels)) {
-  copyDir(userModels, path.join(out, 'models'));
-  log(`Models bundled: ${Math.round(sizeOf(path.join(out, 'models')) / 1024 / 1024)}MB`);
+if (process.env.NO_BUNDLE_MODELS === 'true') {
+  log('Skipping model bundling (NO_BUNDLE_MODELS=true) - models will download on first use');
 } else {
-  log('WARNING: No models found at ~/.gmgui/models - portable build will download on first use');
+  log('Bundling AI models...');
+  const userModels = path.join(os.homedir(), '.gmgui', 'models');
+  if (fs.existsSync(userModels)) {
+    copyDir(userModels, path.join(out, 'models'));
+    log(`Models bundled: ${Math.round(sizeOf(path.join(out, 'models')) / 1024 / 1024)}MB`);
+  } else {
+    log('WARNING: No models found at ~/.gmgui/models - portable build will download on first use');
+  }
 }
 
 fs.writeFileSync(path.join(out, 'README.txt'), [
