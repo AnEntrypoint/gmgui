@@ -2903,8 +2903,11 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   }
   
   if (activeExecutions.has(conversationId)) {
-    debugLog(`[stream] Conversation ${conversationId} already has active execution, aborting duplicate`);
-    return;
+    const existing = activeExecutions.get(conversationId);
+    if (existing.sessionId !== sessionId) {
+      debugLog(`[stream] Conversation ${conversationId} already has active execution (different session), aborting duplicate`);
+      return;
+    }
   }
   
   if (rateLimitState.has(conversationId)) {
@@ -3249,6 +3252,9 @@ function scheduleRetry(conversationId, messageId, content, agentId, model) {
     timestamp: Date.now()
   });
 
+  const startTime = Date.now();
+  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: newSession.id, lastActivity: startTime });
+
   debugLog(`[rate-limit] Calling processMessageWithStreaming for retry`);
   processMessageWithStreaming(conversationId, messageId, newSession.id, content, agentId, model)
     .catch(err => {
@@ -3284,6 +3290,9 @@ function drainMessageQueue(conversationId) {
     queueLength: queue?.length || 0,
     timestamp: Date.now()
   });
+
+  const startTime = Date.now();
+  activeExecutions.set(conversationId, { pid: null, startTime, sessionId: session.id, lastActivity: startTime });
 
   processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.model)
     .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
