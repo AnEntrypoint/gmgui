@@ -97,30 +97,35 @@ async function ensureModelsDownloaded() {
       broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs', completedFiles, totalFiles });
       let sttDownloaded = false;
 
-      const ipfsCid = queries.getIpfsCidByModel('whisper-base', 'stt');
-      if (ipfsCid) {
-        console.log('[MODELS] Downloading STT from Lighthouse IPFS:', ipfsCid.cid);
-        fs.mkdirSync(sttDir, { recursive: true });
-        const sttUrl = `https://gateway.lighthouse.storage/ipfs/${ipfsCid.cid}/stt/onnx-community/whisper-base/onnx/`;
-        const sttFile = path.join(sttDir, 'whisper-onnx.tar');
-        try {
-          await IPFSDownloader.downloadWithProgress(sttUrl, sttFile, (progress) => {
-            broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'lighthouse-ipfs', gateway: 'gateway.lighthouse.storage', ...progress, completedFiles, totalFiles });
-          });
-          console.log('[MODELS] STT model downloaded from Lighthouse IPFS');
-          sttDownloaded = true;
-        } catch (err) {
-          console.error('[MODELS] IPFS STT download failed:', err.message, '- falling back to HuggingFace');
+      const LIGHTHOUSE_STT_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
+      const lighthouseSttBase = `https://gateway.lighthouse.storage/ipfs/${LIGHTHOUSE_STT_CID}/stt/onnx-community/whisper-base/`;
+      const whisperModels = require('webtalk/whisper-models');
+      console.log('[MODELS] Downloading STT from Lighthouse IPFS:', LIGHTHOUSE_STT_CID);
+      fs.mkdirSync(sttDir, { recursive: true });
+      const WHISPER_FILES = [
+        'config.json', 'preprocessor_config.json', 'tokenizer.json',
+        'tokenizer_config.json', 'vocab.json', 'merges.txt',
+        'model_quantized.onnx', 'onnx/encoder_model.onnx',
+        'onnx/decoder_model_merged_q4.onnx', 'onnx/decoder_model_merged.onnx'
+      ];
+      try {
+        for (const file of WHISPER_FILES) {
+          const dest = path.join(sttDir, file);
+          if (!fs.existsSync(dest)) {
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            await whisperModels.downloadFile(lighthouseSttBase + file, dest, 3);
+          }
         }
-      } else {
-        console.warn('[MODELS] No STT IPFS CID registered - using HuggingFace directly');
+        console.log('[MODELS] STT model downloaded from Lighthouse IPFS');
+        sttDownloaded = true;
+      } catch (err) {
+        console.error('[MODELS] IPFS STT download failed:', err.message, '- falling back to HuggingFace');
       }
 
       if (!sttDownloaded) {
         console.log('[MODELS] Downloading STT model via HuggingFace...');
         broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'huggingface', completedFiles, totalFiles });
         try {
-          const whisperModels = require('webtalk/whisper-models');
           const modelsDir = path.join(dataDir, 'models');
           fs.mkdirSync(modelsDir, { recursive: true });
           await whisperModels.ensureModel('onnx-community/whisper-base', {
@@ -140,30 +145,27 @@ async function ensureModelsDownloaded() {
       broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs', completedFiles, totalFiles });
       let ttsDownloaded = false;
 
-      const ipfsCid = queries.getIpfsCidByModel('tts', 'voice');
-      if (ipfsCid) {
-        console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', ipfsCid.cid);
-        fs.mkdirSync(ttsDir, { recursive: true });
-        const ttsUrl = `https://gateway.lighthouse.storage/ipfs/${ipfsCid.cid}/tts/`;
-        const ttsFile = path.join(ttsDir, 'tts-models.tar');
-        try {
-          await IPFSDownloader.downloadWithProgress(ttsUrl, ttsFile, (progress) => {
-            broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'lighthouse-ipfs', gateway: 'gateway.lighthouse.storage', ...progress, completedFiles, totalFiles });
-          });
-          console.log('[MODELS] TTS models downloaded from Lighthouse IPFS');
-          ttsDownloaded = true;
-        } catch (err) {
-          console.error('[MODELS] IPFS TTS download failed:', err.message, '- falling back to HuggingFace');
-        }
-      } else {
-        console.warn('[MODELS] No TTS IPFS CID registered - using HuggingFace directly');
+      const LIGHTHOUSE_TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
+      const lighthouseTtsBase = `https://gateway.lighthouse.storage/ipfs/${LIGHTHOUSE_TTS_CID}/tts/`;
+      const ttsModels = require('webtalk/tts-models');
+      console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', LIGHTHOUSE_TTS_CID);
+      fs.mkdirSync(ttsDir, { recursive: true });
+      try {
+        await ttsModels.ensureTTSModels({
+          ttsModelsDir: ttsDir,
+          ttsDir: path.join(dataDir, 'models', 'tts'),
+          ttsBaseUrl: lighthouseTtsBase,
+        });
+        console.log('[MODELS] TTS models downloaded from Lighthouse IPFS');
+        ttsDownloaded = true;
+      } catch (err) {
+        console.error('[MODELS] IPFS TTS download failed:', err.message, '- falling back to HuggingFace');
       }
 
       if (!ttsDownloaded) {
         console.log('[MODELS] Downloading TTS models via HuggingFace...');
         broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'huggingface', completedFiles, totalFiles });
         try {
-          const ttsModels = require('webtalk/tts-models');
           await ttsModels.ensureTTSModels({
             ttsModelsDir: ttsDir,
             ttsDir: path.join(dataDir, 'models', 'tts'),
