@@ -104,22 +104,100 @@ async function ensureModelsDownloaded() {
 
     if (!sttOk) {
       console.log('[MODELS] Downloading STT model...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', completedFiles, totalFiles });
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs-fallback', completedFiles, totalFiles });
+
+      let sttDownloaded = false;
+
+      // Try IPFS first with fallback to HuggingFace
       try {
-        await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
+        const ipfsCid = queries.getIpfsCidByModel('whisper-base', 'stt');
+        if (ipfsCid) {
+          console.log('[MODELS] Attempting IPFS download for STT model:', ipfsCid.cid);
+          const sttFile = path.join(sttDir, 'model.onnx');
+          fs.mkdirSync(sttDir, { recursive: true });
+          await IPFSDownloader.downloadWithProgress(
+            `https://ipfs.io/ipfs/${ipfsCid.cid}`,
+            sttFile,
+            (progress) => {
+              broadcastModelProgress({
+                started: true,
+                done: false,
+                downloading: true,
+                type: 'stt',
+                source: 'ipfs',
+                ...progress,
+                completedFiles,
+                totalFiles
+              });
+            }
+          );
+          sttDownloaded = true;
+          console.log('[MODELS] STT model downloaded via IPFS');
+        }
       } catch (err) {
-        console.warn('[MODELS] STT download failed, falling back to HuggingFace:', err.message);
+        console.warn('[MODELS] IPFS STT download failed:', err.message);
+      }
+
+      // Fall back to webtalk/HuggingFace if IPFS didn't work
+      if (!sttDownloaded) {
+        try {
+          console.log('[MODELS] Falling back to HuggingFace for STT model');
+          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'huggingface', completedFiles, totalFiles });
+          await webtalkWhisper.ensureModel('onnx-community/whisper-base', config);
+          console.log('[MODELS] STT model downloaded via HuggingFace');
+        } catch (err) {
+          console.warn('[MODELS] HuggingFace STT download also failed:', err.message);
+        }
       }
       completedFiles += 10;
     }
 
     if (!ttsOk) {
       console.log('[MODELS] Downloading TTS models...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', completedFiles, totalFiles });
+      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs-fallback', completedFiles, totalFiles });
+
+      let ttsDownloaded = false;
+
+      // Try IPFS first with fallback to HuggingFace
       try {
-        await webtalkTTS.ensureTTSModels(config);
+        const ipfsCid = queries.getIpfsCidByModel('tts', 'voice');
+        if (ipfsCid) {
+          console.log('[MODELS] Attempting IPFS download for TTS models:', ipfsCid.cid);
+          const ttsFile = path.join(ttsDir, 'models.tar.gz');
+          fs.mkdirSync(ttsDir, { recursive: true });
+          await IPFSDownloader.downloadWithProgress(
+            `https://ipfs.io/ipfs/${ipfsCid.cid}`,
+            ttsFile,
+            (progress) => {
+              broadcastModelProgress({
+                started: true,
+                done: false,
+                downloading: true,
+                type: 'tts',
+                source: 'ipfs',
+                ...progress,
+                completedFiles,
+                totalFiles
+              });
+            }
+          );
+          ttsDownloaded = true;
+          console.log('[MODELS] TTS models downloaded via IPFS');
+        }
       } catch (err) {
-        console.warn('[MODELS] TTS download failed, falling back to HuggingFace:', err.message);
+        console.warn('[MODELS] IPFS TTS download failed:', err.message);
+      }
+
+      // Fall back to webtalk/HuggingFace if IPFS didn't work
+      if (!ttsDownloaded) {
+        try {
+          console.log('[MODELS] Falling back to HuggingFace for TTS models');
+          broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'huggingface', completedFiles, totalFiles });
+          await webtalkTTS.ensureTTSModels(config);
+          console.log('[MODELS] TTS models downloaded via HuggingFace');
+        } catch (err) {
+          console.warn('[MODELS] HuggingFace TTS download also failed:', err.message);
+        }
       }
       completedFiles += 6;
     }

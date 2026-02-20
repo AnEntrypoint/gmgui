@@ -28,10 +28,17 @@ jobs:
         run: |
           PKG_NAME=$(jq -r '.name' package.json)
           PUBLISHED=$(npm view "$PKG_NAME" version 2>/dev/null || echo "0.0.0")
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$PUBLISHED"
-          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          CURRENT=$(jq -r '.version' package.json)
+          if [ "$PUBLISHED" = "$CURRENT" ]; then
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$PUBLISHED"
+            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
+            echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+            echo "VERSION_BUMPED=true" >> $GITHUB_ENV
+          else
+            echo "NEW_VERSION=$CURRENT" >> $GITHUB_ENV
+            echo "VERSION_BUMPED=false" >> $GITHUB_ENV
+          fi
 
       - name: Publish to npm
         run: npm publish
@@ -44,6 +51,7 @@ jobs:
           git config user.email "github-actions@github.com"
 
       - name: Commit version bump
+        if: env.VERSION_BUMPED == 'true'
         run: |
           git add package.json
           git commit -m "chore: bump version to ${{ env.NEW_VERSION }}"
