@@ -75,9 +75,11 @@ async function ensureModelsDownloaded() {
     const { createRequire: cr } = await import('module');
     const r = cr(import.meta.url);
 
+    const bundledModels = process.env.PORTABLE_EXE_DIR ? path.join(process.env.PORTABLE_EXE_DIR, 'models') : null;
     const gmguiModels = path.join(os.homedir(), '.gmgui', 'models');
-    const sttDir = path.join(gmguiModels, 'onnx-community', 'whisper-base');
-    const ttsDir = path.join(gmguiModels, 'tts');
+    const modelsBase = (bundledModels && fs.existsSync(path.join(bundledModels, 'onnx-community'))) ? bundledModels : gmguiModels;
+    const sttDir = path.join(modelsBase, 'onnx-community', 'whisper-base');
+    const ttsDir = path.join(modelsBase, 'tts');
 
     const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
     const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;

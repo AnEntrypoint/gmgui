@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 
@@ -51,7 +52,7 @@ fs.mkdirSync(out, { recursive: true });
 
 log('Compiling Windows executable...');
 execSync(
-  `~/.bun/bin/bun build --compile --target=bun-windows-x64 --outfile=${path.join(out, 'agentgui.exe')} ${path.join(src, 'portable-entry.js')}`,
+  `"${path.join(os.homedir(), '.bun', 'bin', 'bun')}" build --compile --target=bun-windows-x64 --outfile="${path.join(out, 'agentgui.exe')}" "${path.join(src, 'portable-entry.js')}"`,
   { stdio: 'inherit', cwd: src }
 );
 
@@ -118,6 +119,15 @@ copyDir(path.join(claudeSrc, 'vendor', 'ripgrep', 'x64-win32'), path.join(claude
 
 log('Creating data directory...');
 fs.mkdirSync(path.join(out, 'data'), { recursive: true });
+
+log('Bundling AI models...');
+const userModels = path.join(os.homedir(), '.gmgui', 'models');
+if (fs.existsSync(userModels)) {
+  copyDir(userModels, path.join(out, 'models'));
+  log(`Models bundled: ${Math.round(sizeOf(path.join(out, 'models')) / 1024 / 1024)}MB`);
+} else {
+  log('WARNING: No models found at ~/.gmgui/models - portable build will download on first use');
+}
 
 fs.writeFileSync(path.join(out, 'README.txt'), [
   '# AgentGUI Portable',
