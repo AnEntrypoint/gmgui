@@ -86,20 +86,7 @@ async function ensureModelsDownloaded() {
     });
 
     const { checkTTSModelExists } = createRequire(import.meta.url)('webtalk/tts-models');
-    const whisperModelsLib = createRequire(import.meta.url)('webtalk/whisper-models');
-    const checkWhisperModelExists = whisperModelsLib.checkWhisperModelExists || (async (modelName, cfg) => {
-      const { isFileCorrupted } = whisperModelsLib;
-      const modelDir = path.join(cfg.modelsDir, modelName);
-      if (!fs.existsSync(modelDir)) return false;
-      const encoderPath = path.join(modelDir, 'onnx', 'encoder_model.onnx');
-      const decoderPath = path.join(modelDir, 'onnx', 'decoder_model_merged_q4.onnx');
-      const decoderFallback = path.join(modelDir, 'onnx', 'decoder_model_merged.onnx');
-      const hasEncoder = fs.existsSync(encoderPath);
-      const hasDecoder = fs.existsSync(decoderPath) || fs.existsSync(decoderFallback);
-      if (!hasEncoder || !hasDecoder) return false;
-      return !isFileCorrupted(encoderPath, 40 * 1024 * 1024) &&
-        (!isFileCorrupted(decoderPath, 100 * 1024 * 1024) || !isFileCorrupted(decoderFallback, 100 * 1024 * 1024));
-    });
+    const { checkWhisperModelExists } = createRequire(import.meta.url)('webtalk/whisper-models');
 
     const sttOk = await checkWhisperModelExists(config.defaultWhisperModel, config).catch(() => false);
     const ttsOk = await checkTTSModelExists(config).catch(() => false);
