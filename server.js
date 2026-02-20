@@ -68,7 +68,7 @@ const LIGHTHOUSE_STT_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw2
 const LIGHTHOUSE_STT_ONNX_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/stt/onnx-community/whisper-base/onnx/';
 const LIGHTHOUSE_TTS_BASE = 'https://gateway.lighthouse.storage/ipfs/bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy/tts/';
 
-const STT_BASE_FILES = ['config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'vocab.json', 'merges.txt', 'model_quantized.onnx'];
+const STT_BASE_FILES = ['config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'vocab.json', 'merges.txt'];
 const STT_ONNX_FILES = ['encoder_model.onnx', 'decoder_model_merged_q4.onnx', 'decoder_model_merged.onnx'];
 const TTS_FILES = ['mimi_encoder.onnx', 'text_conditioner.onnx', 'flow_lm_main_int8.onnx', 'flow_lm_flow_int8.onnx', 'mimi_decoder_int8.onnx', 'tokenizer.model'];
 
