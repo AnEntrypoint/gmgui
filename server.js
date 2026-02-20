@@ -72,17 +72,24 @@ async function ensureModelsDownloaded() {
   }
 
   try {
-    const { createRequire: cr } = await import('module');
-    const r = cr(import.meta.url);
-
-    const bundledModels = process.env.PORTABLE_EXE_DIR ? path.join(process.env.PORTABLE_EXE_DIR, 'models') : null;
     const gmguiModels = path.join(os.homedir(), '.gmgui', 'models');
-    const modelsBase = (bundledModels && fs.existsSync(path.join(bundledModels, 'onnx-community'))) ? bundledModels : gmguiModels;
-    const sttDir = path.join(modelsBase, 'onnx-community', 'whisper-base');
-    const ttsDir = path.join(modelsBase, 'tts');
+    const modelsBase = process.env.PORTABLE_EXE_DIR
+      ? (fs.existsSync(path.join(process.env.PORTABLE_EXE_DIR, 'models', 'onnx-community')) ? path.join(process.env.PORTABLE_EXE_DIR, 'models') : gmguiModels)
+      : gmguiModels;
 
-    const sttOk = fs.existsSync(sttDir) && fs.readdirSync(sttDir).length > 0;
-    const ttsOk = fs.existsSync(ttsDir) && fs.readdirSync(ttsDir).length > 0;
+    const { ensureModels } = createRequire(import.meta.url)('webtalk/ipfs-downloader');
+    const { createConfig } = createRequire(import.meta.url)('webtalk/config');
+    const config = createConfig({
+      modelsDir: modelsBase,
+      ttsModelsDir: path.join(modelsBase, 'tts'),
+      sttModelsDir: path.join(modelsBase, 'stt'),
+    });
+
+    const { checkTTSModelExists } = createRequire(import.meta.url)('webtalk/tts-models');
+    const { checkWhisperModelExists } = createRequire(import.meta.url)('webtalk/whisper-models');
+
+    const sttOk = await checkWhisperModelExists(config.defaultWhisperModel, config).catch(() => false);
+    const ttsOk = await checkTTSModelExists(config).catch(() => false);
 
     if (sttOk && ttsOk) {
       console.log('[MODELS] All model files present');
@@ -93,125 +100,19 @@ async function ensureModelsDownloaded() {
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    const totalFiles = 16;
-    let completedFiles = 0;
-
-    if (!sttOk) {
-      console.log('[MODELS] Downloading STT model via IPFS...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'stt', source: 'ipfs', completedFiles, totalFiles });
-
-      try {
-        const ipfsCid = queries.getIpfsCidByModel('whisper-base', 'stt');
-        if (!ipfsCid) {
-          console.warn('[MODELS] STT IPFS CID not registered in database');
-          console.warn('[MODELS] To enable STT: Pin whisper-base model to IPFS and register CID via: queries.recordIpfsCid(cid, "whisper-base", "stt", hash, gateway)');
-          broadcastModelProgress({
-            done: true,
-            error: 'STT model CID not registered - speech will be unavailable. Register via IPFS.',
-            type: 'stt',
-            completedFiles,
-            totalFiles
-          });
-        } else {
-          console.log('[MODELS] Downloading STT from Lighthouse IPFS:', ipfsCid.cid);
-          fs.mkdirSync(sttDir, { recursive: true });
-
-          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/stt/onnx-community/whisper-base/
-          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
-          const sttUrl = `${lighthouseGateway}/${ipfsCid.cid}/stt/onnx-community/whisper-base/onnx/`;
-          const sttFile = path.join(sttDir, 'whisper-onnx.tar');
-
-          await downloadWithProgress(
-            sttUrl,
-            sttFile,
-            (progress) => {
-              broadcastModelProgress({
-                started: true,
-                done: false,
-                downloading: true,
-                type: 'stt',
-                source: 'lighthouse-ipfs',
-                gateway: 'gateway.lighthouse.storage',
-                ...progress,
-                completedFiles,
-                totalFiles
-              });
-            }
-          );
-          console.log('[MODELS] STT model downloaded successfully from Lighthouse IPFS');
-        }
-      } catch (err) {
-        console.error('[MODELS] IPFS STT download failed:', err.message);
-        broadcastModelProgress({
-          done: true,
-          error: `IPFS STT download failed: ${err.message}`,
-          type: 'stt',
-          completedFiles,
-          totalFiles
-        });
-      }
-      completedFiles += 10;
-    }
-
-    if (!ttsOk) {
-      console.log('[MODELS] Downloading TTS models via IPFS...');
-      broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', source: 'ipfs', completedFiles, totalFiles });
-
-      try {
-        const ipfsCid = queries.getIpfsCidByModel('tts', 'voice');
-        if (!ipfsCid) {
-          console.warn('[MODELS] TTS IPFS CID not registered in database');
-          console.warn('[MODELS] To enable TTS: Pin TTS models to IPFS and register CID via: queries.recordIpfsCid(cid, "tts", "voice", hash, gateway)');
-          broadcastModelProgress({
-            done: true,
-            error: 'TTS model CID not registered - speech synthesis will be unavailable. Register via IPFS.',
-            type: 'tts',
-            completedFiles,
-            totalFiles
-          });
-        } else {
-          console.log('[MODELS] Downloading TTS from Lighthouse IPFS:', ipfsCid.cid);
-          fs.mkdirSync(ttsDir, { recursive: true });
-
-          // Download from Lighthouse gateway: https://gateway.lighthouse.storage/ipfs/CID/tts/
-          const lighthouseGateway = 'https://gateway.lighthouse.storage/ipfs';
-          const ttsUrl = `${lighthouseGateway}/${ipfsCid.cid}/tts/`;
-          const ttsFile = path.join(ttsDir, 'tts-models.tar');
-
-          await downloadWithProgress(
-            ttsUrl,
-            ttsFile,
-            (progress) => {
-              broadcastModelProgress({
-                started: true,
-                done: false,
-                downloading: true,
-                type: 'tts',
-                source: 'lighthouse-ipfs',
-                gateway: 'gateway.lighthouse.storage',
-                ...progress,
-                completedFiles,
-                totalFiles
-              });
-            }
-          );
-          console.log('[MODELS] TTS models downloaded successfully from Lighthouse IPFS');
-        }
-      } catch (err) {
-        console.error('[MODELS] IPFS TTS download failed:', err.message);
-        broadcastModelProgress({
-          done: true,
-          error: `IPFS TTS download failed: ${err.message}`,
-          type: 'tts',
-          completedFiles,
-          totalFiles
-        });
-      }
-      completedFiles += 6;
-    }
+    await ensureModels(config, (progress) => {
+      broadcastModelProgress({
+        started: true,
+        done: progress.done || false,
+        downloading: progress.status === 'downloading',
+        type: progress.type,
+        source: 'ipfs',
+        ...progress,
+      });
+    });
 
     modelDownloadState.complete = true;
-    broadcastModelProgress({ started: true, done: true, downloading: false, completedFiles: totalFiles, totalFiles });
+    broadcastModelProgress({ started: true, done: true, downloading: false });
     return true;
   } catch (err) {
     console.error('[MODELS] Download error:', err.message);
