@@ -326,6 +326,63 @@ try {
   console.error('[Migration] IPFS schema update warning:', err.message);
 }
 
+// Migration: Backfill messages for conversations imported without message content
+try {
+  const emptyImported = db.prepare(`
+    SELECT c.id, c.sourcePath FROM conversations c
+    LEFT JOIN messages m ON c.id = m.conversationId
+    WHERE c.sourcePath IS NOT NULL AND c.status != 'deleted'
+    GROUP BY c.id HAVING COUNT(m.id) = 0
+  `).all();
+
+  if (emptyImported.length > 0) {
+    console.log(`[Migration] Backfilling messages for ${emptyImported.length} imported conversation(s)`);
+    const insertMsg = db.prepare(`INSERT OR IGNORE INTO messages (id, conversationId, role, content, created_at) VALUES (?, ?, ?, ?, ?)`);
+    const backfill = db.transaction(() => {
+      for (const conv of emptyImported) {
+        if (!fs.existsSync(conv.sourcePath)) continue;
+        try {
+          const lines = fs.readFileSync(conv.sourcePath, 'utf-8').split('\n');
+          let count = 0;
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              const msgId = obj.uuid || `msg-${Date.now()}-${Math.random().toString(36).substr(2,9)}`;
+              const ts = obj.timestamp ? new Date(obj.timestamp).getTime() : Date.now();
+              if (obj.type === 'user' && obj.message?.content) {
+                const raw = obj.message.content;
+                const text = typeof raw === 'string' ? raw
+                  : Array.isArray(raw) ? raw.filter(c => c.type === 'text').map(c => c.text).join('\n')
+                  : JSON.stringify(raw);
+                if (text && !text.startsWith('[{"tool_use_id"')) {
+                  insertMsg.run(msgId, conv.id, 'user', text, ts);
+                  count++;
+                }
+              } else if (obj.type === 'assistant' && obj.message?.content) {
+                const raw = obj.message.content;
+                const text = Array.isArray(raw)
+                  ? raw.filter(c => c.type === 'text' && c.text).map(c => c.text).join('\n\n')
+                  : typeof raw === 'string' ? raw : '';
+                if (text) {
+                  insertMsg.run(msgId, conv.id, 'assistant', text, ts);
+                  count++;
+                }
+              }
+            } catch (_) {}
+          }
+          if (count > 0) console.log(`[Migration] Backfilled ${count} messages for conversation ${conv.id}`);
+        } catch (e) {
+          console.error(`[Migration] Error backfilling ${conv.id}:`, e.message);
+        }
+      }
+    });
+    backfill();
+  }
+} catch (err) {
+  console.error('[Migration] Backfill error:', err.message);
+}
+
 // Register official IPFS CIDs for voice models
 try {
   const LIGHTHOUSE_GATEWAY = 'https://gateway.lighthouse.storage/ipfs';
@@ -942,7 +999,7 @@ export const queries = {
 
     for (const conv of discovered) {
       try {
-        const existingConv = prep('SELECT id, status FROM conversations WHERE id = ?').get(conv.id);
+        const existingConv = prep('SELECT id, status FROM conversations WHERE id = ? OR externalId = ?').get(conv.id, conv.id);
         if (existingConv) {
           imported.push({ id: conv.id, status: 'skipped', reason: existingConv.status === 'deleted' ? 'deleted' : 'exists' });
           continue;
@@ -1076,60 +1133,6 @@ export const queries = {
       'SELECT * FROM conversations WHERE source = ? AND status != ? ORDER BY updated_at DESC'
     );
     return stmt.all('imported', 'deleted');
-  },
-
-  importClaudeCodeConversations() {
-    const projectsDir = path.join(os.homedir(), '.claude', 'projects');
-    if (!fs.existsSync(projectsDir)) return [];
-
-    const imported = [];
-    const projects = fs.readdirSync(projectsDir);
-
-    for (const projectName of projects) {
-      const indexPath = path.join(projectsDir, projectName, 'sessions-index.json');
-      if (!fs.existsSync(indexPath)) continue;
-
-      try {
-        const index = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
-        const entries = index.entries || [];
-
-        for (const entry of entries) {
-          try {
-            const existing = this.getConversationByExternalId('claude-code', entry.sessionId);
-            if (existing) {
-              imported.push({ status: 'skipped', id: existing.id });
-              continue;
-            }
-
-            this.createImportedConversation({
-              externalId: entry.sessionId,
-              agentType: 'claude-code',
-              title: entry.summary || entry.firstPrompt || `Conversation ${entry.sessionId.slice(0, 8)}`,
-              firstPrompt: entry.firstPrompt,
-              messageCount: entry.messageCount || 0,
-              created: new Date(entry.created).getTime(),
-              modified: new Date(entry.modified).getTime(),
-              projectPath: entry.projectPath,
-              gitBranch: entry.gitBranch,
-              sourcePath: entry.fullPath,
-              source: 'imported'
-            });
-
-            imported.push({
-              status: 'imported',
-              id: entry.sessionId,
-              title: entry.summary || entry.firstPrompt
-            });
-          } catch (err) {
-            console.error(`[DB] Error importing session ${entry.sessionId}:`, err.message);
-          }
-        }
-      } catch (err) {
-        console.error(`[DB] Error reading ${indexPath}:`, err.message);
-      }
-    }
-
-    return imported;
   },
 
   createChunk(sessionId, conversationId, sequence, type, data) {
