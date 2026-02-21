@@ -2257,35 +2257,28 @@
     }
 
     /* --- Inline Tool Result (nested inside tool_use) --- */
-    .tool-result-inline {
-      border-top: 1px solid #bbf7d0;
-      overflow: hidden;
+    /* Tool Result Blocks - Folded by default with status icons */
+    .folded-tool.block-type-tool_result {
+      margin-bottom: 0.375rem;
     }
-    html.dark .tool-result-inline { border-top-color: #166534; }
-    .tool-result-status {
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.3rem 0.625rem;
-      font-size: 0.75rem;
-      line-height: 1.3;
-      cursor: default;
-      user-select: none;
+    .folded-tool.folded-tool-success {
+      background: #f0fdf4;
     }
-    .tool-result-status::-webkit-details-marker { display: none; }
-    .tool-result-status::marker { display: none; content: ''; }
-    .tool-result-inline > .folded-tool-body { border-top: 1px solid #bbf7d0; }
-    html.dark .tool-result-inline > .folded-tool-body { border-top-color: #166534; }
-    .tool-result-error { background: #fef2f2; border-top-color: #fecaca; }
-    html.dark .tool-result-error { background: #1f0a0a; border-top-color: #991b1b; }
-    .tool-result-error .folded-tool-icon { color: #dc2626; }
-    html.dark .tool-result-error .folded-tool-icon { color: #f87171; }
-    .tool-result-error .folded-tool-name { color: #991b1b; }
-    html.dark .tool-result-error .folded-tool-name { color: #fca5a5; }
-    .tool-result-error .folded-tool-desc { color: #b91c1c; }
-    html.dark .tool-result-error .folded-tool-desc { color: #f87171; }
-    .tool-result-error > .folded-tool-body { border-top-color: #fecaca; }
-    html.dark .tool-result-error > .folded-tool-body { border-top-color: #991b1b; }
+    html.dark .folded-tool.folded-tool-success {
+      background: #0a1f0f;
+    }
+    .folded-tool.folded-tool-success > .folded-tool-bar {
+      background: #dcfce7;
+    }
+    html.dark .folded-tool.folded-tool-success > .folded-tool-bar {
+      background: #0f2b1a;
+    }
+    .folded-tool.folded-tool-success > .folded-tool-bar::before {
+      color: #16a34a;
+    }
+    html.dark .folded-tool.folded-tool-success > .folded-tool-bar::before {
+      color: #4ade80;
+    }
 
     /* --- Consecutive Block Joining --- */
     .streaming-blocks > * + *,
