@@ -324,16 +324,6 @@ const AGENT_MODEL_COMMANDS = {
 };
 
 const AGENT_DEFAULT_MODELS = {
-  'claude-code': [
-    { id: '', label: 'Default' },
-    { id: 'sonnet', label: 'Sonnet' },
-    { id: 'opus', label: 'Opus' },
-    { id: 'haiku', label: 'Haiku' },
-    { id: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5' },
-    { id: 'claude-sonnet-4-6-20260219', label: 'Sonnet 4.6' },
-    { id: 'claude-opus-4-6', label: 'Opus 4.6' },
-    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
-  ],
   'gemini': [
     { id: '', label: 'Default' },
     { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
@@ -399,9 +389,19 @@ async function getModelsForAgent(agentId) {
       modelCache.set(agentId, { models: apiModels, timestamp: Date.now() });
       return apiModels;
     }
-    const models = AGENT_DEFAULT_MODELS[agentId];
-    modelCache.set(agentId, { models, timestamp: Date.now() });
-    return models;
+    try {
+      const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
+      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length > 0) {
+        const models = [{ id: '', label: 'Default' }];
+        for (const line of lines) {
+          models.push({ id: line, label: line });
+        }
+        modelCache.set(agentId, { models, timestamp: Date.now() });
+        return models;
+      }
+    } catch (_) {}
+    return [{ id: '', label: 'Default' }];
   }
 
   if (AGENT_MODEL_COMMANDS[agentId]) {
@@ -428,7 +428,7 @@ async function getModelsForAgent(agentId) {
   const { getRegisteredAgents } = await import('./lib/claude-runner.js');
   const agents = getRegisteredAgents();
   const agent = agents.find(a => a.id === agentId);
-  
+
   if (agent && agent.command) {
     const modelCmd = `${agent.command} models`;
     try {
