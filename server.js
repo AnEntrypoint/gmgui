@@ -14,6 +14,7 @@ import Busboy from 'busboy';
 import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
+import { downloadWithFallback } from './lib/model-downloader.js';
 const { downloadWithProgress } = createRequire(import.meta.url)('webtalk/ipfs-downloader');
 
 const ttsTextAccumulators = new Map();
@@ -77,39 +78,70 @@ async function ensureModelsDownloaded() {
       ? (fs.existsSync(path.join(process.env.PORTABLE_EXE_DIR, 'models', 'onnx-community')) ? path.join(process.env.PORTABLE_EXE_DIR, 'models') : gmguiModels)
       : gmguiModels;
 
-    const { ensureModels } = createRequire(import.meta.url)('webtalk/ipfs-downloader');
-    const { createConfig } = createRequire(import.meta.url)('webtalk/config');
-    const config = createConfig({
-      modelsDir: modelsBase,
-      ttsModelsDir: path.join(modelsBase, 'tts'),
-      sttModelsDir: path.join(modelsBase, 'stt'),
-    });
-
-    const { checkTTSModelExists } = createRequire(import.meta.url)('webtalk/tts-models');
-    const { checkWhisperModelExists } = createRequire(import.meta.url)('webtalk/whisper-models');
-
-    const sttOk = await checkWhisperModelExists(config.defaultWhisperModel, config).catch(() => false);
-    const ttsOk = await checkTTSModelExists(config).catch(() => false);
-
-    if (sttOk && ttsOk) {
-      console.log('[MODELS] All model files present');
-      modelDownloadState.complete = true;
-      return true;
+    const manifestPath = path.join(gmguiModels, '.manifests.json');
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error('Model manifest not found at ' + manifestPath);
     }
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+    const whisperCidRecord = queries.getIpfsCidByModel('whisper-base', 'stt');
+    const ttsCidRecord = queries.getIpfsCidByModel('tts', 'voice');
 
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
 
-    await ensureModels(config, (progress) => {
-      broadcastModelProgress({
-        started: true,
-        done: progress.done || false,
-        downloading: progress.status === 'downloading',
-        type: progress.type,
-        source: 'ipfs',
-        ...progress,
-      });
-    });
+    const downloadModel = async (modelName, modelType, cidRecord) => {
+      const modelManifest = manifest[modelName];
+      if (!modelManifest) {
+        throw new Error(`Model ${modelName} not found in manifest`);
+      }
+
+      const isWhisper = modelType === 'stt';
+      const baseDir = isWhisper
+        ? path.join(modelsBase, 'onnx-community', 'whisper-base')
+        : path.join(modelsBase, 'tts');
+
+      fs.mkdirSync(baseDir, { recursive: true });
+
+      for (const [filename, fileInfo] of Object.entries(modelManifest.files)) {
+        const destPath = path.join(baseDir, filename);
+
+        if (fs.existsSync(destPath) && fs.statSync(destPath).size === fileInfo.size) {
+          console.log(`[MODELS] ${filename} already exists, skipping`);
+          continue;
+        }
+
+        const ipfsCid = cidRecord ? `${cidRecord.cid}/${filename}` : null;
+        const huggingfaceUrl = isWhisper
+          ? `https://huggingface.co/onnx-community/whisper-base/resolve/main/${filename}`
+          : `https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts/${filename}`;
+
+        await downloadWithFallback({
+          ipfsCid,
+          huggingfaceUrl,
+          destPath,
+          manifest: fileInfo,
+          minBytes: fileInfo.size * 0.8,
+          preferredLayer: ipfsCid ? 'ipfs' : 'huggingface'
+        }, (progress) => {
+          broadcastModelProgress({
+            started: true,
+            done: progress.status === 'success',
+            downloading: progress.status === 'downloading',
+            type: modelType === 'stt' ? 'whisper' : 'tts',
+            source: progress.layer === 'cache' ? 'cache' : progress.layer,
+            status: progress.status,
+            file: filename,
+            progress: progress.total ? (progress.downloaded / progress.total * 100) : 0,
+            gateway: progress.gateway
+          });
+        });
+      }
+    };
+
+    await downloadModel('whisper-base', 'stt', whisperCidRecord);
+    await downloadModel('tts-models', 'voice', ttsCidRecord);
 
     modelDownloadState.complete = true;
     broadcastModelProgress({ started: true, done: true, downloading: false });

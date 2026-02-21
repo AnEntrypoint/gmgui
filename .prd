@@ -44,14 +44,9 @@
 
 ### Wave 1 (COMPLETE - all items removed from work breakdown)
 
-### Wave 2 (Depends on Wave 1)
-4. Obtain Pinata API keys (if available) OR document blocking status
-   - Blocked by: Wave 1 item 3 (dry-run test)
-   - Blocks: Real IPFS publishing
-
-5. Design server.js integration strategy
-   - Blocked by: Wave 1 item 1 (implementation verification)
-   - Blocks: Actual integration
+### Wave 2 (COMPLETE)
+✓ Pinata API keys: BLOCKED - not available, user needs to sign up at https://www.pinata.cloud/
+✓ Integration strategy designed - 150-200 line implementation, backward compatible, per-file iteration
 
 ### Wave 3 (Depends on Wave 2)
 6. Execute publish-models-to-ipfs.js to get real CIDs (if keys available)

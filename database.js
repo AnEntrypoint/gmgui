@@ -400,13 +400,13 @@ try {
     console.log('[MODELS] Registered Whisper STT IPFS CID:', WHISPER_CID);
   }
 
-  const existingTTS = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('tts', 'voice');
+  const existingTTS = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('tts-models', 'voice');
   if (!existingTTS) {
     const cidId = `cid-${Date.now()}-tts`;
     db.prepare(
       `INSERT INTO ipfs_cids (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(cidId, TTS_CID, 'tts', 'voice', 'sha256-verified', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
+    ).run(cidId, TTS_CID, 'tts-models', 'voice', 'sha256-verified', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
     console.log('[MODELS] Registered TTS IPFS CID:', TTS_CID);
   }
 } catch (err) {
