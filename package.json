@@ -35,6 +35,8 @@
   },
   "overrides": {
     "onnxruntime-web": "npm:empty-npm-package@1.0.0",
-    "sharp": "npm:empty-npm-package@1.0.0"
+    "sharp": "npm:empty-npm-package@1.0.0",
+    "onnxruntime-node": "1.24.1",
+    "onnxruntime-common": "1.24.1"
   }
 }

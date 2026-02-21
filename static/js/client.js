@@ -2625,6 +2625,101 @@ class AgentGUIClient {
     };
   }
 
+  _handleModelDownloadProgress(data) {
+    if (!data) return;
+    this._modelDownloadProgress = data;
+    if (data.done && data.complete) {
+      this._modelDownloadInProgress = false;
+      this._hideModelDownloadProgress();
+    } else if (data.downloading || data.done === false) {
+      this._modelDownloadInProgress = true;
+      this._showModelDownloadProgress(data);
+    }
+    this._updateVoiceTabState();
+  }
+
+  _handleSTTProgress(data) {
+    if (!data) return;
+    const transcriptEl = document.getElementById('voiceTranscript');
+    if (!transcriptEl) return;
+
+    if (data.status === 'transcribing') {
+      transcriptEl.textContent = 'Transcribing...';
+      transcriptEl.style.color = 'var(--color-text-secondary)';
+    } else if (data.status === 'completed' && data.transcript) {
+      transcriptEl.textContent = data.transcript;
+      transcriptEl.style.color = 'var(--color-text-primary)';
+    } else if (data.status === 'failed') {
+      transcriptEl.textContent = 'Transcription failed: ' + (data.error || 'Unknown error');
+      transcriptEl.style.color = 'var(--color-error)';
+    }
+  }
+
+  _handleTTSSetupProgress(data) {
+    if (!data) return;
+    this._showModelDownloadProgress({
+      downloading: true,
+      message: data.message || 'Setting up TTS...'
+    });
+  }
+
+  _showModelDownloadProgress(progress) {
+    let indicator = document.getElementById('modelDownloadIndicator');
+    if (!indicator) {
+      const header = document.querySelector('.main-header');
+      if (!header) return;
+
+      indicator = document.createElement('div');
+      indicator.id = 'modelDownloadIndicator';
+      indicator.style = `
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.375rem 0.75rem;
+        background: var(--color-bg-secondary);
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        color: var(--color-text-secondary);
+      `;
+
+      const controls = header.querySelector('.header-controls');
+      if (controls) {
+        controls.insertBefore(indicator, controls.firstChild);
+      }
+    }
+
+    indicator.style.display = 'flex';
+    indicator.innerHTML = `
+      <span style="display:inline-block;width:1rem;height:1rem;border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;animation:spin 1s linear infinite;"></span>
+      <span>${progress.message || 'Loading models...'}</span>
+    `;
+  }
+
+  _hideModelDownloadProgress() {
+    const indicator = document.getElementById('modelDownloadIndicator');
+    if (indicator) {
+      indicator.style.display = 'none';
+    }
+  }
+
+  _updateVoiceTabState() {
+    const voiceBtn = document.querySelector('[data-view="voice"]');
+    const voiceContainer = document.getElementById('voiceContainer');
+    if (!voiceBtn || !voiceContainer) return;
+
+    const isReady = this._modelDownloadProgress?.done === true &&
+                    this._modelDownloadProgress?.complete === true;
+
+    if (isReady) {
+      voiceBtn.style.display = 'flex';
+      voiceBtn.style.opacity = '1';
+      voiceBtn.style.pointerEvents = 'auto';
+    } else {
+      voiceBtn.style.display = 'none';
+      voiceContainer.style.display = 'none';
+    }
+  }
+
   /**
    * Cleanup resources
    */
