@@ -258,23 +258,113 @@ TTS      https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/
 
 **Why Bundled Models?** Enables air-gapped deployments, reduces network load, supports edge environments with poor connectivity
 
-### Implementation Roadmap
+### Implementation Status
 
-| Phase | Description | Priority |
-|-------|-------------|----------|
-| 1 | Integrate IPFS gateway discovery (default configurable) | HIGH |
-| 2 | Refactor `ensureModelsDownloaded()` to use fallback chain | HIGH |
-| 3 | Add metrics collection to download layer | HIGH |
-| 4 | Implement manifest-based version tracking | MEDIUM |
-| 5 | Add stale-while-revalidate background checks | MEDIUM |
-| 6 | Integrate bundled models option | LOW |
-| 7 | Add peer-to-peer discovery | LOW |
+| Phase | Description | Status | File(s) |
+|-------|-------------|--------|---------|
+| 1 | IPFS gateway discovery | ✅ DONE | `webtalk/ipfs-downloader.js` |
+| 2 | 3-layer fallback chain | ✅ DONE | `lib/model-downloader.js` |
+| 3 | Metrics collection | ✅ DONE | `lib/model-downloader.js` (JSON storage) |
+| 4 | Manifest generation with SHA-256 | ✅ DONE | Generated to `~/.gmgui/models/.manifests.json` |
+| 5 | Metrics API endpoints | ✅ DONE | `server.js` (4 endpoints added) |
+| 6 | IPFS publishing script | ✅ DONE | `scripts/publish-models-to-ipfs.js` |
+| 7 | Database IPFS tables | ✅ EXISTS | `database.js` (ipfs_cids, ipfs_downloads) |
+| 8 | Integration into ensureModels | ⏳ TODO | Need to wire into `server.js` |
+| 9 | Publish to IPFS (get real CIDs) | ⏳ TODO | Requires Pinata API keys |
+| 10 | Update database.js with real CIDs | ⏳ TODO | After publishing |
+| 11 | Stale-while-revalidate checks | 📋 FUTURE | Background job |
+| 12 | Bundled models | 📋 FUTURE | Tarball creation |
+| 13 | Peer-to-peer discovery | 📋 FUTURE | mDNS implementation |
 
-### Critical TODOs Before Implementation
+### Current Model Inventory
 
-1. Publish whisper-base to IPFS → obtain ipfsHash
-2. Publish TTS models to IPFS → obtain ipfsHash
-3. Create manifest templates for both models
-4. Design metrics storage schema (SQLite vs JSON)
-5. Plan background check scheduler
-6. Define dashboard UI for metrics visualization
+**Models Downloaded Locally**: `~/.gmgui/models/`
+
+**Whisper Base** (280.15 MB) - 7 files:
+- `config.json` (0.00 MB) - SHA256: `f4d0608f7d918166...`
+- `tokenizer.json` (2.37 MB) - SHA256: `27fc476bfe7f1729...`
+- `tokenizer_config.json` (0.27 MB) - SHA256: `2e036e4dbacfdeb7...`
+- `onnx/encoder_model.onnx` (78.65 MB) - SHA256: `a9f3b752833b49e8...`
+- `onnx/decoder_model_merged.onnx` (198.86 MB) - SHA256: `514903744bb1b458...`
+
+**TTS Models** (189.40 MB) - 6 files:
+- `mimi_encoder.onnx` (69.78 MB) - SHA256: `360f050cd0b1e1c9...`
+- `flow_lm_main_int8.onnx` (72.81 MB) - SHA256: `fd5cdd7f7ab05f63...`
+- `mimi_decoder_int8.onnx` (21.63 MB) - SHA256: `501e16f51cf3fb91...`
+- `text_conditioner.onnx` (15.63 MB) - SHA256: `80ea69f46d8153a9...`
+- `flow_lm_flow_int8.onnx` (9.50 MB) - SHA256: `8d627d235c44a597...`
+- `tokenizer.model` (0.06 MB) - SHA256: `d461765ae1795666...`
+
+**Manifest Location**: `~/.gmgui/models/.manifests.json` (auto-generated with full SHA-256 hashes)
+
+### Next Steps to Complete Task 1C
+
+#### 1. Publish Models to IPFS (Get Real CIDs)
+
+```bash
+# Get free Pinata API keys at https://www.pinata.cloud/
+export PINATA_API_KEY=your_api_key
+export PINATA_SECRET_KEY=your_secret_key
+
+# Run publishing script
+node scripts/publish-models-to-ipfs.js
+```
+
+This will output real IPFS CIDs for both model sets.
+
+#### 2. Update database.js with Real CIDs
+
+Replace placeholder CIDs in `database.js` (lines 389-390):
+```javascript
+const WHISPER_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy'; // PLACEHOLDER
+const TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';     // PLACEHOLDER
+```
+
+Update with real CIDs from step 1.
+
+#### 3. Integrate Fallback Chain
+
+Modify `server.js` `ensureModelsDownloaded()` (starting line 66) to use the new 3-layer fallback:
+
+```javascript
+import { downloadWithFallback } from './lib/model-downloader.js';
+import { queries } from './database.js';
+
+// Get IPFS CIDs from database
+const whisperCidRecord = queries.getIpfsCidByModel('whisper-base', 'stt');
+const ttsCidRecord = queries.getIpfsCidByModel('tts', 'voice');
+
+// Load manifest
+const manifestPath = path.join(modelsDir, '.manifests.json');
+const manifests = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+
+// For each required file, use fallback chain:
+for (const [filename, fileInfo] of Object.entries(manifests['whisper-base'].files)) {
+  const destPath = path.join(whisperDir, filename);
+  await downloadWithFallback({
+    ipfsCid: `${whisperCidRecord.cid}/${filename}`,
+    huggingfaceUrl: `https://huggingface.co/onnx-community/whisper-base/resolve/main/${filename}`,
+    destPath,
+    manifest: fileInfo,
+    minBytes: fileInfo.size * 0.8,
+    preferredLayer: 'ipfs'
+  }, (progress) => {
+    broadcastModelProgress({ ...progress, file: filename, type: 'whisper' });
+  });
+}
+```
+
+### Metrics API Endpoints (Live)
+
+- `GET /gm/api/metrics/downloads` - All download metrics (last 24 hours)
+- `GET /gm/api/metrics/downloads/summary` - Aggregated statistics
+- `GET /gm/api/metrics/downloads/health` - Per-layer health status (success rates, latency)
+- `POST /gm/api/metrics/downloads/reset` - Clear metrics history
+
+### Architecture Files Created
+
+- `lib/model-downloader.js` - 3-layer fallback implementation with metrics
+- `lib/ipfs-publish.js` - Local IPFS publishing (requires kubo)
+- `scripts/publish-models-to-ipfs.js` - Pinata-based publishing (no local IPFS needed)
+- `~/.gmgui/models/.manifests.json` - Auto-generated with SHA-256 hashes
+- `~/.gmgui/models/.metrics.json` - Download metrics (auto-rotated daily)

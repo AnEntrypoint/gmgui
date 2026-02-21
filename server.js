@@ -2549,6 +2549,71 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/metrics/downloads' && req.method === 'GET') {
+      try {
+        const { getMetrics } = await import('./lib/model-downloader.js');
+        const metrics = getMetrics();
+        sendJSON(req, res, 200, { metrics });
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/metrics/downloads/summary' && req.method === 'GET') {
+      try {
+        const { getMetricsSummary } = await import('./lib/model-downloader.js');
+        const summary = getMetricsSummary();
+        sendJSON(req, res, 200, summary);
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/metrics/downloads/health' && req.method === 'GET') {
+      try {
+        const { getMetricsSummary } = await import('./lib/model-downloader.js');
+        const summary = getMetricsSummary();
+        const health = {
+          ipfs: {
+            status: summary.ipfs.success > 0 ? 'healthy' : summary.ipfs.error > 0 ? 'degraded' : 'unknown',
+            success_rate: summary.ipfs.success + summary.ipfs.error > 0
+              ? ((summary.ipfs.success / (summary.ipfs.success + summary.ipfs.error)) * 100).toFixed(2)
+              : 0,
+            avg_latency_ms: summary.ipfs.avg_latency
+          },
+          huggingface: {
+            status: summary.huggingface.success > 0 ? 'healthy' : summary.huggingface.error > 0 ? 'degraded' : 'unknown',
+            success_rate: summary.huggingface.success + summary.huggingface.error > 0
+              ? ((summary.huggingface.success / (summary.huggingface.success + summary.huggingface.error)) * 100).toFixed(2)
+              : 0,
+            avg_latency_ms: summary.huggingface.avg_latency
+          },
+          cache: {
+            hit_rate: summary.total > 0
+              ? ((summary.cache_hits / summary.total) * 100).toFixed(2)
+              : 0
+          }
+        };
+        sendJSON(req, res, 200, health);
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/metrics/downloads/reset' && req.method === 'POST') {
+      try {
+        const { resetMetrics } = await import('./lib/model-downloader.js');
+        resetMetrics();
+        sendJSON(req, res, 200, { ok: true, message: 'Metrics reset' });
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
     if (pathOnly === '/api/speech-status' && req.method === 'POST') {
       const body = await parseBody(req);
       if (body.forceDownload) {
