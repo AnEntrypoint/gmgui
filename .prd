@@ -88,12 +88,12 @@
 ✓ Manifest integration: YES - downloadWithFallback correctly validates against manifest SHA-256
 ✓ File path construction: Direct iteration over manifest.files object, each key is relative path
 
-### Integration Unknowns (Wave 2 IN PROGRESS)
-- Current ensureModelsDownloaded flow: what does webtalk/ipfs-downloader.ensureModels do? (TO INVESTIGATE)
-- Backward compatibility: can we replace ensureModels without breaking existing installs? (TO INVESTIGATE)
-- Progress broadcasting: how to integrate downloadWithFallback progress with broadcastModelProgress? (TO DESIGN)
-- Error handling: what happens if all 3 layers fail? (TO DESIGN - already throws error, need UI integration)
-- Concurrent download handling: does model-downloader handle multiple simultaneous downloads? (TO INVESTIGATE)
+### Integration Unknowns (Waves 2-4 RESOLVED)
+✓ Current ensureModelsDownloaded flow: webtalk is npm package with ensureModels, checkTTSModelExists, checkWhisperModelExists
+✓ Backward compatibility: full replacement possible, webtalk no longer called (still imported for downloadWithProgress elsewhere)
+✓ Progress broadcasting: transformation implemented (layer→source, status→downloading, progress percentage calculated)
+✓ Error handling: throws error with message, caught in try/catch, broadcast error event with modelDownloadState.error
+✓ Concurrent download handling: modelDownloadState.downloading flag prevents concurrent downloads (lines 67-72 wait loop)
 
 ### Environment Unknowns
 - Pinata API keys: are they available? (blocks real IPFS publishing)
@@ -195,24 +195,11 @@
 
 ## REMAINING WORK BREAKDOWN
 
-### Code Exploration (EXECUTE state, plugin:gm:dev) - Wave 2
-4. Read webtalk/ipfs-downloader.js ensureModels to understand replacement
-5. Read webtalk/whisper-models.js to understand file structure
-6. Read webtalk/tts-models.js to understand file structure
-7. Trace broadcastModelProgress usage in server.js
-
-### Integration Design (EXECUTE state, plugin:gm:dev)
-8. Map manifest files to downloadWithFallback calls
-9. Design progress event transformation (downloadWithFallback → broadcastModelProgress)
-10. Design error handling flow (all layers fail → user notification)
-11. Design concurrent request handling (lock/queue mechanism)
-12. Design backward compatibility (keep webtalk as fallback?)
-
-### Implementation (EMIT state, after all unknowns resolved)
-13. Add import statement for downloadWithFallback, getMetrics, etc.
-14. Rewrite ensureModelsDownloaded function body
-15. Test new implementation with existing cache
-16. Delete old webtalk calls if confirmed unused elsewhere
+### Waves 2-4 (COMPLETE)
+✓ Code Exploration: webtalk is npm package (external), no local files
+✓ Integration Design: manifest iteration, progress transformation, concurrent handling (existing flag)
+✓ Implementation: Import added, ensureModelsDownloaded rewritten with downloadWithFallback
+✓ Testing: Cache hits (13/13 files, 4ms), missing file re-download (59KB verified), metrics recorded
 
 ### IPFS Publishing (EXECUTE state, conditional on API keys)
 17. Check for PINATA_API_KEY environment variable
@@ -252,7 +239,7 @@ Total: 3 hours (if keys available) or 2.75 hours (if blocked on publishing)
 ## SUCCESS CRITERIA
 
 Work is complete when:
-- All 26 items above marked done (3 Wave 1 items removed as complete)
+- All remaining Wave 5 items completed (Waves 1-4 done)
 - Fresh ~/.gmgui/models download succeeds via IPFS layer 1
 - Corrupted cache triggers re-download
 - HuggingFace fallback proven working (simulated IPFS failure)
