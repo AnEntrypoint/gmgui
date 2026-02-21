@@ -15,7 +15,6 @@ import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { downloadWithFallback } from './lib/model-downloader.js';
-const { downloadWithProgress } = createRequire(import.meta.url)('webtalk/ipfs-downloader');
 
 const ttsTextAccumulators = new Map();
 
@@ -86,7 +85,7 @@ async function ensureModelsDownloaded() {
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
     const whisperCidRecord = queries.getIpfsCidByModel('whisper-base', 'stt');
-    const ttsCidRecord = queries.getIpfsCidByModel('tts', 'voice');
+    const ttsCidRecord = queries.getIpfsCidByModel('tts-models', 'voice');
 
     modelDownloadState.downloading = true;
     modelDownloadState.error = null;
