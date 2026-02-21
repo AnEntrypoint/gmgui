@@ -1,6 +1,6 @@
 {
   "name": "agentgui",
-  "version": "1.0.301",
+  "version": "1.0.304",
   "description": "Multi-agent ACP client with real-time communication",
   "type": "module",
   "main": "server.js",
@@ -30,7 +30,7 @@
     "fsbrowse": "^0.2.18",
     "google-auth-library": "^10.5.0",
     "onnxruntime-node": "^1.24.1",
-    "webtalk": "file:../webtalk",
+    "webtalk": "^1.0.20",
     "ws": "^8.14.2"
   },
   "overrides": {

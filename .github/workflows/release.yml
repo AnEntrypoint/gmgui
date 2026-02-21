@@ -56,6 +56,12 @@ jobs:
           git tag "v${{ steps.version.outputs.version }}"
           git push origin main --follow-tags
 
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Install dependencies
         run: npm install
 
