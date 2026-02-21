@@ -32,6 +32,9 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
 
+      - name: Install dependencies
+        run: npm install
+
       - name: Determine version to publish
         id: version
         run: |
