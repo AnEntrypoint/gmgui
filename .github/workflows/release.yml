@@ -9,8 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    runs-on: windows-latest
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -23,11 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
 
       - name: Bump patch version
         id: version
@@ -56,14 +53,59 @@ jobs:
           git tag "v${{ steps.version.outputs.version }}"
           git push origin main --follow-tags
 
-
       - name: Configure npm credentials
         run: |
           echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
           echo "registry=https://registry.npmjs.org/" >> ~/.npmrc
-          
+
       - name: Publish to npm
         run: npm publish
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: AgentGUI v${{ steps.version.outputs.version }}
+          body: |
+            ## AgentGUI v${{ steps.version.outputs.version }}
+
+            Published to npm! Install with:
+            ```bash
+            bunx agentgui@latest
+            npm install -g agentgui
+            npx agentgui
+            ```
+
+            **Web interface**: http://localhost:3000/gm/
+
+            **Notes**:
+            - AI speech models (~477MB) are not bundled - they download automatically on first use
+            - Data is stored in the `~/.gmgui/` folder
+            - Requirements: Node.js 18+
+          draft: false
+          prerelease: false
+
+  build-portable:
+    runs-on: windows-latest
+    needs: publish
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install dependencies
         run: npm install
@@ -72,33 +114,28 @@ jobs:
         env:
           NO_BUNDLE_MODELS: 'true'
         run: node build-portable.js
+        continue-on-error: true
 
       - name: Create zip archive
         shell: pwsh
         run: |
           $src = "${{ github.workspace }}\..\wagentgui"
-          $dest = "${{ github.workspace }}\agentgui-v${{ steps.version.outputs.version }}-windows-portable.zip"
-          Compress-Archive -Path "$src\*" -DestinationPath $dest
-          Write-Host "Archive created: $dest"
-          $size = [math]::Round((Get-Item $dest).Length / 1MB, 1)
-          Write-Host "Size: ${size}MB"
+          $dest = "${{ github.workspace }}\agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip"
+          if (Test-Path $src) {
+            Compress-Archive -Path "$src\*" -DestinationPath $dest
+            Write-Host "Archive created: $dest"
+            $size = [math]::Round((Get-Item $dest).Length / 1MB, 1)
+            Write-Host "Size: ${size}MB"
+          } else {
+            Write-Host "Build directory not found: $src"
+          }
+        continue-on-error: true
 
-      - name: Create GitHub Release
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
+        if: hashFiles(format('{0}\agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip', github.workspace)) != ''
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: AgentGUI v${{ steps.version.outputs.version }}
-          body: |
-            ## AgentGUI v${{ steps.version.outputs.version }} - Windows Portable
-
-            No installation required. Extract the zip and run `agentgui.exe`.
-
-            **Web interface**: http://localhost:3000/gm/
-
-            **Notes**:
-            - AI speech models (~477MB) are not bundled - they download automatically on first use
-            - Data is stored in the `data/` folder next to the executable
-            - Requirements: None - fully self-contained
-          files: agentgui-v${{ steps.version.outputs.version }}-windows-portable.zip
+          tag_name: v${{ needs.publish.outputs.version }}
+          files: agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip
           draft: false
           prerelease: false
