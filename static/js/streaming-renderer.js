@@ -1210,35 +1210,31 @@ class StreamingRenderer {
     const isError = block.is_error || false;
     const content = block.content || '';
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
-    const parentIsOpen = context.parentIsOpen !== undefined ? context.parentIsOpen : true;
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'tool-result-inline' + (isError ? ' tool-result-error' : ' tool-result-success');
-    wrapper.dataset.eventType = 'tool_result';
-    if (block.tool_use_id) wrapper.dataset.toolUseId = block.tool_use_id;
-    wrapper.classList.add(this._getBlockTypeClass('tool_result'));
+    const details = document.createElement('details');
+    details.className = 'folded-tool' + (isError ? ' folded-tool-error' : ' folded-tool-success');
+    details.dataset.eventType = 'tool_result';
+    if (block.tool_use_id) details.dataset.toolUseId = block.tool_use_id;
+    details.classList.add(this._getBlockTypeClass('tool_result'));
 
-    const header = document.createElement('div');
-    header.className = 'tool-result-status';
+    const summary = document.createElement('summary');
+    summary.className = 'folded-tool-bar';
     const iconSvg = isError
       ? '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>'
       : '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-    header.innerHTML = `
+    summary.innerHTML = `
       <span class="folded-tool-icon">${iconSvg}</span>
       <span class="folded-tool-name">${isError ? 'Error' : 'Success'}</span>
     `;
-    wrapper.appendChild(header);
+    details.appendChild(summary);
 
     const renderedContent = StreamingRenderer.renderSmartContentHTML(contentStr, this.escapeHtml.bind(this), true);
     const body = document.createElement('div');
     body.className = 'folded-tool-body';
-    if (!parentIsOpen) {
-      body.style.display = 'none';
-    }
     body.innerHTML = renderedContent;
-    wrapper.appendChild(body);
+    details.appendChild(body);
 
-    return wrapper;
+    return details;
   }
 
   /**
