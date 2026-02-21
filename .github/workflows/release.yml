@@ -112,7 +112,7 @@ jobs:
 
       - name: Build portable
         env:
-          NO_BUNDLE_MODELS: 'true'
+          NO_BUNDLE_MODELS: 'false'
         run: node build-portable.js
         continue-on-error: true
 

@@ -20,7 +20,7 @@ async function gmgui(args = []) {
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
     const execPath = process.env.npm_execpath || '';
     const isBunx = execPath.includes('bun') || process.env.BUN_INSTALL;
-    const isNpx = execPath.includes('npx') || process.env._.includes('npx');
+    const isNpx = execPath.includes('npx') || (process.env._ && process.env._.includes('npx'));
     
     // Also skip if running from temp/cache directory (bunx/npm cache)
     const isFromCache = projectRoot.includes('node_modules') && 
