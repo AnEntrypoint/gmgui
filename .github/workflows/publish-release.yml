@@ -132,23 +132,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          
+
           Write-Host "Starting portable build..."
           node build-portable.js
-          
+
           # Detect build output directory
-          $buildDir = Get-ChildItem -Path $PSScriptRoot.. -Directory -Filter "*agentgui*" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
+          $parentDir = Split-Path -Parent $PWD
+          $buildDir = Get-ChildItem -Path $parentDir -Directory -Filter "*agentgui*" -ErrorAction SilentlyContinue | Select-Object -First 1
+
           if ($null -eq $buildDir) {
             # Try alternative naming patterns
-            $buildDir = Get-ChildItem -Path $PSScriptRoot.. -Directory -Filter "*agen*" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $buildDir = Get-ChildItem -Path $parentDir -Directory -Filter "*agen*" -ErrorAction SilentlyContinue | Select-Object -First 1
           }
-          
+
           if ($null -eq $buildDir) {
             # Last resort: check working directory
             $buildDir = Get-ChildItem -Path . -Directory -Filter "*agentgui*" -ErrorAction SilentlyContinue | Select-Object -First 1
           }
-          
+
           if ($buildDir) {
             Write-Host "Found build directory: $($buildDir.FullName)"
             Add-Content -Path $env:GITHUB_OUTPUT -Value "portable-path=$($buildDir.FullName)"
