@@ -319,28 +319,9 @@ const modelCache = new Map();
 
 const AGENT_MODEL_COMMANDS = {
   'claude-code': 'claude models',
+  'gemini': 'gemini models',
   'opencode': 'opencode models',
   'kilo': 'kilo models',
-};
-
-const AGENT_DEFAULT_MODELS = {
-  'gemini': [
-    { id: '', label: 'Default' },
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
-  ],
-  'goose': [
-    { id: '', label: 'Default' },
-    { id: 'claude-sonnet-4-5', label: 'Sonnet 4.5' },
-    { id: 'claude-opus-4-5', label: 'Opus 4.5' }
-  ],
-  'codex': [
-    { id: '', label: 'Default' },
-    { id: 'o4-mini', label: 'o4-mini' },
-    { id: 'o3', label: 'o3' },
-    { id: 'o3-mini', label: 'o3-mini' }
-  ]
 };
 
 async function fetchClaudeModelsFromAPI() {
@@ -377,31 +358,59 @@ async function fetchClaudeModelsFromAPI() {
   } catch { return null; }
 }
 
+async function fetchGeminiModelsFromAPI() {
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const https = await import('https');
+    return new Promise((resolve) => {
+      const req = https.default.request({
+        hostname: 'generativelanguage.googleapis.com',
+        path: '/v1beta/models?key=' + apiKey,
+        method: 'GET',
+        timeout: 8000
+      }, (res) => {
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            const items = (data.models || []).filter(m => m.name && m.name.includes('gemini'));
+            if (items.length === 0) return resolve(null);
+            const models = [{ id: '', label: 'Default' }];
+            for (const m of items) {
+              const modelId = m.name.replace(/^models\//, '');
+              const label = modelId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              models.push({ id: modelId, label });
+            }
+            resolve(models);
+          } catch { resolve(null); }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.on('timeout', () => { req.destroy(); resolve(null); });
+      req.end();
+    });
+  } catch { return null; }
+}
+
 async function getModelsForAgent(agentId) {
   const cached = modelCache.get(agentId);
   if (cached && Date.now() - cached.timestamp < 3600000) {
     return cached.models;
   }
 
+  let models = null;
+
   if (agentId === 'claude-code') {
-    const apiModels = await fetchClaudeModelsFromAPI();
-    if (apiModels) {
-      modelCache.set(agentId, { models: apiModels, timestamp: Date.now() });
-      return apiModels;
-    }
-    try {
-      const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
-      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length > 0) {
-        const models = [{ id: '', label: 'Default' }];
-        for (const line of lines) {
-          models.push({ id: line, label: line });
-        }
-        modelCache.set(agentId, { models, timestamp: Date.now() });
-        return models;
-      }
-    } catch (_) {}
-    return [{ id: '', label: 'Default' }];
+    models = await fetchClaudeModelsFromAPI();
+  } else if (agentId === 'gemini') {
+    models = await fetchGeminiModelsFromAPI();
+  }
+
+  if (models) {
+    modelCache.set(agentId, { models, timestamp: Date.now() });
+    return models;
   }
 
   if (AGENT_MODEL_COMMANDS[agentId]) {
@@ -409,7 +418,7 @@ async function getModelsForAgent(agentId) {
       const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
       const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length > 0) {
-        const models = [{ id: '', label: 'Default' }];
+        models = [{ id: '', label: 'Default' }];
         for (const line of lines) {
           models.push({ id: line, label: line });
         }
@@ -417,12 +426,6 @@ async function getModelsForAgent(agentId) {
         return models;
       }
     } catch (_) {}
-  }
-
-  if (AGENT_DEFAULT_MODELS[agentId]) {
-    const models = AGENT_DEFAULT_MODELS[agentId];
-    modelCache.set(agentId, { models, timestamp: Date.now() });
-    return models;
   }
 
   const { getRegisteredAgents } = await import('./lib/claude-runner.js');
@@ -435,7 +438,7 @@ async function getModelsForAgent(agentId) {
       const result = execSync(modelCmd, { encoding: 'utf-8', timeout: 15000 });
       const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
       if (lines.length > 0) {
-        const models = [{ id: '', label: 'Default' }];
+        models = [{ id: '', label: 'Default' }];
         for (const line of lines) {
           models.push({ id: line, label: line });
         }
