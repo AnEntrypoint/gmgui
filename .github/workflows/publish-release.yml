@@ -163,16 +163,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          
+
           $src = "${{ steps.build.outputs.portable-path }}"
           $zipName = "agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip"
           $dest = Join-Path ${{ github.workspace }} $zipName
-          
+
           if (Test-Path $src) {
             Write-Host "Creating zip from: $src"
             Compress-Archive -Path "$src*" -DestinationPath $dest -Force
             Write-Host "Archive created: $dest"
-            
+
             $size = [math]::Round((Get-Item $dest).Length / 1MB, 1)
             Write-Host "Archive size: ${size}MB"
             Add-Content -Path $env:GITHUB_OUTPUT -Value "archive=$dest"
@@ -180,6 +180,13 @@ jobs:
             Write-Host "ERROR: Build directory not found: $src"
             exit 1
           }
+
+      - name: Upload portable archive as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentgui-windows-portable
+          path: agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip
+          retention-days: 1
 
   create-release:
     runs-on: ubuntu-latest
