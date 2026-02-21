@@ -29,8 +29,11 @@ jobs:
           PKG_NAME=$(jq -r '.name' package.json)
           PUBLISHED=$(npm view "$PKG_NAME" version 2>/dev/null || echo "0.0.0")
           CURRENT=$(jq -r '.version' package.json)
-          if [ "$PUBLISHED" = "$CURRENT" ]; then
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$PUBLISHED"
+          # Bump if local version matches published, or if local is behind published
+          if [ "$PUBLISHED" = "$CURRENT" ] || (printf '%s\n' "$CURRENT" "$PUBLISHED" | sort -V | head -n1 | grep -q "^$CURRENT$"); then
+            # Use published version as base if local is behind
+            BASE_VERSION=$(printf '%s\n' "$CURRENT" "$PUBLISHED" | sort -V | tail -n1)
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
             NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
             jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
             echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
