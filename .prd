@@ -1,0 +1,267 @@
+# Model Download Fallback System - Integration PRD
+
+## CURRENT STATE VERIFIED
+
+### Phase 1-7 Status (CLAIMED DONE)
+✓ lib/model-downloader.js exists (289 lines, 8247 bytes)
+  - Exports: downloadWithFallback, getMetrics, getMetricsSummary, resetMetrics
+  - Implements 3-layer fallback: IPFS → HuggingFace → cache
+  - Parameters: ipfsCid, huggingfaceUrl, destPath, manifest, minBytes, preferredLayer
+  - Verification: SHA-256 hash + size check + ONNX format validation
+
+✓ scripts/publish-models-to-ipfs.js exists (173 lines, 5655 bytes)
+  - Requires: PINATA_API_KEY, PINATA_SECRET_KEY
+  - Uploads to Pinata, returns CIDs for whisper-base and tts-models
+  - Not yet executed (no real CIDs)
+
+✓ database.js IPFS infrastructure exists
+  - Tables: ipfs_cids, ipfs_downloads
+  - Query: getIpfsCidByModel(modelName, modelType)
+  - Initialization: Lines 385-415 with PLACEHOLDER CIDs
+  - WHISPER_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy' (PLACEHOLDER)
+  - TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy' (PLACEHOLDER)
+
+✓ Metrics API endpoints exist in server.js (lines 2552-2606)
+  - GET /api/metrics/downloads
+  - GET /api/metrics/downloads/summary
+  - GET /api/metrics/downloads/health
+  - POST /api/metrics/downloads/reset
+
+✓ Manifest exists at ~/.gmgui/models/.manifests.json
+  - whisper-base: 7 files, 293.76 MB total, SHA-256 hashes present
+  - tts-models: 6 files, 198.60 MB total, SHA-256 hashes present
+  - Generated: 2026-02-21T03:49:32.766Z
+
+✓ Metrics file exists at ~/.gmgui/models/.metrics.json
+
+### Phase 8-10 Status (TODO)
+✗ lib/model-downloader.js NOT imported in server.js
+✗ server.js ensureModelsDownloaded() uses old webtalk/ipfs-downloader (lines 66-125)
+✗ Real IPFS CIDs not obtained (Pinata script not executed)
+✗ database.js still has placeholder CIDs
+
+## DEPENDENCIES & BLOCKING RELATIONSHIPS
+
+### Wave 1 (COMPLETE - all items removed from work breakdown)
+
+### Wave 2 (Depends on Wave 1)
+4. Obtain Pinata API keys (if available) OR document blocking status
+   - Blocked by: Wave 1 item 3 (dry-run test)
+   - Blocks: Real IPFS publishing
+
+5. Design server.js integration strategy
+   - Blocked by: Wave 1 item 1 (implementation verification)
+   - Blocks: Actual integration
+
+### Wave 3 (Depends on Wave 2)
+6. Execute publish-models-to-ipfs.js to get real CIDs (if keys available)
+   - Blocked by: Wave 2 item 4 (API keys)
+   - Blocks: Database CID update
+
+7. Add model-downloader import to server.js
+   - Blocked by: Wave 2 item 5 (integration strategy)
+   - Blocks: Integration implementation
+
+### Wave 4 (Depends on Wave 3)
+8. Update database.js with real IPFS CIDs
+   - Blocked by: Wave 3 item 6 (real CIDs obtained)
+   - Blocks: IPFS layer activation
+
+9. Replace ensureModelsDownloaded implementation
+   - Blocked by: Wave 3 item 7 (import added)
+   - Blocks: End-to-end testing
+
+### Wave 5 (Depends on Wave 4, final verification)
+10. Test fallback chain with fresh cache (delete ~/.gmgui/models, verify IPFS layer 1)
+    - Blocked by: Wave 4 items 8, 9
+    - Blocks: Nothing (end-to-end test)
+
+11. Test fallback to HuggingFace (simulate IPFS failure)
+    - Blocked by: Wave 4 items 8, 9
+    - Blocks: Nothing (end-to-end test)
+
+12. Verify metrics collection after real downloads
+    - Blocked by: Wave 4 items 8, 9
+    - Blocks: Nothing (validation)
+
+## UNKNOWNS TO RESOLVE
+
+### Code Implementation Unknowns (Wave 1 RESOLVED)
+✓ downloadWithFallback IPFS gateway list: YES - cycles all 4 gateways (Cloudflare, dweb.link, Pinata, ipfs.io) × 2 retries = 8 attempts
+✓ downloadWithFallback error handling: YES - properly catches and continues on gateway failure
+✓ downloadWithFallback progress reporting: YES - onProgress receives correct status for each layer
+✓ Manifest integration: YES - downloadWithFallback correctly validates against manifest SHA-256
+✓ File path construction: Direct iteration over manifest.files object, each key is relative path
+
+### Integration Unknowns (Wave 2 IN PROGRESS)
+- Current ensureModelsDownloaded flow: what does webtalk/ipfs-downloader.ensureModels do? (TO INVESTIGATE)
+- Backward compatibility: can we replace ensureModels without breaking existing installs? (TO INVESTIGATE)
+- Progress broadcasting: how to integrate downloadWithFallback progress with broadcastModelProgress? (TO DESIGN)
+- Error handling: what happens if all 3 layers fail? (TO DESIGN - already throws error, need UI integration)
+- Concurrent download handling: does model-downloader handle multiple simultaneous downloads? (TO INVESTIGATE)
+
+### Environment Unknowns
+- Pinata API keys: are they available? (blocks real IPFS publishing)
+- IPFS gateway reachability: can we access Cloudflare/dweb.link/Pinata from this environment?
+- Network constraints: timeouts sufficient for 280MB + 198MB downloads?
+
+### Database Unknowns
+- CID format: are placeholder CIDs correct format (bafybei...)?
+- Gateway URL: should database store per-gateway URLs or single gateway?
+- Download tracking: is recordDownloadStart properly integrated?
+
+## EDGE CASES & CORNER CASES
+
+### Network Scenarios
+- All IPFS gateways unreachable → fallback to HuggingFace
+- HuggingFace rate limiting → retry logic sufficient?
+- Partial download (connection drop mid-file) → temp file cleanup?
+- Network switching during download → resume or restart?
+- Firewall blocking IPFS ports → fallback working?
+
+### File System Scenarios
+- Disk full during download → cleanup and error reporting?
+- Permission denied on ~/.gmgui/models → fallback directory?
+- Corrupted manifest file → regenerate or error?
+- Partial manifest (missing sha256 for some files) → skip validation?
+- Concurrent writes to same file → locking mechanism?
+
+### Cache Scenarios
+- Cache hit but file corrupted → detect and re-download
+- Cache hit but wrong version → version check mechanism?
+- Stale cache (90+ days old) → serve stale or force refresh?
+- Manifest mismatch with actual files → which is source of truth?
+
+### IPFS Publishing Scenarios
+- Pinata upload timeout (slow upload) → retry with backoff?
+- Pinata quota exceeded → alternative publishing method?
+- CID changes on re-publish → database migration path?
+- Partial upload (some files missing) → validation before CID storage?
+
+### Integration Scenarios
+- Old webtalk code still called by other modules → identify dependencies
+- Config object mismatch between old/new systems → adapter needed?
+- Progress event format incompatibility → transform events?
+- Multiple conversations triggering download simultaneously → download once, notify all?
+
+### Metrics Scenarios
+- Metrics file corrupted → reset or recover?
+- Metrics file too large (>1GB) → rotation working?
+- Concurrent metric writes → locking or append-only safe?
+- Metric timestamp drift → clock synchronization issue?
+
+## ACCEPTANCE CRITERIA (GATE CONDITIONS)
+
+### Implementation Completeness
+- downloadWithFallback cycles through all 3 IPFS gateways before HuggingFace fallback
+- SHA-256 verification occurs for every downloaded file against manifest
+- Size validation (minBytes) occurs before SHA-256 check
+- Progress events emitted for each layer attempt
+- Metrics recorded for cache hit, each gateway attempt, HuggingFace attempt, all failures
+- Temp files (.tmp) cleaned up on failure
+- Backup files (.bak) created on corrupted cache detection
+
+### Integration Correctness
+- model-downloader.js imported in server.js
+- ensureModelsDownloaded calls downloadWithFallback for each file in manifest
+- Progress broadcasting compatible with existing WebSocket protocol
+- Error messages surfaced to UI via existing error broadcast mechanism
+- Concurrent download requests handled (single download, multiple waiters)
+- No regression in existing model download behavior
+
+### Database Accuracy
+- Real IPFS CIDs stored in database.js (not placeholders)
+- getIpfsCidByModel returns correct CID for whisper-base and tts-models
+- Download records created in ipfs_downloads table
+- Last accessed timestamp updated on CID retrieval
+
+### End-to-End Verification
+- Fresh install (empty ~/.gmgui/models) downloads all models successfully
+- IPFS layer succeeds (witnessed download from Cloudflare/dweb.link/Pinata gateway)
+- HuggingFace fallback works (simulate IPFS failure, verify HF download)
+- Cache layer works (second download instant, metrics show cache hit)
+- Corrupted cache detected and re-downloaded
+- Metrics populated with real download data
+- All 4 metrics endpoints return valid data
+
+### Performance & Reliability
+- 280MB whisper-base downloads in <5 minutes on 10Mbps connection
+- 198MB tts-models downloads in <4 minutes on 10Mbps connection
+- Gateway failover occurs within 30 seconds of timeout
+- No memory leaks during large file downloads
+- Progress updates at least every 5 seconds during active download
+
+### Code Quality
+- No duplicate code between old webtalk and new model-downloader
+- All functions under 200 lines
+- No hardcoded values (gateways, timeouts, paths configurable)
+- Error messages descriptive (include layer, gateway, error type)
+- No console.log for normal operations (use debug hooks or proper logging)
+
+## REMAINING WORK BREAKDOWN
+
+### Code Exploration (EXECUTE state, plugin:gm:dev) - Wave 2
+4. Read webtalk/ipfs-downloader.js ensureModels to understand replacement
+5. Read webtalk/whisper-models.js to understand file structure
+6. Read webtalk/tts-models.js to understand file structure
+7. Trace broadcastModelProgress usage in server.js
+
+### Integration Design (EXECUTE state, plugin:gm:dev)
+8. Map manifest files to downloadWithFallback calls
+9. Design progress event transformation (downloadWithFallback → broadcastModelProgress)
+10. Design error handling flow (all layers fail → user notification)
+11. Design concurrent request handling (lock/queue mechanism)
+12. Design backward compatibility (keep webtalk as fallback?)
+
+### Implementation (EMIT state, after all unknowns resolved)
+13. Add import statement for downloadWithFallback, getMetrics, etc.
+14. Rewrite ensureModelsDownloaded function body
+15. Test new implementation with existing cache
+16. Delete old webtalk calls if confirmed unused elsewhere
+
+### IPFS Publishing (EXECUTE state, conditional on API keys)
+17. Check for PINATA_API_KEY environment variable
+18. If keys available: execute scripts/publish-models-to-ipfs.js
+19. If keys unavailable: document blocking status for user
+20. Capture real CIDs from script output
+21. Update database.js lines 389-390 with real CIDs
+
+### Verification (VERIFY state, real execution)
+22. Delete ~/.gmgui/models directory
+23. Start server, trigger model download
+24. Witness IPFS gateway download (check logs for gateway URLs)
+25. Check metrics via GET /api/metrics/downloads
+26. Verify all files present with correct SHA-256
+27. Restart server, verify instant cache hit
+28. Simulate IPFS failure (block gateway URLs), verify HuggingFace fallback
+29. Check metrics show both IPFS and HuggingFace attempts
+
+## OPEN QUESTIONS FOR USER
+
+1. Pinata API keys: Are PINATA_API_KEY and PINATA_SECRET_KEY available? (blocks real IPFS publishing)
+2. Gateway preference: Should IPFS be preferred over HuggingFace, or configurable?
+3. Old webtalk code: Can we fully replace webtalk/ipfs-downloader, or keep as fallback?
+4. Metrics retention: Is 24-hour metrics retention sufficient, or longer?
+5. Error handling: Should download failure block server startup, or degrade gracefully?
+
+## ESTIMATED COMPLETION
+
+- Code exploration: 30 minutes (7 files to read and trace)
+- Integration design: 45 minutes (map files, design flows)
+- Implementation: 60 minutes (rewrite ensureModelsDownloaded, test)
+- IPFS publishing: 15 minutes (if keys available) or 0 minutes (if blocked)
+- Verification: 30 minutes (delete cache, test both layers, check metrics)
+
+Total: 3 hours (if keys available) or 2.75 hours (if blocked on publishing)
+
+## SUCCESS CRITERIA
+
+Work is complete when:
+- All 26 items above marked done (3 Wave 1 items removed as complete)
+- Fresh ~/.gmgui/models download succeeds via IPFS layer 1
+- Corrupted cache triggers re-download
+- HuggingFace fallback proven working (simulated IPFS failure)
+- Metrics show real download data for both layers
+- No regressions in existing functionality
+- Real IPFS CIDs in database (if keys available) OR documented blocking status
+- User can verify system working via metrics endpoints
