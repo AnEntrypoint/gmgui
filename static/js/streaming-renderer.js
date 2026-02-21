@@ -519,7 +519,7 @@ class StreamingRenderer {
 
     const thinking = block.thinking || '';
     div.innerHTML = `
-      <details open>
+      <details>
         <summary>
           <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
           <span>Thinking Process</span>
@@ -741,7 +741,6 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'block-tool-use folded-tool permanently-expanded';
-    details.setAttribute('open', '');
     if (block.id) details.dataset.toolUseId = block.id;
     details.classList.add(this._getBlockTypeClass('tool_use'));
     details.classList.add(this._getToolColorClass(toolName));
@@ -1294,7 +1293,6 @@ class StreamingRenderer {
   renderBlockSystem(block, context) {
     const details = document.createElement('details');
     details.className = 'folded-tool folded-tool-info permanently-expanded';
-    details.setAttribute('open', '');
     details.dataset.eventType = 'system';
     details.classList.add(this._getBlockTypeClass('system'));
     const desc = block.model ? this.escapeHtml(block.model) : 'Session';
@@ -1332,7 +1330,6 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = isError ? 'folded-tool folded-tool-error permanently-expanded' : 'folded-tool permanently-expanded';
-    details.setAttribute('open', '');
     details.dataset.eventType = 'result';
     details.classList.add(this._getBlockTypeClass(isError ? 'error' : 'result'));
 
@@ -1766,7 +1763,6 @@ class StreamingRenderer {
 
     const details = document.createElement('details');
     details.className = 'folded-tool folded-tool-error permanently-expanded';
-    details.setAttribute('open', '');
     details.dataset.eventId = event.id || '';
     details.dataset.eventType = 'error';
     const summary = document.createElement('summary');
