@@ -299,29 +299,8 @@ jobs:
 
           $env:MODELS_SOURCE_DIR = $modelsDir
           $env:NO_BUNDLE_MODELS = 'false'
+          $env:GITHUB_OUTPUT = $env:GITHUB_OUTPUT  # Ensure build-portable.js can write outputs
           node build-portable.js
-
-          # Detect build output directory
-          $parentDir = Split-Path -Parent $PWD
-          $buildDir = Get-ChildItem -Path $parentDir -Directory -Filter "*agentgui*" -ErrorAction SilentlyContinue | Select-Object -First 1
-
-          if ($null -eq $buildDir) {
-            # Try alternative naming patterns
-            $buildDir = Get-ChildItem -Path $parentDir -Directory -Filter "*agen*" -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-
-          if ($null -eq $buildDir) {
-            # Last resort: check working directory
-            $buildDir = Get-ChildItem -Path . -Directory -Filter "*agentgui*" -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-
-          if ($buildDir) {
-            Write-Host "Found build directory: $($buildDir.FullName)"
-            Add-Content -Path $env:GITHUB_OUTPUT -Value "portable-path=$($buildDir.FullName)"
-          } else {
-            Write-Host "ERROR: Build directory not found"
-            exit 1
-          }
 
       - name: Verify models bundled in portable
         shell: pwsh

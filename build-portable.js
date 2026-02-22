@@ -158,3 +158,10 @@ fs.writeFileSync(path.join(out, 'README.txt'), [
 
 const totalMB = Math.round(sizeOf(out) / 1024 / 1024);
 log(`Build complete! Total: ${totalMB}MB  Output: ${out}`);
+
+// Output the build directory path for GitHub Actions
+if (process.env.GITHUB_OUTPUT) {
+  const outPath = path.resolve(out);
+  fs.appendFileSync(process.env.GITHUB_OUTPUT, `portable-path=${outPath}\n`);
+  log(`GitHub Actions output: portable-path=${outPath}`);
+}
