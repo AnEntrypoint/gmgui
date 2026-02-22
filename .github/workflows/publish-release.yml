@@ -215,20 +215,20 @@ jobs:
 
           # Whisper model files
           $whisperFiles = @(
-            @{ Path = "config.json";                    Name = "config.json" },
-            @{ Path = "tokenizer.json";                 Name = "tokenizer.json" },
-            @{ Path = "tokenizer_config.json";          Name = "tokenizer_config.json" },
-            @{ Path = "onnx/encoder_model.onnx";        Name = "encoder_model.onnx" },
-            @{ Path = "onnx/decoder_model_merged.onnx"; Name = "decoder_model_merged.onnx" }
+            @{ IPFSPath = "stt/onnx-community/whisper-base/config.json";                    Name = "config.json" },
+            @{ IPFSPath = "stt/onnx-community/whisper-base/tokenizer.json";                 Name = "tokenizer.json" },
+            @{ IPFSPath = "stt/onnx-community/whisper-base/tokenizer_config.json";          Name = "tokenizer_config.json" },
+            @{ IPFSPath = "stt/onnx-community/whisper-base/onnx/encoder_model.onnx";        Name = "encoder_model.onnx" },
+            @{ IPFSPath = "stt/onnx-community/whisper-base/onnx/decoder_model_merged.onnx"; Name = "decoder_model_merged.onnx" }
           )
 
           # TTS model files
           $ttsFiles = @(
-            @{ Path = "mimi_encoder.onnx";      Name = "mimi_encoder.onnx" },
-            @{ Path = "flow_lm_main_int8.onnx"; Name = "flow_lm_main_int8.onnx" },
-            @{ Path = "mimi_decoder_int8.onnx"; Name = "mimi_decoder_int8.onnx" },
-            @{ Path = "text_conditioner.onnx";  Name = "text_conditioner.onnx" },
-            @{ Path = "flow_lm_flow_int8.onnx"; Name = "flow_lm_flow_int8.onnx" }
+            @{ IPFSPath = "tts/mimi_encoder.onnx";      Name = "mimi_encoder.onnx" },
+            @{ IPFSPath = "tts/flow_lm_main_int8.onnx"; Name = "flow_lm_main_int8.onnx" },
+            @{ IPFSPath = "tts/mimi_decoder_int8.onnx"; Name = "mimi_decoder_int8.onnx" },
+            @{ IPFSPath = "tts/text_conditioner.onnx";  Name = "text_conditioner.onnx" },
+            @{ IPFSPath = "tts/flow_lm_flow_int8.onnx"; Name = "flow_lm_flow_int8.onnx" }
           )
 
           $hfWhisperBase = "https://huggingface.co/onnx-community/whisper-base/resolve/main"
@@ -236,20 +236,20 @@ jobs:
 
           Write-Host "Downloading Whisper model files..."
           foreach ($file in $whisperFiles) {
-            $output = if ($file.Path.Contains("/")) {
-              Join-Path $whisperOnnxDir (Split-Path -Leaf $file.Path)
+            $output = if ($file.IPFSPath.Contains("/onnx/")) {
+              Join-Path $whisperOnnxDir (Split-Path -Leaf $file.IPFSPath)
             } else {
-              Join-Path $whisperDir $file.Path
+              Join-Path $whisperDir $file.Name
             }
-            $hfUrl = "$hfWhisperBase/$($file.Path)"
-            Download-WithFallback -Cid $whisperCid -FilePath $file.Path -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
+            $hfUrl = "$hfWhisperBase/$($file.Name)"
+            Download-WithFallback -Cid $whisperCid -FilePath $file.IPFSPath -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
           }
 
           Write-Host "Downloading TTS model files..."
           foreach ($file in $ttsFiles) {
             $output = Join-Path $ttsDir $file.Name
-            $hfUrl = "$hfTtsBase/$($file.Path)"
-            Download-WithFallback -Cid $ttsCid -FilePath $file.Path -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
+            $hfUrl = "$hfTtsBase/$($file.Name)"
+            Download-WithFallback -Cid $ttsCid -FilePath $file.IPFSPath -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
           }
 
           Write-Host "Downloading tokenizer..."
