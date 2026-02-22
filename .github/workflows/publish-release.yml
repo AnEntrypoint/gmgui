@@ -262,6 +262,31 @@ jobs:
           $totalMB = [math]::Round($totalSize / 1MB, 1)
           Write-Host "All models downloaded: ${totalMB}MB total"
 
+      - name: Wait for model downloads to complete
+        shell: pwsh
+        run: |
+          $modelsDir = Join-Path $env:USERPROFILE ".gmgui" "models"
+          $timeout = 0
+          $maxWait = 120
+
+          Write-Host "Waiting for models to be available..."
+          while ($timeout -lt $maxWait) {
+            if (Test-Path $modelsDir) {
+              $fileCount = @(Get-ChildItem -Path $modelsDir -Recurse -File).Count
+              if ($fileCount -gt 0) {
+                $totalSize = 0
+                Get-ChildItem -Path $modelsDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
+                $totalMB = [math]::Round($totalSize / 1MB, 1)
+                Write-Host "✓ Models ready: $fileCount files, ${totalMB}MB"
+                exit 0
+              }
+            }
+            Start-Sleep -Seconds 2
+            $timeout += 2
+          }
+
+          Write-Host "⚠ Models not fully ready after ${maxWait}s, proceeding anyway (models will be bundled if available)"
+
       - name: Build portable executable
         id: build
         env:
@@ -295,6 +320,25 @@ jobs:
             exit 1
           }
 
+      - name: Verify models bundled in portable
+        shell: pwsh
+        run: |
+          $buildPath = "${{ steps.build.outputs.portable-path }}"
+          $modelsDir = Join-Path $buildPath "models"
+
+          if (Test-Path $modelsDir) {
+            $fileCount = @(Get-ChildItem -Path $modelsDir -Recurse -File).Count
+            $totalSize = 0
+            Get-ChildItem -Path $modelsDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
+            $totalMB = [math]::Round($totalSize / 1MB, 1)
+            Write-Host "✓ Models bundled: $fileCount files, ${totalMB}MB"
+          } else {
+            Write-Host "⚠ WARNING: No models directory in build output"
+            Write-Host "  Build path: $buildPath"
+            Write-Host "  Contents:"
+            Get-ChildItem -Path $buildPath -Force | ForEach-Object { Write-Host "    $($_.Name) $(if($_.PSIsContainer) {'(dir)'} else {'(' + [math]::Round($_.Length/1MB, 1) + 'MB)'})" }
+          }
+
       - name: Create zip archive
         id: archive
         shell: pwsh
@@ -303,7 +347,7 @@ jobs:
 
           $src = "${{ steps.build.outputs.portable-path }}"
           $zipName = "agentgui-v${{ needs.publish.outputs.version }}-windows-portable.zip"
-          $dest = Join-Path ${{ github.workspace }} $zipName
+          $dest = Join-Path "${{ github.workspace }}" $zipName
 
           if (Test-Path $src) {
             Write-Host "Creating zip from: $src"
@@ -340,6 +384,16 @@ jobs:
           path: release-artifacts
         continue-on-error: true
 
+      - name: Get latest commit info
+        id: commit
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+          echo "msg<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -348,7 +402,10 @@ jobs:
           body: |
             ## AgentGUI v${{ needs.publish.outputs.version }}
 
-            Published to npm! Install with:
+            **Latest commit**: ${{ steps.commit.outputs.hash }}
+            ${{ steps.commit.outputs.msg }}
+
+            Install with:
             ```bash
             bunx agentgui@latest
             npm install -g agentgui
@@ -357,11 +414,15 @@ jobs:
 
             **Web interface**: http://localhost:3000/gm/
 
+            **Windows Portable Build**:
+            - Self-contained executable (no installation required)
+            - Includes ~470MB of bundled speech models
+            - Models distributed via IPFS (decentralized)
+            - Unzip and run `agentgui.exe`
+
             **Notes**:
-            - AI speech models (~470MB) are bundled in the Windows portable build for offline use
-            - Models downloaded via IPFS (decentralized, no HuggingFace dependency)
-            - Data is stored in the `~/.gmgui/` folder
-            - Requirements: Node.js 18+
+            - Data stored in `~/.gmgui/` folder
+            - Requirements: Node.js 18+ (for npm/bun installs), or standalone exe (no requirements)
           draft: false
           prerelease: false
           files: |
