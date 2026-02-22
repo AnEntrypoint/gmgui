@@ -392,9 +392,10 @@
     window.addEventListener('conversation-selected', function(e) {
       currentConversation = e.detail.conversationId;
       updateViewToggleVisibility();
-      // If currently in files view, reload the iframe
       if (currentView === 'files') {
         switchView('files');
+      } else if (currentView === 'voice') {
+        switchView('chat');
       }
     });
 
