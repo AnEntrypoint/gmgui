@@ -544,8 +544,12 @@ class ConversationManager {
   }
 
   deleteConversation(convId) {
+    const wasActive = this.activeId === convId;
     this.conversations = this.conversations.filter(c => c.id !== convId);
-    if (this.activeId === convId) this.activeId = null;
+    if (wasActive) {
+      this.activeId = null;
+      window.dispatchEvent(new CustomEvent('conversation-deselected'));
+    }
     this.render();
   }
 

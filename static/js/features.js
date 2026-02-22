@@ -399,6 +399,12 @@
       }
     });
 
+    window.addEventListener('conversation-deselected', function() {
+      currentConversation = null;
+      updateViewToggleVisibility();
+      switchView('chat');
+    });
+
     // Also listen for conversation created
     window.addEventListener('create-new-conversation', function() {
       // Will be updated when conversation-selected fires

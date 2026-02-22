@@ -441,6 +441,16 @@ class AgentGUIClient {
       this.updateUrlForConversation(conversationId);
       this.loadConversationMessages(conversationId);
     });
+
+    // Listen for active conversation deletion
+    window.addEventListener('conversation-deselected', () => {
+      this.state.currentConversation = null;
+      this.updateUrlForConversation(null);
+      const outputEl = document.getElementById('output');
+      if (outputEl) outputEl.innerHTML = '';
+      if (this.ui.messageInput) this.ui.messageInput.value = '';
+      this.unlockAgentAndModel();
+    });
   }
 
   /**
