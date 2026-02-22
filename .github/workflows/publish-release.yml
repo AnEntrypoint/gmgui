@@ -157,10 +157,14 @@ jobs:
           $ErrorActionPreference = "Stop"
 
           Write-Host "Starting portable build..."
-          $modelsDir = Join-Path $env:USERPROFILE ".gmgui" "models"
-          Write-Host "Models source directory: $modelsDir"
+          Write-Host "MODELS_SOURCE_DIR from CI: $env:MODELS_SOURCE_DIR"
 
-          $env:MODELS_SOURCE_DIR = $modelsDir
+          # Use MODELS_SOURCE_DIR from CI if available, otherwise use local cache
+          if ([string]::IsNullOrEmpty($env:MODELS_SOURCE_DIR)) {
+            $env:MODELS_SOURCE_DIR = Join-Path $env:USERPROFILE ".gmgui" "models"
+            Write-Host "Using local models directory: $env:MODELS_SOURCE_DIR"
+          }
+
           $env:NO_BUNDLE_MODELS = 'false'
           $env:GITHUB_OUTPUT = $env:GITHUB_OUTPUT  # Ensure build-portable.js can write outputs
           node build-portable.js
