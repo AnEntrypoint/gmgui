@@ -2669,13 +2669,6 @@ const server = http.createServer(async (req, res) => {
         const { getMetricsSummary } = await import('./lib/model-downloader.js');
         const summary = getMetricsSummary();
         const health = {
-          ipfs: {
-            status: summary.ipfs.success > 0 ? 'healthy' : summary.ipfs.error > 0 ? 'degraded' : 'unknown',
-            success_rate: summary.ipfs.success + summary.ipfs.error > 0
-              ? ((summary.ipfs.success / (summary.ipfs.success + summary.ipfs.error)) * 100).toFixed(2)
-              : 0,
-            avg_latency_ms: summary.ipfs.avg_latency
-          },
           huggingface: {
             status: summary.huggingface.success > 0 ? 'healthy' : summary.huggingface.error > 0 ? 'degraded' : 'unknown',
             success_rate: summary.huggingface.success + summary.huggingface.error > 0

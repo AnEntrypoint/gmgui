@@ -135,7 +135,20 @@ if (process.env.NO_BUNDLE_MODELS === 'true') {
   log('Skipping model bundling (NO_BUNDLE_MODELS=true) - models will download on first use');
 } else {
   log('Bundling AI models...');
-  const userModels = process.env.MODELS_SOURCE_DIR || path.join(os.homedir(), '.gmgui', 'models');
+    // Get models from AnEntrypoint/models or local cache
+  let modelsDir = process.env.MODELS_SOURCE_DIR || path.join(os.homedir(), '.gmgui', 'models');
+  
+  // If models not present and we're in CI, clone from GitHub
+  if (!fs.existsSync(modelsDir) && process.env.CI) {
+    console.log('[BUILD] Models not found, cloning from GitHub...');
+    const ciModelsDir = path.join(os.tmpdir(), 'models-clone');
+    try {
+      require('child_process').execSync(`git clone https://github.com/AnEntrypoint/models.git "${ciModelsDir}" --depth 1`, { stdio: 'inherit' });
+      modelsDir = ciModelsDir;
+    } catch (e) {
+      console.error('[BUILD] Failed to clone models from GitHub:', e.message);
+    }
+  }
   if (fs.existsSync(userModels)) {
     copyDir(userModels, path.join(out, 'models'));
     log(`Models bundled: ${Math.round(sizeOf(path.join(out, 'models')) / 1024 / 1024)}MB`);
