@@ -462,7 +462,19 @@ async function getModelsForAgent(agentId) {
   let models = null;
 
   if (agentId === 'claude-code') {
-    models = await fetchClaudeModelsFromAPI();
+    const hardcodedModels = [
+      { id: '', label: 'Default' },
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'opus', label: 'Opus' },
+      { id: 'haiku', label: 'Haiku' },
+    ];
+
+    const apiModels = await fetchClaudeModelsFromAPI();
+    if (apiModels) {
+      models = [...hardcodedModels, ...apiModels.slice(1)];
+    } else {
+      models = hardcodedModels;
+    }
   } else if (agentId === 'gemini') {
     models = await fetchGeminiModelsFromAPI();
   }
