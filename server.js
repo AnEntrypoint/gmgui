@@ -323,16 +323,31 @@ function extractModelsFromClaudeCLI() {
     let m;
     while ((m = re.exec(src)) !== null) ids.add(m[1]);
     if (ids.size === 0) return null;
+    
     const models = [{ id: '', label: 'Default' }];
     const sorted = [...ids].sort((a, b) => {
       const va = a.replace(/claude-/, '').replace(/-\d{8}$/, '');
       const vb = b.replace(/claude-/, '').replace(/-\d{8}$/, '');
       return vb.localeCompare(va);
     });
+    
+    const latest = { haiku: null, sonnet: null, opus: null };
+    for (const id of sorted) {
+      if (id.startsWith('claude-3-')) continue;
+      if (id.includes('haiku') && !latest.haiku) latest.haiku = id;
+      if (id.includes('sonnet') && !latest.sonnet) latest.sonnet = id;
+      if (id.includes('opus') && !latest.opus) latest.opus = id;
+    }
+    
+    if (latest.opus) models.push({ id: latest.opus, label: 'Opus (Latest)' });
+    if (latest.sonnet) models.push({ id: latest.sonnet, label: 'Sonnet (Latest)' });
+    if (latest.haiku) models.push({ id: latest.haiku, label: 'Haiku (Latest)' });
+    
     for (const id of sorted) {
       if (id.startsWith('claude-3-')) continue;
       models.push({ id, label: modelIdToLabel(id) });
     }
+    
     return models;
   } catch { return null; }
 }
