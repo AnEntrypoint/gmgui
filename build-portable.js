@@ -143,7 +143,7 @@ if (process.env.NO_BUNDLE_MODELS === 'true') {
     console.log('[BUILD] Models not found, cloning from GitHub...');
     const ciModelsDir = path.join(os.tmpdir(), 'models-clone');
     try {
-      require('child_process').execSync(`git clone https://github.com/AnEntrypoint/models.git "${ciModelsDir}" --depth 1`, { stdio: 'inherit' });
+      execSync(`git clone https://github.com/AnEntrypoint/models.git "${ciModelsDir}" --depth 1`, { stdio: 'inherit' });
       modelsDir = ciModelsDir;
     } catch (e) {
       console.error('[BUILD] Failed to clone models from GitHub:', e.message);
