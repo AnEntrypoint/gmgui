@@ -354,7 +354,8 @@ jobs:
 
           if (Test-Path $src) {
             Write-Host "Creating zip from: $src"
-            Compress-Archive -Path "$src*" -DestinationPath $dest -Force
+            # Zip the contents of the build directory (including subdirectories)
+            Get-ChildItem -Path $src -Exclude "agentgui-*.zip" | Compress-Archive -DestinationPath $dest -Force
             Write-Host "Archive created: $dest"
 
             $size = [math]::Round((Get-Item $dest).Length / 1MB, 1)
