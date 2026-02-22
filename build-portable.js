@@ -149,11 +149,11 @@ if (process.env.NO_BUNDLE_MODELS === 'true') {
       console.error('[BUILD] Failed to clone models from GitHub:', e.message);
     }
   }
-  if (fs.existsSync(userModels)) {
-    copyDir(userModels, path.join(out, 'models'));
+  if (fs.existsSync(modelsDir)) {
+    copyDir(modelsDir, path.join(out, 'models'));
     log(`Models bundled: ${Math.round(sizeOf(path.join(out, 'models')) / 1024 / 1024)}MB`);
   } else {
-    log(`WARNING: No models found at ${userModels} - portable build will download on first use`);
+    log(`WARNING: No models found at ${modelsDir} - portable build will download on first use`);
   }
 }
 

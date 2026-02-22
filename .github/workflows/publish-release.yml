@@ -126,11 +126,27 @@ jobs:
         run: npm install
 
       - name: Clone models from GitHub
+        shell: bash
         run: |
+          git config --global credential.helper store
+
+          # Try to clone with LFS first, but skip smudge to avoid immediate downloads
           git lfs install --skip-smudge
+
+          echo "Cloning models repository..."
           git clone https://github.com/AnEntrypoint/models.git "$RUNNER_TEMP/models" --depth 1
+
           cd "$RUNNER_TEMP/models"
-          git lfs pull --include="stt/*" --include="tts/*"
+
+          # Try pulling LFS files, but don't fail if bandwidth exceeded
+          echo "Attempting to pull LFS files..."
+          if ! git lfs pull 2>&1 | tee /tmp/lfs.log; then
+            if grep -q "LFS budget" /tmp/lfs.log; then
+              echo "WARNING: LFS bandwidth limit hit - models will be downloaded on first run"
+              echo "Build will proceed without bundled models"
+            fi
+          fi
+
           echo "MODELS_SOURCE_DIR=$RUNNER_TEMP/models" >> $GITHUB_ENV
 
 
