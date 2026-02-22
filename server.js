@@ -306,19 +306,36 @@ const AGENT_MODEL_COMMANDS = {
   'kilo': 'kilo models',
 };
 
-const AGENT_FALLBACK_MODELS = {
-  'claude-code': [
-    { id: '', label: 'Default' },
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-    { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
-    { id: 'claude-sonnet-4-0', label: 'Claude Sonnet 4' },
-    { id: 'claude-opus-4-0', label: 'Claude Opus 4' },
-  ],
-};
+function modelIdToLabel(id) {
+  const base = id.replace(/^claude-/, '').replace(/-\d{8}$/, '');
+  const m = base.match(/^(\w+)-(\d+)(?:-(\d+))?$/);
+  if (m) return `${m[1].charAt(0).toUpperCase() + m[1].slice(1)} ${m[3] ? m[2] + '.' + m[3] : m[2]}`;
+  return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
 
+function extractModelsFromClaudeCLI() {
+  try {
+    const cliPath = path.resolve('./node_modules/@anthropic-ai/claude-code/cli.js');
+    if (!fs.existsSync(cliPath)) return null;
+    const src = fs.readFileSync(cliPath, 'utf8');
+    const re = /=\{firstParty:"(claude-[^"]+)",bedrock:"[^"]+",vertex:"[^"]+"/g;
+    const ids = new Set();
+    let m;
+    while ((m = re.exec(src)) !== null) ids.add(m[1]);
+    if (ids.size === 0) return null;
+    const models = [{ id: '', label: 'Default' }];
+    const sorted = [...ids].sort((a, b) => {
+      const va = a.replace(/claude-/, '').replace(/-\d{8}$/, '');
+      const vb = b.replace(/claude-/, '').replace(/-\d{8}$/, '');
+      return vb.localeCompare(va);
+    });
+    for (const id of sorted) {
+      if (id.startsWith('claude-3-')) continue;
+      models.push({ id, label: modelIdToLabel(id) });
+    }
+    return models;
+  } catch { return null; }
+}
 
 async function fetchClaudeModelsFromAPI() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -340,7 +357,7 @@ async function fetchClaudeModelsFromAPI() {
             if (items.length === 0) return resolve(null);
             const models = [{ id: '', label: 'Default' }];
             for (const m of items) {
-              const label = m.display_name || m.id.replace(/^claude-/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              const label = m.display_name || modelIdToLabel(m.id);
               models.push({ id: m.id, label });
             }
             resolve(models);
@@ -444,8 +461,12 @@ async function getModelsForAgent(agentId) {
     } catch (_) {}
   }
 
-  if (AGENT_FALLBACK_MODELS[agentId]) {
-    return AGENT_FALLBACK_MODELS[agentId];
+  if (agentId === 'claude-code') {
+    const cliModels = extractModelsFromClaudeCLI();
+    if (cliModels) {
+      modelCache.set(agentId, { models: cliModels, timestamp: Date.now() });
+      return cliModels;
+    }
   }
 
   return [];
