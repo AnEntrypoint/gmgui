@@ -2139,15 +2139,6 @@ class AgentGUIClient {
     }
   }
 
-  _updateVoiceTabState() {
-    var voiceBtn = document.querySelector('[data-view="voice"]');
-    if (voiceBtn) {
-      var isReady = this._modelDownloadProgress?.done === true || 
-                    this._modelDownloadProgress?.complete === true;
-      voiceBtn.title = isReady ? 'Voice' : 'Voice (click to download models)';
-    }
-  }
-
   _toggleConnectionTooltip() {
     let tooltip = document.getElementById('connection-tooltip');
     if (tooltip) { tooltip.remove(); return; }
@@ -2714,20 +2705,10 @@ class AgentGUIClient {
 
   _updateVoiceTabState() {
     const voiceBtn = document.querySelector('[data-view="voice"]');
-    const voiceContainer = document.getElementById('voiceContainer');
-    if (!voiceBtn || !voiceContainer) return;
-
+    if (!voiceBtn) return;
     const isReady = this._modelDownloadProgress?.done === true &&
                     this._modelDownloadProgress?.complete === true;
-
-    if (isReady) {
-      voiceBtn.style.display = 'flex';
-      voiceBtn.style.opacity = '1';
-      voiceBtn.style.pointerEvents = 'auto';
-    } else {
-      voiceBtn.style.display = 'none';
-      voiceContainer.style.display = 'none';
-    }
+    voiceBtn.title = isReady ? 'Voice' : 'Voice (click to download models)';
   }
 
   /**
