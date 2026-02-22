@@ -349,10 +349,24 @@ const discoveredAgents = discoverAgents();
 const modelCache = new Map();
 
 const AGENT_MODEL_COMMANDS = {
-  'claude-code': 'claude models',
   'gemini': 'gemini models',
   'opencode': 'opencode models',
   'kilo': 'kilo models',
+};
+
+const AGENT_FALLBACK_MODELS = {
+  'claude-code': [
+    { id: '', label: 'Default' },
+    { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
+    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+    { id: 'claude-opus-4-5-20251001', label: 'Claude Opus 4.5 (2025-10-01)' },
+    { id: 'claude-sonnet-4-5-20251001', label: 'Claude Sonnet 4.5 (2025-10-01)' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (2025-10-01)' },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+    { id: 'claude-haiku-4-6', label: 'Claude Haiku 4.6' },
+  ],
 };
 
 async function fetchClaudeModelsFromAPI() {
@@ -477,6 +491,10 @@ async function getModelsForAgent(agentId) {
         return models;
       }
     } catch (_) {}
+  }
+
+  if (AGENT_FALLBACK_MODELS[agentId]) {
+    return AGENT_FALLBACK_MODELS[agentId];
   }
 
   return [];
