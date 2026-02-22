@@ -125,9 +125,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Download speech models
+      - name: Download speech models from IPFS
         shell: pwsh
-        timeout-minutes: 15
+        timeout-minutes: 30
         run: |
           $ErrorActionPreference = "Stop"
 
@@ -139,57 +139,92 @@ jobs:
           New-Item -ItemType Directory -Force -Path $whisperOnnxDir | Out-Null
           New-Item -ItemType Directory -Force -Path $ttsDir | Out-Null
 
-          $whisperBase = "https://huggingface.co/onnx-community/whisper-base/resolve/main"
-          $ttsBase = "https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts"
+          # IPFS CIDs for models
+          $whisperCid = "bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy"
+          $ttsCid = "bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy"
+          $tokenizerCid = "bafkreigumf3fvylzkzthrsjqshc7u3zjqtbrxpuzbpy2uywzfrsnsg6d6y"
 
-          $downloads = @(
-            @{ Url = "$whisperBase/config.json";                    Dest = Join-Path $whisperDir "config.json" },
-            @{ Url = "$whisperBase/tokenizer.json";                 Dest = Join-Path $whisperDir "tokenizer.json" },
-            @{ Url = "$whisperBase/tokenizer_config.json";          Dest = Join-Path $whisperDir "tokenizer_config.json" },
-            @{ Url = "$whisperBase/onnx/encoder_model.onnx";        Dest = Join-Path $whisperOnnxDir "encoder_model.onnx" },
-            @{ Url = "$whisperBase/onnx/decoder_model_merged.onnx"; Dest = Join-Path $whisperOnnxDir "decoder_model_merged.onnx" },
-            @{ Url = "$ttsBase/mimi_encoder.onnx";                  Dest = Join-Path $ttsDir "mimi_encoder.onnx" },
-            @{ Url = "$ttsBase/flow_lm_main_int8.onnx";             Dest = Join-Path $ttsDir "flow_lm_main_int8.onnx" },
-            @{ Url = "$ttsBase/mimi_decoder_int8.onnx";             Dest = Join-Path $ttsDir "mimi_decoder_int8.onnx" },
-            @{ Url = "$ttsBase/text_conditioner.onnx";              Dest = Join-Path $ttsDir "text_conditioner.onnx" },
-            @{ Url = "$ttsBase/flow_lm_flow_int8.onnx";             Dest = Join-Path $ttsDir "flow_lm_flow_int8.onnx" },
-            @{ Url = "$ttsBase/tokenizer.model";                    Dest = Join-Path $ttsDir "tokenizer.model" }
+          # Gateway prioritization (Lighthouse → Cloudflare → dweb.link)
+          $gateways = @(
+            "https://gateway.lighthouse.storage/ipfs/",
+            "https://cloudflare-ipfs.com/ipfs/",
+            "https://dweb.link/ipfs/"
           )
 
-          $totalFiles = $downloads.Count
-          $current = 0
-
-          foreach ($dl in $downloads) {
-            $current++
-            $filename = Split-Path -Leaf $dl.Dest
-            Write-Host "[$current/$totalFiles] Downloading $filename..."
-
+          function Download-WithFallback {
+            param([string]$Cid, [string]$FilePath, [string]$OutputPath, [string]$FileName)
+            
             $maxRetries = 3
             $success = $false
 
-            for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
-              try {
-                $ProgressPreference = 'SilentlyContinue'
-                Invoke-WebRequest -Uri $dl.Url -OutFile $dl.Dest -UseBasicParsing -TimeoutSec 300
-                $size = [math]::Round((Get-Item $dl.Dest).Length / 1MB, 2)
-                Write-Host "  OK: ${size}MB"
-                $success = $true
-                break
-              } catch {
-                Write-Host "  Attempt $attempt/$maxRetries failed: $_"
-                if ($attempt -lt $maxRetries) {
-                  $delay = [math]::Pow(2, $attempt)
-                  Write-Host "  Retrying in ${delay}s..."
-                  Start-Sleep -Seconds $delay
+            foreach ($gateway in $gateways) {
+              if ($success) { break }
+              
+              for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                try {
+                  $url = "$gateway$Cid/$FilePath"
+                  Write-Host "Downloading from $gateway ... $FileName"
+                  
+                  $ProgressPreference = 'SilentlyContinue'
+                  Invoke-WebRequest -Uri $url -OutFile $OutputPath -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
+                  
+                  $size = [math]::Round((Get-Item $OutputPath).Length / 1MB, 2)
+                  Write-Host "  ✓ $FileName (${size}MB)"
+                  $success = $true
+                  break
+                } catch {
+                  Write-Host "  ✗ Attempt $attempt/$maxRetries failed"
+                  if ($attempt -eq $maxRetries) {
+                    Remove-Item $OutputPath -ErrorAction SilentlyContinue
+                  } else {
+                    Start-Sleep -Seconds ([math]::Pow(2, $attempt))
+                  }
                 }
               }
             }
 
             if (-not $success) {
-              Write-Host "ERROR: Failed to download $filename after $maxRetries attempts"
-              exit 1
+              throw "Failed to download $FileName from all gateways"
             }
           }
+
+          # Whisper model files
+          $whisperFiles = @(
+            @{ Path = "config.json";                    Name = "config.json" },
+            @{ Path = "tokenizer.json";                 Name = "tokenizer.json" },
+            @{ Path = "tokenizer_config.json";          Name = "tokenizer_config.json" },
+            @{ Path = "onnx/encoder_model.onnx";        Name = "encoder_model.onnx" },
+            @{ Path = "onnx/decoder_model_merged.onnx"; Name = "decoder_model_merged.onnx" }
+          )
+
+          # TTS model files
+          $ttsFiles = @(
+            @{ Path = "mimi_encoder.onnx";      Name = "mimi_encoder.onnx" },
+            @{ Path = "flow_lm_main_int8.onnx"; Name = "flow_lm_main_int8.onnx" },
+            @{ Path = "mimi_decoder_int8.onnx"; Name = "mimi_decoder_int8.onnx" },
+            @{ Path = "text_conditioner.onnx";  Name = "text_conditioner.onnx" },
+            @{ Path = "flow_lm_flow_int8.onnx"; Name = "flow_lm_flow_int8.onnx" }
+          )
+
+          Write-Host "Downloading Whisper model files..."
+          foreach ($file in $whisperFiles) {
+            $output = if ($file.Path.Contains("/")) {
+              Join-Path $whisperOnnxDir (Split-Path -Leaf $file.Path)
+            } else {
+              Join-Path $whisperDir $file.Path
+            }
+            Download-WithFallback -Cid $whisperCid -FilePath $file.Path -OutputPath $output -FileName $file.Name
+          }
+
+          Write-Host "Downloading TTS model files..."
+          foreach ($file in $ttsFiles) {
+            $output = Join-Path $ttsDir $file.Name
+            Download-WithFallback -Cid $ttsCid -FilePath $file.Path -OutputPath $output -FileName $file.Name
+          }
+
+          Write-Host "Downloading tokenizer..."
+          $output = Join-Path $ttsDir "tokenizer.model"
+          Download-WithFallback -Cid $tokenizerCid -FilePath "" -OutputPath $output -FileName "tokenizer.model"
 
           $totalSize = 0
           Get-ChildItem -Path $modelsDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
@@ -293,6 +328,7 @@ jobs:
 
             **Notes**:
             - AI speech models (~470MB) are bundled in the Windows portable build for offline use
+            - Models downloaded via IPFS (decentralized, no HuggingFace dependency)
             - Data is stored in the `~/.gmgui/` folder
             - Requirements: Node.js 18+
           draft: false
