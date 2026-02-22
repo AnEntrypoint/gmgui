@@ -306,22 +306,6 @@ const AGENT_MODEL_COMMANDS = {
   'kilo': 'kilo models',
 };
 
-const AGENT_FALLBACK_MODELS = {
-  'claude-code': [
-    { id: '', label: 'Default' },
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (2025-10-01)' },
-    { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
-    { id: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5 (2025-11-01)' },
-    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5 (2025-09-29)' },
-    { id: 'claude-opus-4-1', label: 'Claude Opus 4.1' },
-    { id: 'claude-sonnet-4-0', label: 'Claude Sonnet 4' },
-    { id: 'claude-opus-4-0', label: 'Claude Opus 4' },
-  ],
-};
 
 async function fetchClaudeModelsFromAPI() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -445,10 +429,6 @@ async function getModelsForAgent(agentId) {
         return models;
       }
     } catch (_) {}
-  }
-
-  if (AGENT_FALLBACK_MODELS[agentId]) {
-    return AGENT_FALLBACK_MODELS[agentId];
   }
 
   return [];
