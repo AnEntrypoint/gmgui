@@ -1213,6 +1213,7 @@ class StreamingRenderer {
     const details = document.createElement('details');
     details.className = 'folded-tool' + (isError ? ' folded-tool-error' : ' folded-tool-success');
     details.dataset.eventType = 'tool_result';
+    if (!isError) details.open = true;
     if (block.tool_use_id) details.dataset.toolUseId = block.tool_use_id;
     details.classList.add(this._getBlockTypeClass('tool_result'));
 
