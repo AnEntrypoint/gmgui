@@ -150,39 +150,6 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_chunks_conv_created ON chunks(conversationId, created_at);
     CREATE INDEX IF NOT EXISTS idx_chunks_sess_created ON chunks(sessionId, created_at);
 
-    CREATE TABLE IF NOT EXISTS  (
-      id TEXT PRIMARY KEY,
-      cid TEXT NOT NULL UNIQUE,
-      modelName TEXT NOT NULL,
-      modelType TEXT NOT NULL,
-      modelHash TEXT,
-      gatewayUrl TEXT,
-      cached_at INTEGER NOT NULL,
-      last_accessed_at INTEGER NOT NULL,
-      success_count INTEGER DEFAULT 0,
-      failure_count INTEGER DEFAULT 0
-    );
-
-    CREATE INDEX IF NOT EXISTS idx__model ON (modelName);
-    CREATE INDEX IF NOT EXISTS idx__type ON (modelType);
-    CREATE INDEX IF NOT EXISTS idx__hash ON (modelHash);
-
-    CREATE TABLE IF NOT EXISTS  (
-      id TEXT PRIMARY KEY,
-      cidId TEXT NOT NULL,
-      downloadPath TEXT NOT NULL,
-      status TEXT DEFAULT 'pending',
-      downloaded_bytes INTEGER DEFAULT 0,
-      total_bytes INTEGER,
-      error_message TEXT,
-      started_at INTEGER NOT NULL,
-      completed_at INTEGER,
-      FOREIGN KEY (cidId) REFERENCES (id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx__cid ON (cidId);
-    CREATE INDEX IF NOT EXISTS idx__status ON (status);
-    CREATE INDEX IF NOT EXISTS idx__started ON (started_at);
   `);
 }
 
@@ -1305,75 +1272,6 @@ export const queries = {
     return deletedCount;
   },
 
-  recordIpfsCid(cid, modelName, modelType, modelHash, gatewayUrl) {
-    const id = generateId('ipfs');
-    const now = Date.now();
-    const stmt = prep(`
-      INSERT INTO  (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(cid) DO UPDATE SET last_accessed_at = ?, success_count = success_count + 1
-    `);
-    stmt.run(id, cid, modelName, modelType, modelHash, gatewayUrl, now, now, now);
-    const record = this.getIpfsCid(cid);
-    return record ? record.id : id;
-  },
-
-  getIpfsCid(cid) {
-    const stmt = prep('SELECT * FROM  WHERE cid = ?');
-    return stmt.get(cid);
-  },
-
-  getIpfsCidByModel(modelName, modelType) {
-    const stmt = prep('SELECT * FROM  WHERE modelName = ? AND modelType = ? ORDER BY last_accessed_at DESC LIMIT 1');
-    return stmt.get(modelName, modelType);
-  },
-
-  recordDownloadStart(cidId, downloadPath, totalBytes) {
-    const id = generateId('dl');
-    const stmt = prep(`
-      INSERT INTO  (id, cidId, downloadPath, status, total_bytes, started_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(id, cidId, downloadPath, 'in_progress', totalBytes, Date.now());
-    return id;
-  },
-
-  updateDownloadProgress(downloadId, downloadedBytes) {
-    const stmt = prep(`
-      UPDATE  SET downloaded_bytes = ? WHERE id = ?
-    `);
-    stmt.run(downloadedBytes, downloadId);
-  },
-
-  completeDownload(downloadId, cidId) {
-    const now = Date.now();
-    prep(`
-      UPDATE  SET status = ?, completed_at = ? WHERE id = ?
-    `).run('success', now, downloadId);
-    prep(`
-      UPDATE  SET last_accessed_at = ? WHERE id = ?
-    `).run(now, cidId);
-  },
-
-  recordDownloadError(downloadId, cidId, errorMessage) {
-    const now = Date.now();
-    prep(`
-      UPDATE  SET status = ?, error_message = ?, completed_at = ? WHERE id = ?
-    `).run('failed', errorMessage, now, downloadId);
-    prep(`
-      UPDATE  SET failure_count = failure_count + 1 WHERE id = ?
-    `).run(cidId);
-  },
-
-  getDownload(downloadId) {
-    const stmt = prep('SELECT * FROM  WHERE id = ?');
-    return stmt.get(downloadId);
-  },
-
-  getDownloadsByCid(cidId) {
-    const stmt = prep('SELECT * FROM  WHERE cidId = ? ORDER BY started_at DESC');
-    return stmt.all(cidId);
-  },
 
   getDownloadsByStatus(status) {
     const stmt = prep('SELECT * FROM  WHERE status = ? ORDER BY started_at DESC');
