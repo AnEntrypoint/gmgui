@@ -346,7 +346,6 @@
     var fileIframe = document.getElementById('fileBrowserIframe');
     var voiceContainer = document.getElementById('voiceContainer');
     var terminalContainer = document.getElementById('terminalContainer');
-    var modelsContainer = document.getElementById('modelsContainer');
 
     if (!bar) return;
 
@@ -359,8 +358,7 @@
     if (fileBrowser) fileBrowser.style.display = view === 'files' ? 'flex' : 'none';
     if (voiceContainer) voiceContainer.style.display = view === 'voice' ? 'flex' : 'none';
     if (terminalContainer) terminalContainer.style.display = view === 'terminal' ? 'flex' : 'none';
-    if (modelsContainer) modelsContainer.style.display = view === 'models' ? 'flex' : 'none';
-
+    
     if (view === 'files' && fileIframe && currentConversation) {
       var src = BASE + '/files/' + currentConversation + '/';
       if (fileIframe.src !== location.origin + src) {
@@ -373,29 +371,11 @@
     } else if (view !== 'voice' && window.voiceModule) {
       window.voiceModule.deactivate();
     }
-
-    if (view === 'models') syncModelsPanelFromMain();
+
 
     window.dispatchEvent(new CustomEvent('view-switched', { detail: { view: view } }));
   }
 
-  function syncModelsPanelFromMain() {
-    var mainAgent = document.querySelector('[data-agent-selector]');
-    var mainModel = document.querySelector('[data-model-selector]');
-    var panelAgent = document.querySelector('[data-agent-selector-models]');
-    var panelModel = document.querySelector('[data-model-selector-models]');
-    if (!panelAgent || !panelModel) return;
-    if (mainAgent && panelAgent.innerHTML !== mainAgent.innerHTML) {
-      panelAgent.innerHTML = mainAgent.innerHTML;
-      panelAgent.value = mainAgent.value;
-    }
-    if (mainModel && panelModel.innerHTML !== mainModel.innerHTML) {
-      panelModel.innerHTML = mainModel.innerHTML;
-      panelModel.value = mainModel.value;
-    }
-    panelAgent.onchange = function() { if (mainAgent) { mainAgent.value = panelAgent.value; mainAgent.dispatchEvent(new Event('change')); } };
-    panelModel.onchange = function() { if (mainModel) { mainModel.value = panelModel.value; mainModel.dispatchEvent(new Event('change')); } };
-  }
 
   function updateViewToggleVisibility() {
     var bar = document.getElementById('viewToggleBar');

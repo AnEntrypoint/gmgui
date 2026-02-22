@@ -497,26 +497,6 @@
     }
     .terminal-output { flex: 1; overflow: hidden; position: relative; }
 
-    .models-container {
-      flex: 1; display: flex; flex-direction: column; overflow-y: auto;
-      align-items: flex-start; padding: 2rem;
-    }
-    .models-panel {
-      display: flex; flex-direction: column; gap: 1rem;
-      background: var(--color-bg-secondary); border-radius: 0.5rem;
-      padding: 1.5rem; min-width: 280px;
-    }
-    .models-panel h3 { margin: 0 0 0.5rem; font-size: 1rem; font-weight: 600; }
-    .models-panel label {
-      display: flex; flex-direction: column; gap: 0.25rem;
-      font-size: 0.8rem; color: var(--color-text-secondary); font-weight: 500;
-    }
-    .models-panel select {
-      padding: 0.5rem; border: 1px solid var(--color-border);
-      border-radius: 0.375rem; background: var(--color-bg-primary);
-      color: var(--color-text-primary); font-size: 0.875rem; cursor: pointer;
-    }
-
     /* --- View toggle bar --- */
     .view-toggle-bar {
       display: flex;
@@ -3050,7 +3030,6 @@
         <button class="view-toggle-btn active" data-view="chat">Chat</button>
         <button class="view-toggle-btn" data-view="files">Files</button>
         <button class="view-toggle-btn" data-view="voice" style="display:none;">Voice</button>
-        <button class="view-toggle-btn" data-view="models">Models</button>
         <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn">Terminal</button>
       </div>
 
@@ -3072,13 +3051,6 @@
         <iframe id="fileBrowserIframe" class="file-browser-iframe"></iframe>
       </div>
 
-      <!-- Models/Agent selector view -->
-      <div id="modelsContainer" class="models-container" style="display:none;">
-        <div class="models-panel">
-          <h3>Agent &amp; Model</h3>
-          <label>Agent<select class="agent-selector" data-agent-selector-models title="Select agent"></select></label>
-          <label>Model<select class="model-selector" data-model-selector-models title="Select model" data-empty="true"></select></label>
-        </div>
       </div>
 
       <!-- Terminal output view -->
