@@ -289,15 +289,16 @@ jobs:
 
       - name: Build portable executable
         id: build
-        env:
-          NO_BUNDLE_MODELS: 'false'
-          MODELS_SOURCE_DIR: ${{ env.USERPROFILE }}\.gmgui\models
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
 
           Write-Host "Starting portable build..."
-          Write-Host "Models source directory: $env:MODELS_SOURCE_DIR"
+          $modelsDir = Join-Path $env:USERPROFILE ".gmgui" "models"
+          Write-Host "Models source directory: $modelsDir"
+
+          $env:MODELS_SOURCE_DIR = $modelsDir
+          $env:NO_BUNDLE_MODELS = 'false'
           node build-portable.js
 
           # Detect build output directory
