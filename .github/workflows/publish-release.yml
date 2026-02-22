@@ -152,39 +152,64 @@ jobs:
           )
 
           function Download-WithFallback {
-            param([string]$Cid, [string]$FilePath, [string]$OutputPath, [string]$FileName)
-            
+            param([string]$Cid, [string]$FilePath, [string]$OutputPath, [string]$FileName, [string]$HuggingFaceUrl = "")
+
             $maxRetries = 3
             $success = $false
 
-            foreach ($gateway in $gateways) {
-              if ($success) { break }
-              
+            # Try IPFS gateways first (if CID provided)
+            if ($Cid) {
+              foreach ($gateway in $gateways) {
+                if ($success) { break }
+
+                for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+                  try {
+                    $url = "$gateway$Cid/$FilePath"
+                    Write-Host "  IPFS: $gateway ... $FileName"
+
+                    $ProgressPreference = 'SilentlyContinue'
+                    Invoke-WebRequest -Uri $url -OutFile $OutputPath -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+
+                    $size = [math]::Round((Get-Item $OutputPath).Length / 1MB, 2)
+                    Write-Host "    ✓ ${size}MB"
+                    $success = $true
+                    break
+                  } catch {
+                    if ($attempt -eq $maxRetries) {
+                      Remove-Item $OutputPath -ErrorAction SilentlyContinue
+                    } else {
+                      Start-Sleep -Seconds 1
+                    }
+                  }
+                }
+              }
+            }
+
+            # Fallback to HuggingFace if provided and IPFS failed
+            if (-not $success -and $HuggingFaceUrl) {
               for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
                 try {
-                  $url = "$gateway$Cid/$FilePath"
-                  Write-Host "Downloading from $gateway ... $FileName"
-                  
+                  Write-Host "  HuggingFace ... $FileName"
+
                   $ProgressPreference = 'SilentlyContinue'
-                  Invoke-WebRequest -Uri $url -OutFile $OutputPath -UseBasicParsing -TimeoutSec 300 -ErrorAction Stop
-                  
+                  Invoke-WebRequest -Uri $HuggingFaceUrl -OutFile $OutputPath -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+
                   $size = [math]::Round((Get-Item $OutputPath).Length / 1MB, 2)
-                  Write-Host "  ✓ $FileName (${size}MB)"
+                  Write-Host "    ✓ ${size}MB"
                   $success = $true
                   break
                 } catch {
-                  Write-Host "  ✗ Attempt $attempt/$maxRetries failed"
                   if ($attempt -eq $maxRetries) {
                     Remove-Item $OutputPath -ErrorAction SilentlyContinue
                   } else {
-                    Start-Sleep -Seconds ([math]::Pow(2, $attempt))
+                    Start-Sleep -Seconds 2
                   }
                 }
               }
             }
 
             if (-not $success) {
-              throw "Failed to download $FileName from all gateways"
+              throw "Failed to download $FileName from all sources"
             }
           }
 
@@ -206,6 +231,9 @@ jobs:
             @{ Path = "flow_lm_flow_int8.onnx"; Name = "flow_lm_flow_int8.onnx" }
           )
 
+          $hfWhisperBase = "https://huggingface.co/onnx-community/whisper-base/resolve/main"
+          $hfTtsBase = "https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts"
+
           Write-Host "Downloading Whisper model files..."
           foreach ($file in $whisperFiles) {
             $output = if ($file.Path.Contains("/")) {
@@ -213,18 +241,21 @@ jobs:
             } else {
               Join-Path $whisperDir $file.Path
             }
-            Download-WithFallback -Cid $whisperCid -FilePath $file.Path -OutputPath $output -FileName $file.Name
+            $hfUrl = "$hfWhisperBase/$($file.Path)"
+            Download-WithFallback -Cid $whisperCid -FilePath $file.Path -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
           }
 
           Write-Host "Downloading TTS model files..."
           foreach ($file in $ttsFiles) {
             $output = Join-Path $ttsDir $file.Name
-            Download-WithFallback -Cid $ttsCid -FilePath $file.Path -OutputPath $output -FileName $file.Name
+            $hfUrl = "$hfTtsBase/$($file.Path)"
+            Download-WithFallback -Cid $ttsCid -FilePath $file.Path -OutputPath $output -FileName $file.Name -HuggingFaceUrl $hfUrl
           }
 
           Write-Host "Downloading tokenizer..."
           $output = Join-Path $ttsDir "tokenizer.model"
-          Download-WithFallback -Cid $tokenizerCid -FilePath "" -OutputPath $output -FileName "tokenizer.model"
+          $hfUrl = "$hfTtsBase/tokenizer.model"
+          Download-WithFallback -Cid $tokenizerCid -FilePath "" -OutputPath $output -FileName "tokenizer.model" -HuggingFaceUrl $hfUrl
 
           $totalSize = 0
           Get-ChildItem -Path $modelsDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
