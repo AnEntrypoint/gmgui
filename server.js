@@ -3419,6 +3419,35 @@ wss.on('connection', (ws, req) => {
             requestId: data.requestId,
             timestamp: Date.now()
           }));
+        } else if (data.type === 'terminal_start') {
+          if (ws.terminalProc) {
+            try { ws.terminalProc.kill(); } catch(e) {}
+          }
+          const { spawn } = require('child_process');
+          const shell = process.env.SHELL || '/bin/bash';
+          const cwd = data.cwd || process.env.STARTUP_CWD || process.env.HOME || '/';
+          const proc = spawn(shell, [], { cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, stdio: ['pipe', 'pipe', 'pipe'] });
+          ws.terminalProc = proc;
+          proc.stdout.on('data', (chunk) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+          });
+          proc.stderr.on('data', (chunk) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+          });
+          proc.on('exit', (code) => {
+            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
+            ws.terminalProc = null;
+          });
+          ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
+        } else if (data.type === 'terminal_input') {
+          if (ws.terminalProc && ws.terminalProc.stdin.writable) {
+            ws.terminalProc.stdin.write(Buffer.from(data.data, 'base64'));
+          }
+        } else if (data.type === 'terminal_stop') {
+          if (ws.terminalProc) {
+            try { ws.terminalProc.kill(); } catch(e) {}
+            ws.terminalProc = null;
+          }
         }
       } catch (e) {
         console.error('WebSocket message parse error:', e.message);
@@ -3432,6 +3461,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('pong', () => { ws.isAlive = true; });
     ws.on('close', () => {
+      if (ws.terminalProc) { try { ws.terminalProc.kill(); } catch(e) {} ws.terminalProc = null; }
       syncClients.delete(ws);
       for (const sub of ws.subscriptions) {
         const idx = subscriptionIndex.get(sub);

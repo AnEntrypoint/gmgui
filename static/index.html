@@ -63,7 +63,6 @@
     .app-shell {
       display: flex;
       height: 100dvh;
-      height: 100vh;
       overflow: hidden;
       padding-top: env(safe-area-inset-top);
       padding-bottom: env(safe-area-inset-bottom);
@@ -496,7 +495,7 @@
     .terminal-container {
       flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #1e1e1e;
     }
-    .terminal-output { flex: 1; overflow: hidden; }
+    .terminal-output { flex: 1; overflow: hidden; position: relative; }
 
     .models-container {
       flex: 1; display: flex; flex-direction: column; overflow-y: auto;
@@ -3042,12 +3041,12 @@
       </div>
 
       <!-- View toggle bar (hidden by default) -->
-      <div class="view-toggle-bar" id="viewToggleBar" style="display:none;">
+      <div class="view-toggle-bar" id="viewToggleBar">
         <button class="view-toggle-btn active" data-view="chat">Chat</button>
         <button class="view-toggle-btn" data-view="files">Files</button>
         <button class="view-toggle-btn" data-view="voice" style="display:none;">Voice</button>
         <button class="view-toggle-btn" data-view="models">Models</button>
-        <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn" style="display:none;">Terminal</button>
+        <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn">Terminal</button>
       </div>
 
       <!-- Messages scroll area -->
@@ -3189,6 +3188,7 @@
   <script defer src="/gm/js/client.js"></script>
   <script type="module" src="/gm/js/voice.js"></script>
   <script defer src="/gm/js/features.js"></script>
+<script defer src="/gm/js/terminal.js"></script>
   <script defer src="/gm/js/script-runner.js"></script>
   <script defer src="/gm/js/agent-auth.js"></script>
 
