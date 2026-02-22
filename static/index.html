@@ -834,6 +834,9 @@
       font-size: 0.8rem;
       cursor: pointer;
       flex-shrink: 0;
+      width: auto;
+      min-width: 80px;
+      max-width: 200px;
     }
 
     .agent-selector:disabled, .model-selector:disabled {
@@ -851,7 +854,9 @@
       font-size: 0.8rem;
       cursor: pointer;
       flex-shrink: 0;
-      max-width: 160px;
+      width: auto;
+      min-width: 80px;
+      max-width: 220px;
     }
 
     .model-selector:empty, .model-selector[data-empty="true"] {
@@ -2050,24 +2055,24 @@
     .tool-color-default > .folded-tool-body { border-top-color: #a5f3fc; }
     html.dark .tool-color-default > .folded-tool-body { border-top-color: #164e63; }
 
-    .block-type-tool_result { background: #f0fdf4; }
-    html.dark .block-type-tool_result { background: #0a1f0f; }
-    .block-type-tool_result .tool-result-status { background: #dcfce7; }
-    html.dark .block-type-tool_result .tool-result-status { background: #0f2b1a; }
+    .block-type-tool_result { background: #f3f4f6; }
+    html.dark .block-type-tool_result { background: #1f2937; }
+    .block-type-tool_result .tool-result-status { background: #e5e7eb; }
+    html.dark .block-type-tool_result .tool-result-status { background: #374151; }
     .block-type-tool_result .folded-tool-icon { color: #16a34a; }
     html.dark .block-type-tool_result .folded-tool-icon { color: #4ade80; }
-    .block-type-tool_result .folded-tool-name { color: #166534; }
-    html.dark .block-type-tool_result .folded-tool-name { color: #86efac; }
-    .block-type-tool_result > .folded-tool-body { border-top-color: #bbf7d0; }
-    html.dark .block-type-tool_result > .folded-tool-body { border-top-color: #166534; }
-    .block-type-tool_result.tool-result-error { background: #fef2f2; }
-    html.dark .block-type-tool_result.tool-result-error { background: #1c0f0f; }
-    .block-type-tool_result.tool-result-error .tool-result-status { background: #fee2e2; }
-    html.dark .block-type-tool_result.tool-result-error .tool-result-status { background: #2c1010; }
+    .block-type-tool_result .folded-tool-name { color: #374151; }
+    html.dark .block-type-tool_result .folded-tool-name { color: #d1d5db; }
+    .block-type-tool_result > .folded-tool-body { border-top-color: #d1d5db; }
+    html.dark .block-type-tool_result > .folded-tool-body { border-top-color: #4b5563; }
+    .block-type-tool_result.tool-result-error { background: #f3f4f6; }
+    html.dark .block-type-tool_result.tool-result-error { background: #1f2937; }
+    .block-type-tool_result.tool-result-error .tool-result-status { background: #e5e7eb; }
+    html.dark .block-type-tool_result.tool-result-error .tool-result-status { background: #374151; }
     .block-type-tool_result.tool-result-error .folded-tool-icon { color: #dc2626; }
     html.dark .block-type-tool_result.tool-result-error .folded-tool-icon { color: #f87171; }
-    .block-type-tool_result.tool-result-error .folded-tool-name { color: #991b1b; }
-    html.dark .block-type-tool_result.tool-result-error .folded-tool-name { color: #fca5a5; }
+    .block-type-tool_result.tool-result-error .folded-tool-name { color: #374151; }
+    html.dark .block-type-tool_result.tool-result-error .folded-tool-name { color: #d1d5db; }
 
     .block-type-code { background: #1e293b; }
     html.dark .block-type-code { background: #0f172a; }
@@ -2175,51 +2180,51 @@
 
     /* --- Tool result success styling in body --- */
     .tool-result-success .tool-result-status {
-      background: #dcfce7;
+      background: #e5e7eb;
       padding: 0.4rem 0.75rem;
     }
     html.dark .tool-result-success .tool-result-status {
-      background: #0f2b1a;
+      background: #374151;
     }
     .tool-result-success .folded-tool-icon { color: #16a34a; }
     html.dark .tool-result-success .folded-tool-icon { color: #4ade80; }
-    .tool-result-success .folded-tool-name { color: #166534; font-weight: 600; }
-    html.dark .tool-result-success .folded-tool-name { color: #86efac; }
+    .tool-result-success .folded-tool-name { color: #374151; font-weight: 600; }
+    html.dark .tool-result-success .folded-tool-name { color: #d1d5db; }
 
     /* --- Tool_use parent: has-success / has-error indicators on header --- */
-    .folded-tool.has-success { background: #f0fdf4; }
-    html.dark .folded-tool.has-success { background: #0a1f0f; }
-    .folded-tool.has-success > .folded-tool-bar { background: #dcfce7; }
-    html.dark .folded-tool.has-success > .folded-tool-bar { background: #0f2b1a; }
-    .folded-tool.has-success > .folded-tool-bar:hover { background: #bbf7d0; }
-    html.dark .folded-tool.has-success > .folded-tool-bar:hover { background: #14532d; }
+    .folded-tool.has-success { background: #f3f4f6; }
+    html.dark .folded-tool.has-success { background: #1f2937; }
+    .folded-tool.has-success > .folded-tool-bar { background: #e5e7eb; }
+    html.dark .folded-tool.has-success > .folded-tool-bar { background: #374151; }
+    .folded-tool.has-success > .folded-tool-bar:hover { background: #d1d5db; }
+    html.dark .folded-tool.has-success > .folded-tool-bar:hover { background: #4b5563; }
     .folded-tool.has-success > .folded-tool-bar::before { color: #16a34a; }
     html.dark .folded-tool.has-success > .folded-tool-bar::before { color: #4ade80; }
     .folded-tool.has-success .folded-tool-icon { color: #16a34a; }
     html.dark .folded-tool.has-success .folded-tool-icon { color: #4ade80; }
-    .folded-tool.has-success .folded-tool-name { color: #166534; }
-    html.dark .folded-tool.has-success .folded-tool-name { color: #86efac; }
-    .folded-tool.has-success .folded-tool-desc { color: #15803d; }
-    html.dark .folded-tool.has-success .folded-tool-desc { color: #4ade80; }
-    .folded-tool.has-success > .folded-tool-body { border-top-color: #bbf7d0; }
-    html.dark .folded-tool.has-success > .folded-tool-body { border-top-color: #166534; }
+    .folded-tool.has-success .folded-tool-name { color: #374151; }
+    html.dark .folded-tool.has-success .folded-tool-name { color: #d1d5db; }
+    .folded-tool.has-success .folded-tool-desc { color: #6b7280; }
+    html.dark .folded-tool.has-success .folded-tool-desc { color: #9ca3af; }
+    .folded-tool.has-success > .folded-tool-body { border-top-color: #d1d5db; }
+    html.dark .folded-tool.has-success > .folded-tool-body { border-top-color: #4b5563; }
 
-    .folded-tool.has-error { background: #fef2f2; }
-    html.dark .folded-tool.has-error { background: #1c0f0f; }
-    .folded-tool.has-error > .folded-tool-bar { background: #fee2e2; }
-    html.dark .folded-tool.has-error > .folded-tool-bar { background: #2c1010; }
-    .folded-tool.has-error > .folded-tool-bar:hover { background: #fecaca; }
-    html.dark .folded-tool.has-error > .folded-tool-bar:hover { background: #451a1a; }
+    .folded-tool.has-error { background: #f3f4f6; }
+    html.dark .folded-tool.has-error { background: #1f2937; }
+    .folded-tool.has-error > .folded-tool-bar { background: #e5e7eb; }
+    html.dark .folded-tool.has-error > .folded-tool-bar { background: #374151; }
+    .folded-tool.has-error > .folded-tool-bar:hover { background: #d1d5db; }
+    html.dark .folded-tool.has-error > .folded-tool-bar:hover { background: #4b5563; }
     .folded-tool.has-error > .folded-tool-bar::before { color: #ef4444; }
     html.dark .folded-tool.has-error > .folded-tool-bar::before { color: #f87171; }
     .folded-tool.has-error .folded-tool-icon { color: #ef4444; }
     html.dark .folded-tool.has-error .folded-tool-icon { color: #f87171; }
-    .folded-tool.has-error .folded-tool-name { color: #991b1b; }
-    html.dark .folded-tool.has-error .folded-tool-name { color: #fca5a5; }
-    .folded-tool.has-error .folded-tool-desc { color: #b91c1c; }
-    html.dark .folded-tool.has-error .folded-tool-desc { color: #f87171; }
-    .folded-tool.has-error > .folded-tool-body { border-top-color: #fecaca; }
-    html.dark .folded-tool.has-error > .folded-tool-body { border-top-color: #7f1d1d; }
+    .folded-tool.has-error .folded-tool-name { color: #374151; }
+    html.dark .folded-tool.has-error .folded-tool-name { color: #d1d5db; }
+    .folded-tool.has-error .folded-tool-desc { color: #6b7280; }
+    html.dark .folded-tool.has-error .folded-tool-desc { color: #9ca3af; }
+    .folded-tool.has-error > .folded-tool-body { border-top-color: #d1d5db; }
+    html.dark .folded-tool.has-error > .folded-tool-body { border-top-color: #4b5563; }
 
     /* --- Success/Error status icons in header --- */
     .folded-tool.has-success > .folded-tool-bar .folded-tool-icon::after,
