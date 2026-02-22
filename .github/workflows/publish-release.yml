@@ -127,8 +127,10 @@ jobs:
 
       - name: Clone models from GitHub
         run: |
+          git lfs install --skip-smudge
           git clone https://github.com/AnEntrypoint/models.git "$RUNNER_TEMP/models" --depth 1
-          ls -lah "$RUNNER_TEMP/models/"
+          cd "$RUNNER_TEMP/models"
+          git lfs pull --include="stt/*" --include="tts/*"
           echo "MODELS_SOURCE_DIR=$RUNNER_TEMP/models" >> $GITHUB_ENV
 
 
