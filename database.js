@@ -388,6 +388,7 @@ try {
   const LIGHTHOUSE_GATEWAY = 'https://gateway.lighthouse.storage/ipfs';
   const WHISPER_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
   const TTS_CID = 'bafybeidyw252ecy4vs46bbmezrtw325gl2ymdltosmzqgx4edjsc3fbofy';
+  const TTS_TOKENIZER_MODEL_CID = 'bafkreigumf3fvylzkzthrsjqshc7u3zjqtbrxpuzbpy2uywzfrsnsg6d6y';
 
   // Check if CIDs are already registered
   const existingWhisper = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('whisper-base', 'stt');
@@ -408,6 +409,16 @@ try {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(cidId, TTS_CID, 'tts-models', 'voice', 'sha256-verified', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
     console.log('[MODELS] Registered TTS IPFS CID:', TTS_CID);
+  }
+
+  const existingTokenizerModel = db.prepare('SELECT * FROM ipfs_cids WHERE modelName = ? AND modelType = ?').get('tts-tokenizer.model', 'voice-file');
+  if (!existingTokenizerModel) {
+    const cidId = `cid-${Date.now()}-tts-tokenizer-model`;
+    db.prepare(
+      `INSERT INTO ipfs_cids (id, cid, modelName, modelType, modelHash, gatewayUrl, cached_at, last_accessed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(cidId, TTS_TOKENIZER_MODEL_CID, 'tts-tokenizer.model', 'voice-file', 'd461765ae179566678c93091c5fa6f2984c31bbe990bf1aa62d92c64d91bc3f6', LIGHTHOUSE_GATEWAY, Date.now(), Date.now());
+    console.log('[MODELS] Registered TTS tokenizer.model IPFS CID:', TTS_TOKENIZER_MODEL_CID);
   }
 } catch (err) {
   console.warn('[MODELS] IPFS CID registration warning:', err.message);
