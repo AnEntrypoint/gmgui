@@ -29,13 +29,14 @@
     "form-data": "^4.0.5",
     "fsbrowse": "^0.2.18",
     "google-auth-library": "^10.5.0",
-    "onnxruntime-node": "^1.24.1",
+    "onnxruntime-node": "1.21.0",
     "webtalk": "^1.0.20",
     "ws": "^8.14.2"
   },
   "overrides": {
     "onnxruntime-web": "npm:empty-npm-package@1.0.0",
     "sharp": "npm:empty-npm-package@1.0.0",
-    "onnxruntime-common": "1.24.1"
+    "onnxruntime-common": "1.21.0",
+    "onnxruntime-node": "1.21.0"
   }
 }
