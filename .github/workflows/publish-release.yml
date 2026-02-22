@@ -125,6 +125,77 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Download speech models
+        shell: pwsh
+        timeout-minutes: 15
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $modelsDir = Join-Path $env:USERPROFILE ".gmgui" "models"
+          $whisperDir = Join-Path $modelsDir "onnx-community" "whisper-base"
+          $whisperOnnxDir = Join-Path $whisperDir "onnx"
+          $ttsDir = Join-Path $modelsDir "tts"
+
+          New-Item -ItemType Directory -Force -Path $whisperOnnxDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $ttsDir | Out-Null
+
+          $whisperBase = "https://huggingface.co/onnx-community/whisper-base/resolve/main"
+          $ttsBase = "https://huggingface.co/datasets/AnEntrypoint/sttttsmodels/resolve/main/tts"
+
+          $downloads = @(
+            @{ Url = "$whisperBase/config.json";                    Dest = Join-Path $whisperDir "config.json" },
+            @{ Url = "$whisperBase/tokenizer.json";                 Dest = Join-Path $whisperDir "tokenizer.json" },
+            @{ Url = "$whisperBase/tokenizer_config.json";          Dest = Join-Path $whisperDir "tokenizer_config.json" },
+            @{ Url = "$whisperBase/onnx/encoder_model.onnx";        Dest = Join-Path $whisperOnnxDir "encoder_model.onnx" },
+            @{ Url = "$whisperBase/onnx/decoder_model_merged.onnx"; Dest = Join-Path $whisperOnnxDir "decoder_model_merged.onnx" },
+            @{ Url = "$ttsBase/mimi_encoder.onnx";                  Dest = Join-Path $ttsDir "mimi_encoder.onnx" },
+            @{ Url = "$ttsBase/flow_lm_main_int8.onnx";             Dest = Join-Path $ttsDir "flow_lm_main_int8.onnx" },
+            @{ Url = "$ttsBase/mimi_decoder_int8.onnx";             Dest = Join-Path $ttsDir "mimi_decoder_int8.onnx" },
+            @{ Url = "$ttsBase/text_conditioner.onnx";              Dest = Join-Path $ttsDir "text_conditioner.onnx" },
+            @{ Url = "$ttsBase/flow_lm_flow_int8.onnx";             Dest = Join-Path $ttsDir "flow_lm_flow_int8.onnx" },
+            @{ Url = "$ttsBase/tokenizer.model";                    Dest = Join-Path $ttsDir "tokenizer.model" }
+          )
+
+          $totalFiles = $downloads.Count
+          $current = 0
+
+          foreach ($dl in $downloads) {
+            $current++
+            $filename = Split-Path -Leaf $dl.Dest
+            Write-Host "[$current/$totalFiles] Downloading $filename..."
+
+            $maxRetries = 3
+            $success = $false
+
+            for ($attempt = 1; $attempt -le $maxRetries; $attempt++) {
+              try {
+                $ProgressPreference = 'SilentlyContinue'
+                Invoke-WebRequest -Uri $dl.Url -OutFile $dl.Dest -UseBasicParsing -TimeoutSec 300
+                $size = [math]::Round((Get-Item $dl.Dest).Length / 1MB, 2)
+                Write-Host "  OK: ${size}MB"
+                $success = $true
+                break
+              } catch {
+                Write-Host "  Attempt $attempt/$maxRetries failed: $_"
+                if ($attempt -lt $maxRetries) {
+                  $delay = [math]::Pow(2, $attempt)
+                  Write-Host "  Retrying in ${delay}s..."
+                  Start-Sleep -Seconds $delay
+                }
+              }
+            }
+
+            if (-not $success) {
+              Write-Host "ERROR: Failed to download $filename after $maxRetries attempts"
+              exit 1
+            }
+          }
+
+          $totalSize = 0
+          Get-ChildItem -Path $modelsDir -Recurse -File | ForEach-Object { $totalSize += $_.Length }
+          $totalMB = [math]::Round($totalSize / 1MB, 1)
+          Write-Host "All models downloaded: ${totalMB}MB total"
+
       - name: Build portable executable
         id: build
         env:
@@ -221,7 +292,7 @@ jobs:
             **Web interface**: http://localhost:3000/gm/
 
             **Notes**:
-            - AI speech models (~477MB) are not bundled - they download automatically on first use
+            - AI speech models (~470MB) are bundled in the Windows portable build for offline use
             - Data is stored in the `~/.gmgui/` folder
             - Requirements: Node.js 18+
           draft: false
