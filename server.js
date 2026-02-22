@@ -1756,6 +1756,71 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/agents/auth-status' && req.method === 'GET') {
+      const statuses = discoveredAgents.map(agent => {
+        const status = { id: agent.id, name: agent.name, authenticated: false, detail: '' };
+        try {
+          if (agent.id === 'claude-code') {
+            const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
+            if (fs.existsSync(credFile)) {
+              const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
+              if (creds.claudeAiOauth && creds.claudeAiOauth.expiresAt > Date.now()) {
+                status.authenticated = true;
+                status.detail = creds.claudeAiOauth.subscriptionType || 'authenticated';
+              } else {
+                status.detail = 'expired';
+              }
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else if (agent.id === 'gemini') {
+            const oauthFile = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
+            const acctFile = path.join(os.homedir(), '.gemini', 'google_accounts.json');
+            let hasOAuth = false;
+            if (fs.existsSync(oauthFile)) {
+              try {
+                const creds = JSON.parse(fs.readFileSync(oauthFile, 'utf-8'));
+                if (creds.refresh_token || creds.access_token) hasOAuth = true;
+              } catch (_) {}
+            }
+            if (fs.existsSync(acctFile)) {
+              const accts = JSON.parse(fs.readFileSync(acctFile, 'utf-8'));
+              if (accts.active) {
+                status.authenticated = true;
+                status.detail = accts.active;
+              } else if (hasOAuth) {
+                status.authenticated = true;
+                status.detail = 'oauth';
+              } else {
+                status.detail = 'logged out';
+              }
+            } else if (hasOAuth) {
+              status.authenticated = true;
+              status.detail = 'oauth';
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else if (agent.id === 'opencode') {
+            const out = execSync('opencode auth list 2>&1', { encoding: 'utf-8', timeout: 5000 });
+            const countMatch = out.match(/(\d+)\s+credentials?/);
+            if (countMatch && parseInt(countMatch[1], 10) > 0) {
+              status.authenticated = true;
+              status.detail = countMatch[1] + ' credential(s)';
+            } else {
+              status.detail = 'no credentials';
+            }
+          } else {
+            status.detail = 'unknown';
+          }
+        } catch (e) {
+          status.detail = 'check failed';
+        }
+        return status;
+      });
+      sendJSON(req, res, 200, { agents: statuses });
+      return;
+    }
+
     const agentByIdMatch = pathOnly.match(/^\/api\/agents\/([^/]+)$/);
     if (agentByIdMatch && req.method === 'GET') {
       const agentId = agentByIdMatch[1];
@@ -1823,71 +1888,6 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         sendJSON(req, res, 200, { models: [] });
       }
-      return;
-    }
-
-    if (pathOnly === '/api/agents/auth-status' && req.method === 'GET') {
-      const statuses = discoveredAgents.map(agent => {
-        const status = { id: agent.id, name: agent.name, authenticated: false, detail: '' };
-        try {
-          if (agent.id === 'claude-code') {
-            const credFile = path.join(os.homedir(), '.claude', '.credentials.json');
-            if (fs.existsSync(credFile)) {
-              const creds = JSON.parse(fs.readFileSync(credFile, 'utf-8'));
-              if (creds.claudeAiOauth && creds.claudeAiOauth.expiresAt > Date.now()) {
-                status.authenticated = true;
-                status.detail = creds.claudeAiOauth.subscriptionType || 'authenticated';
-              } else {
-                status.detail = 'expired';
-              }
-            } else {
-              status.detail = 'no credentials';
-            }
-          } else if (agent.id === 'gemini') {
-            const oauthFile = path.join(os.homedir(), '.gemini', 'oauth_creds.json');
-            const acctFile = path.join(os.homedir(), '.gemini', 'google_accounts.json');
-            let hasOAuth = false;
-            if (fs.existsSync(oauthFile)) {
-              try {
-                const creds = JSON.parse(fs.readFileSync(oauthFile, 'utf-8'));
-                if (creds.refresh_token || creds.access_token) hasOAuth = true;
-              } catch (_) {}
-            }
-            if (fs.existsSync(acctFile)) {
-              const accts = JSON.parse(fs.readFileSync(acctFile, 'utf-8'));
-              if (accts.active) {
-                status.authenticated = true;
-                status.detail = accts.active;
-              } else if (hasOAuth) {
-                status.authenticated = true;
-                status.detail = 'oauth';
-              } else {
-                status.detail = 'logged out';
-              }
-            } else if (hasOAuth) {
-              status.authenticated = true;
-              status.detail = 'oauth';
-            } else {
-              status.detail = 'no credentials';
-            }
-          } else if (agent.id === 'opencode') {
-            const out = execSync('opencode auth list 2>&1', { encoding: 'utf-8', timeout: 5000 });
-            const countMatch = out.match(/(\d+)\s+credentials?/);
-            if (countMatch && parseInt(countMatch[1], 10) > 0) {
-              status.authenticated = true;
-              status.detail = countMatch[1] + ' credential(s)';
-            } else {
-              status.detail = 'no credentials';
-            }
-          } else {
-            status.detail = 'unknown';
-          }
-        } catch (e) {
-          status.detail = 'check failed';
-        }
-        return status;
-      });
-      sendJSON(req, res, 200, { agents: statuses });
       return;
     }
 
