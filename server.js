@@ -2860,7 +2860,7 @@ function serveFile(filePath, res, req) {
     const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>`;
     content = content.replace('<head>', '<head>\n  ' + baseTag);
     if (watch) {
-      content += `\n<script>(function(){const ws=new WebSocket('ws://'+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
+      content += `\n<script>(function(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
     }
     compressAndSend(req, res, 200, contentType, content);
   });
