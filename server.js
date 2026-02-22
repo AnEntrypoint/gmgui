@@ -62,6 +62,35 @@ function broadcastModelProgress(progress) {
   broadcastSync(broadcastData);
 }
 
+async function validateAndCleanupModels(modelsDir) {
+  try {
+    const manifestPath = path.join(modelsDir, '.manifests.json');
+    if (fs.existsSync(manifestPath)) {
+      try {
+        const content = fs.readFileSync(manifestPath, 'utf8');
+        JSON.parse(content);
+      } catch (e) {
+        console.error('[MODELS] Manifest corrupted, removing:', e.message);
+        fs.unlinkSync(manifestPath);
+      }
+    }
+
+    const files = fs.readdirSync(modelsDir);
+    for (const file of files) {
+      if (file.endsWith('.tmp')) {
+        try {
+          fs.unlinkSync(path.join(modelsDir, file));
+          console.log('[MODELS] Cleaned up temp file:', file);
+        } catch (e) {
+          console.warn('[MODELS] Failed to clean:', file);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[MODELS] Cleanup check failed:', e.message);
+  }
+}
+
 async function ensureModelsDownloaded() {
   if (modelDownloadState.downloading) {
     while (modelDownloadState.downloading) {
@@ -82,6 +111,8 @@ async function ensureModelsDownloaded() {
     const modelsBase = process.env.PORTABLE_EXE_DIR
       ? (fs.existsSync(path.join(process.env.PORTABLE_EXE_DIR, 'models', 'onnx-community')) ? path.join(process.env.PORTABLE_EXE_DIR, 'models') : gmguiModels)
       : gmguiModels;
+
+    await validateAndCleanupModels(modelsBase);
 
     const config = createConfig({
       modelsDir: modelsBase,
@@ -2449,8 +2480,22 @@ const server = http.createServer(async (req, res) => {
                 sendJSON(req, res, 200, { text: finalText });
       } catch (err) {
         debugLog('[STT] Error: ' + err.message);
-        broadcastSync({ type: 'stt_progress', status: 'failed', percentComplete: 0, error: err.message });
-        if (!res.headersSent) sendJSON(req, res, 500, { error: err.message || 'STT failed' });
+        let errorMsg = err.message || 'STT failed';
+        if (errorMsg.includes('VERS_1.21') || errorMsg.includes('onnxruntime')) {
+          errorMsg = 'STT model load failed: onnxruntime version mismatch. Try: npm install or npm ci';
+        } else if (errorMsg.includes('not valid JSON') || errorMsg.includes('Unexpected token')) {
+          errorMsg = 'STT model load failed: corrupted cache. Clearing... try again.';
+          const modelsDir = path.join(os.homedir(), '.gmgui', 'models');
+          try {
+            const manifestPath = path.join(modelsDir, '.manifests.json');
+            if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
+            console.log('[STT] Cleared corrupted manifest');
+          } catch (e) {
+            console.warn('[STT] Failed to clear manifest:', e.message);
+          }
+        }
+        broadcastSync({ type: 'stt_progress', status: 'failed', percentComplete: 0, error: errorMsg });
+        if (!res.headersSent) sendJSON(req, res, 500, { error: errorMsg });
       }
       return;
     }
