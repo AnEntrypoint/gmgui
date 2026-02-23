@@ -205,7 +205,7 @@ class AgentGUIClient {
     // Parse path-based URL: /conversations/<conversationId>
     const pathMatch = window.location.pathname.match(/\/conversations\/([^\/]+)$/);
     const conversationId = pathMatch ? pathMatch[1] : null;
-    
+
     // Session ID still in query params
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('session');
@@ -216,7 +216,12 @@ class AgentGUIClient {
         this.routerState.currentSessionId = sessionId;
       }
       console.log('Restoring conversation from URL:', conversationId);
-      this.loadConversationMessages(conversationId);
+      this.state.currentConversation = conversationId;
+      if (window.conversationManager) {
+        window.conversationManager.select(conversationId);
+      } else {
+        this.loadConversationMessages(conversationId);
+      }
     }
   }
 
