@@ -951,8 +951,8 @@ export const queries = {
 
         const importStmt = db.transaction(() => {
           prep(
-            `INSERT INTO conversations (id, agentId, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?, ?)`
-          ).run(conv.id, 'claude-code', displayTitle, conv.created, conv.modified, 'active');
+            `INSERT INTO conversations (id, agentId, title, created_at, updated_at, status, claudeSessionId) VALUES (?, ?, ?, ?, ?, ?, ?)`
+          ).run(conv.id, 'claude-code', displayTitle, conv.created, conv.modified, 'active', conv.id);
 
           for (const msg of messages) {
             try {
