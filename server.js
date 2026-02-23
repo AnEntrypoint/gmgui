@@ -119,11 +119,21 @@ async function ensureModelsDownloaded() {
       ttsModelsDir: path.join(modelsBase, 'tts'),
     });
 
+    // Progress callback for broadcasting download progress
+    const onProgress = (progress) => {
+      broadcastModelProgress({
+        ...progress,
+        started: true,
+        done: false,
+        downloading: true
+      });
+    };
+
     broadcastModelProgress({ started: true, done: false, downloading: true, type: 'whisper', status: 'starting' });
-    await ensureModel('onnx-community/whisper-base', config);
+    await ensureModel('onnx-community/whisper-base', config, onProgress);
 
     broadcastModelProgress({ started: true, done: false, downloading: true, type: 'tts', status: 'starting' });
-    await ensureTTSModels(config);
+    await ensureTTSModels(config, onProgress);
 
     modelDownloadState.complete = true;
     broadcastModelProgress({ started: true, done: true, complete: true, downloading: false });
