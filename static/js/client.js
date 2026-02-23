@@ -1890,19 +1890,14 @@ class AgentGUIClient {
       } else if (status.modelsDownloading) {
         this._modelDownloadProgress = status.modelsProgress || { downloading: true };
         this._modelDownloadInProgress = true;
-        setTimeout(function() {
-          if (window.__showVoiceDownloadProgress) window.__showVoiceDownloadProgress();
-        }, 0);
       } else {
         this._modelDownloadProgress = { done: false };
         this._modelDownloadInProgress = false;
       }
-      this._updateVoiceTabState();
     } catch (error) {
       console.error('Failed to check speech status:', error);
       this._modelDownloadProgress = { done: false };
       this._modelDownloadInProgress = false;
-      this._updateVoiceTabState();
     }
   }
 
@@ -2044,75 +2039,21 @@ class AgentGUIClient {
 
   _handleModelDownloadProgress(progress) {
     this._modelDownloadProgress = progress;
-
     if (progress.status === 'failed' || progress.error) {
       this._modelDownloadInProgress = false;
       console.error('[Models] Download error:', progress.error || progress.status);
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
-      if (window._voiceProgressDialog) {
-        window._voiceProgressDialog.close();
-        window._voiceProgressDialog = null;
-      }
-      const errorMsg = 'Failed to download voice models: ' + (progress.error || 'unknown error');
-      if (window.UIDialog) {
-        window.UIDialog.alert(errorMsg, 'Download Error');
-      } else {
-        alert(errorMsg);
-      }
       return;
     }
-
     if (progress.done || progress.status === 'completed') {
       this._modelDownloadInProgress = false;
       console.log('[Models] Download complete');
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
-      this._updateVoiceTabState();
-      if (window._voiceProgressDialog) {
-        window._voiceProgressDialog.update(100, 'Voice models ready!');
-        setTimeout(function() {
-          if (window._voiceProgressDialog) {
-            window._voiceProgressDialog.close();
-            window._voiceProgressDialog = null;
-          }
-        }, 500);
-      }
-      if (window._voiceTabPendingOpen) {
-        window._voiceTabPendingOpen = false;
-        var voiceBtn = document.querySelector('[data-view="voice"]');
-        if (voiceBtn) voiceBtn.click();
-      }
       return;
     }
-
     if (progress.started || progress.downloading || progress.status === 'downloading' || progress.status === 'connecting') {
       this._modelDownloadInProgress = true;
       this._updateConnectionIndicator(this.wsManager?.latency?.quality || 'unknown');
-
-      if (!window._voiceProgressDialog && window.__showVoiceDownloadProgress) {
-        window.__showVoiceDownloadProgress();
-      }
-
-      if (window._voiceProgressDialog) {
-        let displayText = 'Downloading models...';
-
-        if (progress.status === 'connecting') {
-          displayText = 'Connecting to ' + (progress.currentGateway || 'gateway') + '...';
-        } else if (progress.totalBytes > 0) {
-          const downloaded = (progress.bytesDownloaded || 0) / 1024 / 1024;
-          const total = progress.totalBytes / 1024 / 1024;
-          const speed = progress.downloadSpeed ? (progress.downloadSpeed / 1024 / 1024).toFixed(2) : '0';
-          const eta = progress.eta ? Math.ceil(progress.eta) + 's' : '...';
-          const retryInfo = progress.retryCount > 0 ? ` (retry ${progress.retryCount})` : '';
-
-          displayText = `Downloading ${downloaded.toFixed(1)}MB / ${total.toFixed(1)}MB @ ${speed}MB/s (ETA: ${eta})${retryInfo}`;
-        } else if (progress.file) {
-          displayText = 'Loading ' + progress.file + '...';
-        } else if (progress.completedFiles && progress.totalFiles) {
-          displayText = `Downloaded ${progress.completedFiles}/${progress.totalFiles} files`;
-        }
-
-        window._voiceProgressDialog.update(progress.percentComplete || 0, displayText);
-      }
     }
   }
 
@@ -2626,24 +2567,10 @@ class AgentGUIClient {
     };
   }
 
-  _handleModelDownloadProgress(data) {
-    if (!data) return;
-    this._modelDownloadProgress = data;
-    if (data.done && data.complete) {
-      this._modelDownloadInProgress = false;
-      this._hideModelDownloadProgress();
-    } else if (data.downloading || data.done === false) {
-      this._modelDownloadInProgress = true;
-      this._showModelDownloadProgress(data);
-    }
-    this._updateVoiceTabState();
-  }
-
   _handleSTTProgress(data) {
     if (!data) return;
     const transcriptEl = document.getElementById('voiceTranscript');
     if (!transcriptEl) return;
-
     if (data.status === 'transcribing') {
       transcriptEl.textContent = 'Transcribing...';
       transcriptEl.style.color = 'var(--color-text-secondary)';
@@ -2654,61 +2581,6 @@ class AgentGUIClient {
       transcriptEl.textContent = 'Transcription failed: ' + (data.error || 'Unknown error');
       transcriptEl.style.color = 'var(--color-error)';
     }
-  }
-
-  _handleTTSSetupProgress(data) {
-    if (!data) return;
-    this._showModelDownloadProgress({
-      downloading: true,
-      message: data.message || 'Setting up TTS...'
-    });
-  }
-
-  _showModelDownloadProgress(progress) {
-    let indicator = document.getElementById('modelDownloadIndicator');
-    if (!indicator) {
-      const header = document.querySelector('.main-header');
-      if (!header) return;
-
-      indicator = document.createElement('div');
-      indicator.id = 'modelDownloadIndicator';
-      indicator.style = `
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.375rem 0.75rem;
-        background: var(--color-bg-secondary);
-        border-radius: 0.375rem;
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-      `;
-
-      const controls = header.querySelector('.header-controls');
-      if (controls) {
-        controls.insertBefore(indicator, controls.firstChild);
-      }
-    }
-
-    indicator.style.display = 'flex';
-    indicator.innerHTML = `
-      <span style="display:inline-block;width:1rem;height:1rem;border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;animation:spin 1s linear infinite;"></span>
-      <span>${progress.message || 'Loading models...'}</span>
-    `;
-  }
-
-  _hideModelDownloadProgress() {
-    const indicator = document.getElementById('modelDownloadIndicator');
-    if (indicator) {
-      indicator.style.display = 'none';
-    }
-  }
-
-  _updateVoiceTabState() {
-    const voiceBtn = document.querySelector('[data-view="voice"]');
-    if (!voiceBtn) return;
-    const isReady = this._modelDownloadProgress?.done === true &&
-                    this._modelDownloadProgress?.complete === true;
-    voiceBtn.title = isReady ? 'Voice' : 'Voice (click to download models)';
   }
 
   /**

@@ -2694,6 +2694,26 @@
     .connection-dot.reconnecting { background: #f59e0b; animation: pulse 1s ease-in-out infinite; }
     .connection-dot.downloading { background: #3b82f6; animation: pulse 1s ease-in-out infinite; }
 
+    .model-dl-indicator {
+      display: none;
+      position: relative;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+    }
+    .model-dl-indicator.active { display: inline-flex; align-items: center; justify-content: center; }
+    .model-dl-indicator svg { width: 24px; height: 24px; transform: rotate(-90deg); }
+    .model-dl-indicator .track { fill: none; stroke: var(--color-bg-secondary); stroke-width: 3; }
+    .model-dl-indicator .progress { fill: none; stroke: var(--color-primary); stroke-width: 3; stroke-linecap: round; transition: stroke-dashoffset 0.3s ease; }
+    .model-dl-indicator .icon { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+    .model-dl-indicator .icon svg { width: 12px; height: 12px; transform: none; }
+    .model-dl-indicator-tooltip {
+      display: none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--color-bg-primary);
+      border: 1px solid var(--color-border); border-radius: 6px; padding: 8px 12px; font-size: 0.75rem;
+      white-space: nowrap; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .model-dl-indicator:hover .model-dl-indicator-tooltip { display: block; }
+
     .connection-tooltip {
       position: absolute;
       top: 100%;
@@ -2972,6 +2992,11 @@
               <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="5" y="5" width="14" height="14" rx="1"></rect></svg>
             </button>
           </div>
+          <div class="model-dl-indicator" id="modelDlIndicator" title="Downloading voice models...">
+            <svg viewBox="0 0 24 24"><circle class="track" cx="12" cy="12" r="10"/><circle class="progress" cx="12" cy="12" r="10" stroke-dasharray="62.83" stroke-dashoffset="62.83"/></svg>
+            <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg></div>
+            <div class="model-dl-indicator-tooltip" id="modelDlTooltip">Preparing voice models...</div>
+          </div>
           <button class="header-icon-btn agent-auth-btn" id="agentAuthBtn" title="Agent authentication" aria-label="Agent authentication" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
             <div class="agent-auth-dropdown" id="agentAuthDropdown"></div>
@@ -3000,7 +3025,7 @@
       <div class="view-toggle-bar" id="viewToggleBar">
         <button class="view-toggle-btn active" data-view="chat">Chat</button>
         <button class="view-toggle-btn" data-view="files">Files</button>
-        <button class="view-toggle-btn" data-view="voice">Voice</button>
+        <button class="view-toggle-btn" data-view="voice" id="voiceTabBtn" style="display:none;">Voice</button>
         <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn">Terminal</button>
       </div>
 
@@ -3129,7 +3154,6 @@
   <script defer src="/gm/js/syntax-highlighter.js"></script>
   <script defer src="/gm/js/dialogs.js"></script>
   <script defer src="/gm/js/ui-components.js"></script>
-  <script defer src="/gm/js/progress-dialog.js"></script>
   <script defer src="/gm/js/conversations.js"></script>
   <script defer src="/gm/js/client.js"></script>
   <script type="module" src="/gm/js/voice.js"></script>
