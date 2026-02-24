@@ -62,9 +62,7 @@ class ConversationManager {
 
   async loadAgents() {
     try {
-      const res = await fetch((window.__BASE_URL || '') + '/api/agents');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await window.wsClient.rpc('agent.ls');
       for (const agent of data.agents || []) {
         this.agents.set(agent.id, agent);
       }
@@ -120,12 +118,9 @@ class ConversationManager {
 
   async fetchHomePath() {
     try {
-      const res = await fetch((window.__BASE_URL || '') + '/api/home');
-      if (res.ok) {
-        const data = await res.json();
-        this.folderBrowser.homePath = data.home || '~';
-        this.folderBrowser.cwdPath = data.cwd || null;
-      }
+      const data = await window.wsClient.rpc('home');
+      this.folderBrowser.homePath = data.home || '~';
+      this.folderBrowser.cwdPath = data.cwd || null;
     } catch (e) {
       console.error('Failed to fetch home path:', e);
     }
@@ -158,18 +153,7 @@ class ConversationManager {
     this.folderBrowser.listEl.innerHTML = '<li class="folder-list-loading">Loading...</li>';
 
     try {
-      const res = await fetch((window.__BASE_URL || '') + '/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: dirPath })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await window.wsClient.rpc('folders', { path: dirPath });
       const folders = data.folders || [];
 
       this.folderBrowser.listEl.innerHTML = '';
@@ -327,18 +311,7 @@ class ConversationManager {
     this.showCloneStatus(`Cloning ${repo}...`, 'cloning');
 
     try {
-      const res = await fetch((window.__BASE_URL || '') + '/api/clone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ repo })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        this.showCloneStatus(data.error || 'Clone failed', 'clone-error');
-        return;
-      }
+      const data = await window.wsClient.rpc('clone', { repo });
 
       this.showCloneStatus(`Cloned ${data.name}`, 'clone-success');
       this.hideCloneBar();
@@ -347,7 +320,7 @@ class ConversationManager {
         detail: { workingDirectory: data.path, title: data.name }
       }));
     } catch (err) {
-      this.showCloneStatus('Network error: ' + err.message, 'clone-error');
+      this.showCloneStatus(err.message || 'Clone failed', 'clone-error');
     } finally {
       if (this.cloneGoBtn) this.cloneGoBtn.disabled = false;
       if (this.cloneInput) this.cloneInput.disabled = false;
@@ -356,10 +329,7 @@ class ConversationManager {
 
   async loadConversations() {
     try {
-      const res = await fetch((window.__BASE_URL || '') + '/api/conversations');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
+      const data = await window.wsClient.rpc('conv.ls');
       this.conversations = data.conversations || [];
 
       for (const conv of this.conversations) {
@@ -482,21 +452,12 @@ class ConversationManager {
     if (!confirmed) return;
 
     try {
-      const res = await fetch((window.__BASE_URL || '') + `/api/conversations/${convId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (res.ok) {
-        console.log(`[ConversationManager] Deleted conversation ${convId}`);
-        this.deleteConversation(convId);
-      } else {
-        const error = await res.json().catch(() => ({ error: 'Failed to delete' }));
-        window.UIDialog.alert('Failed to delete conversation: ' + (error.error || 'Unknown error'), 'Error');
-      }
+      await window.wsClient.rpc('conv.del', { id: convId });
+      console.log(`[ConversationManager] Deleted conversation ${convId}`);
+      this.deleteConversation(convId);
     } catch (err) {
       console.error('[ConversationManager] Delete error:', err);
-      window.UIDialog.alert('Failed to delete conversation: ' + err.message, 'Error');
+      window.UIDialog.alert('Failed to delete conversation: ' + (err.message || 'Unknown error'), 'Error');
     }
   }
 

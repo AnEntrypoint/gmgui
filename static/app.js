@@ -107,8 +107,7 @@ class GMGUIApp {
 
   async fetchAgents() {
     try {
-      const res = await fetch(BASE_URL + '/api/agents');
-      const data = await res.json();
+      const data = await window.wsClient.rpc('agent.ls');
       for (const agent of data.agents || []) {
         this.agents.set(agent.id, agent);
       }
@@ -119,8 +118,7 @@ class GMGUIApp {
 
   async fetchConversations() {
     try {
-      const res = await fetch(BASE_URL + '/api/conversations');
-      const data = await res.json();
+      const data = await window.wsClient.rpc('conv.ls');
       this.conversations.clear();
       for (const conv of data.conversations || []) {
         this.conversations.set(conv.id, conv);
@@ -315,19 +313,11 @@ class GMGUIApp {
     }
 
     try {
-      const res = await fetch(BASE_URL + '/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, agentId: this.selectedAgent })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        await this.fetchConversations();
-        this.renderChatHistory();
-        if (data.conversation) {
-          this.selectConversation(data.conversation.id);
-        }
+      const data = await window.wsClient.rpc('conv.new', { title, agentId: this.selectedAgent });
+      await this.fetchConversations();
+      this.renderChatHistory();
+      if (data.conversation) {
+        this.selectConversation(data.conversation.id);
       }
     } catch (e) {
       console.error('[APP] Error creating conversation:', e);
