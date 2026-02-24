@@ -423,7 +423,7 @@ class StreamingRenderer {
   }
 
   _getToolColorClass(toolName) {
-    const n = (toolName || '').replace(/^mcp__[^_]+__/, '').toLowerCase();
+    const n = (toolName || '').replace(/^mcp__.*?__/, '').toLowerCase();
     const map = {
       read: 'read', write: 'write', edit: 'edit', bash: 'bash', glob: 'glob', grep: 'grep',
       webfetch: 'web', websearch: 'web', todowrite: 'todo', task: 'task', notebookedit: 'edit',
@@ -572,7 +572,7 @@ class StreamingRenderer {
   renderSmartParams(toolName, input) {
     if (!input || Object.keys(input).length === 0) return '';
 
-    const normalizedName = toolName.replace(/^mcp__[^_]+__/, '');
+    const normalizedName = toolName.replace(/^mcp__.*?__/, '');
 
     switch (normalizedName) {
       case 'Read':
@@ -695,7 +695,7 @@ class StreamingRenderer {
    * Render tool use block with smart parameter display
    */
   getToolUseTitle(toolName, input) {
-    const normalizedName = toolName.replace(/^mcp__[^_]+__/, '');
+    const normalizedName = toolName.replace(/^mcp__.*?__/, '');
     if (normalizedName === 'Edit' && input.file_path) {
       const parts = pathSplit(input.file_path);
       const fileName = parts.pop();
@@ -729,7 +729,7 @@ class StreamingRenderer {
   }
 
   getToolUseDisplayName(toolName) {
-    const normalized = toolName.replace(/^mcp__[^_]+__/, '');
+    const normalized = toolName.replace(/^mcp__.*?__/, '');
     const knownTools = ['Read','Write','Edit','Bash','Glob','Grep','WebFetch','WebSearch','TodoWrite','Task','NotebookEdit'];
     if (knownTools.includes(normalized)) return normalized;
     if (toolName.startsWith('mcp__')) {
@@ -1135,7 +1135,7 @@ class StreamingRenderer {
   }
 
   static getToolDisplayName(toolName) {
-    const normalized = toolName.replace(/^mcp__[^_]+__/, '');
+    const normalized = toolName.replace(/^mcp__.*?__/, '');
     const knownTools = ['Read','Write','Edit','Bash','Glob','Grep','WebFetch','WebSearch','TodoWrite','Task','NotebookEdit'];
     if (knownTools.includes(normalized)) return normalized;
     if (toolName.startsWith('mcp__')) {
@@ -1146,7 +1146,7 @@ class StreamingRenderer {
   }
 
   static getToolTitle(toolName, input) {
-    const n = toolName.replace(/^mcp__[^_]+__/, '');
+    const n = toolName.replace(/^mcp__.*?__/, '');
     if (n === 'Edit' && input.file_path) { const p = pathSplit(input.file_path); const f = p.pop(); const d = p.slice(-2).join('/'); return d ? d+'/'+f : f; }
     if (n === 'Read' && input.file_path) return pathBasename(input.file_path);
     if (n === 'Write' && input.file_path) return pathBasename(input.file_path);

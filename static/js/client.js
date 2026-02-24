@@ -1944,9 +1944,8 @@ class AgentGUIClient {
       this.ui.agentSelector.disabled = true;
     }
     this.loadModelsForAgent(agentId).then(() => {
-      if (this.ui.modelSelector) {
-        if (model) this.ui.modelSelector.value = model;
-        this.ui.modelSelector.disabled = true;
+      if (this.ui.modelSelector && model) {
+        this.ui.modelSelector.value = model;
       }
     });
   }
@@ -1956,8 +1955,28 @@ class AgentGUIClient {
     if (this.ui.agentSelector) {
       this.ui.agentSelector.disabled = false;
     }
-    if (this.ui.modelSelector) {
-      this.ui.modelSelector.disabled = false;
+  }
+
+  /**
+   * Apply agent and model selection based on conversation state
+   * Consolidates duplicate logic for cached and fresh conversation loads
+   */
+  applyAgentAndModelSelection(conversation, hasActivity) {
+    const agentId = conversation.agentType || 'claude-code';
+    const model = conversation.model || null;
+
+    if (hasActivity) {
+      this.lockAgentAndModel(agentId, model);
+    } else {
+      this.unlockAgentAndModel();
+      if (this.ui.agentSelector) {
+        this.ui.agentSelector.value = agentId;
+      }
+      this.loadModelsForAgent(agentId).then(() => {
+        if (model && this.ui.modelSelector) {
+          this.ui.modelSelector.value = model;
+        }
+      });
     }
   }
 
@@ -2247,19 +2266,7 @@ class AgentGUIClient {
           }
           this.state.currentConversation = cached.conversation;
           const cachedHasActivity = cached.conversation.messageCount > 0 || this.state.streamingConversations.has(conversationId);
-          if (cachedHasActivity) {
-            this.lockAgentAndModel(cached.conversation.agentType || 'claude-code', cached.conversation.model || null);
-          } else {
-            this.unlockAgentAndModel();
-            if (this.ui.agentSelector && cached.conversation.agentType) this.ui.agentSelector.value = cached.conversation.agentType;
-            if (cached.conversation.agentType) {
-              this.loadModelsForAgent(cached.conversation.agentType).then(() => {
-                if (cached.conversation.model && this.ui.modelSelector) {
-                  this.ui.modelSelector.value = cached.conversation.model;
-                }
-              });
-            }
-          }
+          this.applyAgentAndModelSelection(cached.conversation, cachedHasActivity);
           this.conversationCache.delete(conversationId);
           this.restoreScrollPosition(conversationId);
           this.enableControls();
@@ -2288,19 +2295,7 @@ class AgentGUIClient {
 
       this.state.currentConversation = conversation;
       const hasActivity = (allMessages && allMessages.length > 0) || isActivelyStreaming || latestSession || this.state.streamingConversations.has(conversationId);
-      if (hasActivity) {
-        this.lockAgentAndModel(conversation.agentType || 'claude-code', conversation.model || null);
-      } else {
-        this.unlockAgentAndModel();
-        if (this.ui.agentSelector && conversation.agentType) this.ui.agentSelector.value = conversation.agentType;
-        if (conversation.agentType) {
-          this.loadModelsForAgent(conversation.agentType).then(() => {
-            if (conversation.model && this.ui.modelSelector) {
-              this.ui.modelSelector.value = conversation.model;
-            }
-          });
-        }
-      }
+      this.applyAgentAndModelSelection(conversation, hasActivity);
 
       const chunks = (rawChunks || []).map(chunk => ({
         ...chunk,
