@@ -424,7 +424,11 @@ class StreamingRenderer {
 
   _getToolColorClass(toolName) {
     const n = (toolName || '').replace(/^mcp__[^_]+__/, '').toLowerCase();
-    const map = { read: 'read', write: 'write', edit: 'edit', bash: 'bash', glob: 'glob', grep: 'grep', webfetch: 'web', websearch: 'web', todowrite: 'todo', task: 'task', notebookedit: 'edit' };
+    const map = {
+      read: 'read', write: 'write', edit: 'edit', bash: 'bash', glob: 'glob', grep: 'grep',
+      webfetch: 'web', websearch: 'web', todowrite: 'todo', task: 'task', notebookedit: 'edit',
+      execute: 'execute', sleep: 'sleep', search: 'search'
+    };
     return `tool-color-${map[n] || 'default'}`;
   }
 
