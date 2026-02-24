@@ -12,32 +12,6 @@ Transform AgentGUI into a fully ACP (Agent Connect Protocol) v0.2.3 compliant se
 
 ## Dependency Graph & Execution Waves
 
-### WAVE 3: Streaming & Run Control (2 items - after Wave 2)
-
-**3.1** SSE (Server-Sent Events) Streaming
-- BLOCKS: 2.1, 2.2, 2.3
-- BLOCKED_BY: 4.1
-- Implement SSE endpoint format (Content-Type: text/event-stream)
-- Stream run outputs as ACP `RunOutputStream` format
-- Support both `ValueRunResultUpdate` and `CustomRunResultUpdate` modes
-- Event types: data, error, done
-- Keep-alive pings every 15 seconds
-- Handle client disconnect gracefully
-- Convert existing chunk/event stream to SSE format
-- Parallel SSE + WebSocket support (both work simultaneously)
-
-**3.2** Run Cancellation & Control
-- BLOCKS: 1.1, 1.2
-- BLOCKED_BY: 4.1
-- Implement run status state machine: pending → active → completed/error/cancelled
-- Cancel endpoint kills agent process (SIGTERM then SIGKILL)
-- Update run status to 'cancelled' in database
-- Broadcast cancellation via WebSocket
-- Clean up active execution tracking
-- Return 409 if run already completed/cancelled
-- Wait endpoint implements long-polling (30s timeout, return current status)
-- Handle graceful degradation if agent doesn't support cancellation
-
 ### WAVE 4: UI Fixes & Optimization (3 items - after Wave 3)
 
 **4.1** Thread Sidebar UI Consistency
