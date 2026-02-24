@@ -295,8 +295,10 @@ expressApp.use(BASE_URL + '/files/:conversationId', (req, res, next) => {
   if (!conv || !conv.workingDirectory) {
     return res.status(404).json({ error: 'Conversation not found or no working directory' });
   }
+  // Normalize the working directory path to avoid Windows path duplication issues
+  const normalizedWorkingDir = path.resolve(conv.workingDirectory);
   // Create a fresh fsbrowse router for this conversation's directory
-  const router = fsbrowse({ baseDir: conv.workingDirectory, name: 'Files' });
+  const router = fsbrowse({ baseDir: normalizedWorkingDir, name: 'Files' });
   // Strip the conversationId param from the path before passing to fsbrowse
   req.baseUrl = BASE_URL + '/files/' + req.params.conversationId;
   router(req, res, next);
@@ -1073,7 +1075,9 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/conversations' && req.method === 'POST') {
       const body = await parseBody(req);
-      const conversation = queries.createConversation(body.agentId, body.title, body.workingDirectory || null, body.model || null);
+      // Normalize working directory to avoid Windows path issues
+      const normalizedWorkingDir = body.workingDirectory ? path.resolve(body.workingDirectory) : null;
+      const conversation = queries.createConversation(body.agentId, body.title, normalizedWorkingDir, body.model || null);
       queries.createEvent('conversation.created', { agentId: body.agentId, workingDirectory: conversation.workingDirectory, model: conversation.model }, conversation.id);
       broadcastSync({ type: 'conversation_created', conversation });
             sendJSON(req, res, 201, { conversation });
@@ -1099,6 +1103,10 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' || req.method === 'PUT') {
         const body = await parseBody(req);
+        // Normalize working directory if present to avoid Windows path issues
+        if (body.workingDirectory) {
+          body.workingDirectory = path.resolve(body.workingDirectory);
+        }
         const conv = queries.updateConversation(convMatch[1], body);
         if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
         queries.createEvent('conversation.updated', body, convMatch[1]);
