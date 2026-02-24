@@ -1488,10 +1488,14 @@ const server = http.createServer(async (req, res) => {
       if (statelessThreadId) {
         const conv = queries.getConversation(statelessThreadId);
         if (conv && input?.content) {
-          runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null).catch((err) => {
-            sseManager.sendError(err.message);
-            sseManager.cleanup();
-          });
+          const statelessSession = queries.createSession(statelessThreadId);
+          queries.updateRunStatus(run.run_id, 'active');
+          activeExecutions.set(statelessThreadId, { pid: null, startTime: Date.now(), sessionId: statelessSession.id, lastActivity: Date.now() });
+          activeProcessesByRunId.set(run.run_id, { threadId: statelessThreadId, sessionId: statelessSession.id });
+          queries.setIsStreaming(statelessThreadId, true);
+          processMessageWithStreaming(statelessThreadId, null, statelessSession.id, input.content, agent_id, config?.model || null)
+            .then(() => { queries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
+            .catch((err) => { queries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
         }
       }
       return;
@@ -3745,6 +3749,7 @@ const BROADCAST_TYPES = new Set([
 ]);
 
 const wsBatchQueues = new Map();
+const wsLastMessages = new Map();
 const BATCH_BY_TIER = { excellent: 16, good: 32, fair: 50, poor: 100, bad: 200 };
 
 const TIER_ORDER = ['excellent', 'good', 'fair', 'poor', 'bad'];
@@ -3762,7 +3767,7 @@ function getBatchInterval(ws) {
 function flushWsBatch(ws) {
   const queue = wsBatchQueues.get(ws);
   if (!queue || queue.msgs.length === 0) return;
-  if (ws.readyState !== 1) { wsBatchQueues.delete(ws); return; }
+  if (ws.readyState !== 1) { wsBatchQueues.delete(ws); wsLastMessages.delete(ws); return; }
   if (queue.msgs.length === 1) {
     ws.send(queue.msgs[0]);
   } else {
@@ -3772,8 +3777,23 @@ function flushWsBatch(ws) {
   queue.timer = null;
 }
 
+function createMessageKey(event) {
+  return `${event.type}:${event.sessionId || ''}:${event.conversationId || ''}:${event.status || ''}`;
+}
+
 function sendToClient(ws, data) {
   if (ws.readyState !== 1) return;
+
+  const event = JSON.parse(data);
+  const msgKey = createMessageKey(event);
+  const lastKey = wsLastMessages.get(ws);
+
+  if (msgKey === lastKey) {
+    return;
+  }
+
+  wsLastMessages.set(ws, msgKey);
+
   let queue = wsBatchQueues.get(ws);
   if (!queue) { queue = { msgs: [], timer: null }; wsBatchQueues.set(ws, queue); }
   queue.msgs.push(data);
