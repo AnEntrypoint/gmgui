@@ -12,7 +12,8 @@ import { OAuth2Client } from 'google-auth-library';
 import express from 'express';
 import Busboy from 'busboy';
 import fsbrowse from 'fsbrowse';
-import { queries } from './database.js';
+import { queries, db, prepare } from './database.js';
+import { createACPQueries } from './acp-queries.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 
@@ -2633,7 +2634,7 @@ const server = http.createServer(async (req, res) => {
     // GET /threads/{thread_id} - Get thread by ID
     const acpThreadMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})$/);
     if (acpThreadMatch && req.method === 'GET') {
-      const threadId = threadByIdMatch[1];
+      const threadId = acpThreadMatch[1];
       try {
         const thread = queries.getThread(threadId);
         if (!thread) {
@@ -2649,7 +2650,7 @@ const server = http.createServer(async (req, res) => {
 
     // PATCH /threads/{thread_id} - Update thread metadata
     if (acpThreadMatch && req.method === 'PATCH') {
-      const threadId = threadByIdMatch[1];
+      const threadId = acpThreadMatch[1];
       try {
         const body = await parseBody(req);
         const thread = queries.patchThread(threadId, body);
@@ -2666,7 +2667,7 @@ const server = http.createServer(async (req, res) => {
 
     // DELETE /threads/{thread_id} - Delete thread (fail if pending runs exist)
     if (acpThreadMatch && req.method === 'DELETE') {
-      const threadId = threadByIdMatch[1];
+      const threadId = acpThreadMatch[1];
       try {
         queries.deleteThread(threadId);
         res.writeHead(204);
