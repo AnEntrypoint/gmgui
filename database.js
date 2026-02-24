@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
+import { createACPQueries } from './acp-queries.js';
 
 const require = createRequire(import.meta.url);
 
@@ -226,8 +227,102 @@ function migrateFromJson() {
   }
 }
 
+function migrateToACP() {
+  try {
+    const migrate = db.transaction(() => {
+      // Create new tables for ACP support
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS thread_states (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          checkpoint_id TEXT,
+          state_data TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE,
+          FOREIGN KEY (checkpoint_id) REFERENCES checkpoints(id) ON DELETE SET NULL
+        )
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS checkpoints (
+          id TEXT PRIMARY KEY,
+          thread_id TEXT NOT NULL,
+          checkpoint_name TEXT NOT NULL,
+          sequence INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE
+        )
+      `);
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS run_metadata (
+          id TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL UNIQUE,
+          thread_id TEXT,
+          agent_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pending',
+          input TEXT,
+          config TEXT,
+          webhook_url TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE
+        )
+      `);
+
+      // Add new columns to existing tables
+      const convCols = db.prepare("PRAGMA table_info(conversations)").all();
+      const convColNames = convCols.map(c => c.name);
+
+      if (!convColNames.includes('metadata')) {
+        db.exec('ALTER TABLE conversations ADD COLUMN metadata TEXT');
+      }
+
+      const sessCols = db.prepare("PRAGMA table_info(sessions)").all();
+      const sessColNames = sessCols.map(c => c.name);
+
+      const sessionCols = {
+        run_id: 'TEXT',
+        input: 'TEXT',
+        config: 'TEXT',
+        interrupt: 'TEXT'
+      };
+
+      for (const [colName, colType] of Object.entries(sessionCols)) {
+        if (!sessColNames.includes(colName)) {
+          db.exec(`ALTER TABLE sessions ADD COLUMN ${colName} ${colType}`);
+        }
+      }
+
+      // Create indexes
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_thread_states_thread ON thread_states(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_thread_states_checkpoint ON thread_states(checkpoint_id);
+        CREATE INDEX IF NOT EXISTS idx_thread_states_created ON thread_states(created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_checkpoints_thread ON checkpoints(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_checkpoints_sequence ON checkpoints(thread_id, sequence);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoints_unique_seq ON checkpoints(thread_id, sequence);
+
+        CREATE INDEX IF NOT EXISTS idx_run_metadata_run_id ON run_metadata(run_id);
+        CREATE INDEX IF NOT EXISTS idx_run_metadata_thread ON run_metadata(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_run_metadata_status ON run_metadata(status);
+        CREATE INDEX IF NOT EXISTS idx_run_metadata_agent ON run_metadata(agent_id);
+        CREATE INDEX IF NOT EXISTS idx_run_metadata_created ON run_metadata(created_at);
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_run_id ON sessions(run_id);
+      `);
+    });
+
+    migrate();
+  } catch (err) {
+    console.error('[Migration] ACP schema migration error:', err.message);
+  }
+}
+
 initSchema();
 migrateFromJson();
+migrateToACP();
 
 // Migration: Add imported conversation columns if they don't exist
 try {
@@ -272,25 +367,90 @@ try {
   console.error('[Migration] Error:', err.message);
 }
 
-// Migration: Add resume capability columns to  if needed
-try {
-  const result = db.prepare("PRAGMA table_info()").all();
-  const columnNames = result.map(r => r.name);
-  const resumeColumns = {
-    attempts: 'INTEGER DEFAULT 0',
-    lastAttempt: 'INTEGER',
-    currentSize: 'INTEGER DEFAULT 0',
-    hash: 'TEXT'
-  };
+// Migration: Add resume capability columns (disabled - incomplete migration)
+// This migration block was incomplete and has been removed
 
-  for (const [colName, colDef] of Object.entries(resumeColumns)) {
-    if (!columnNames.includes(colName)) {
-      db.exec(`ALTER TABLE  ADD COLUMN ${colName} ${colDef}`);
-      console.log(`[Migration] Added column ${colName} to  table`);
-    }
+// ============ ACP SCHEMA MIGRATION ============
+try {
+  console.log('[Migration] Running ACP schema migration...');
+
+  // Add metadata column to conversations if not exists
+  const convColsACP = db.prepare("PRAGMA table_info(conversations)").all().map(c => c.name);
+  if (!convColsACP.includes('metadata')) {
+    db.exec('ALTER TABLE conversations ADD COLUMN metadata TEXT DEFAULT "{}"');
+    console.log('[Migration] Added metadata column to conversations');
   }
+
+  // Add run_id, input, config, interrupt to sessions if not exists
+  const sessColsACP = db.prepare("PRAGMA table_info(sessions)").all().map(c => c.name);
+  if (!sessColsACP.includes('run_id')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN run_id TEXT');
+    console.log('[Migration] Added run_id column to sessions');
+  }
+  if (!sessColsACP.includes('input')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN input TEXT');
+    console.log('[Migration] Added input column to sessions');
+  }
+  if (!sessColsACP.includes('config')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN config TEXT');
+    console.log('[Migration] Added config column to sessions');
+  }
+  if (!sessColsACP.includes('interrupt')) {
+    db.exec('ALTER TABLE sessions ADD COLUMN interrupt TEXT');
+    console.log('[Migration] Added interrupt column to sessions');
+  }
+
+  // Create ACP tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS thread_states (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      checkpoint_id TEXT NOT NULL,
+      state_data TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_thread_states_thread ON thread_states(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_thread_states_checkpoint ON thread_states(checkpoint_id);
+    CREATE INDEX IF NOT EXISTS idx_thread_states_created ON thread_states(created_at);
+
+    CREATE TABLE IF NOT EXISTS checkpoints (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      checkpoint_name TEXT,
+      sequence INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_thread ON checkpoints(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_checkpoints_sequence ON checkpoints(thread_id, sequence);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoints_unique ON checkpoints(thread_id, sequence);
+
+    CREATE TABLE IF NOT EXISTS run_metadata (
+      run_id TEXT PRIMARY KEY,
+      thread_id TEXT,
+      agent_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      input TEXT,
+      config TEXT,
+      webhook_url TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (thread_id) REFERENCES conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (run_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_run_metadata_thread ON run_metadata(thread_id);
+    CREATE INDEX IF NOT EXISTS idx_run_metadata_agent ON run_metadata(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_run_metadata_status ON run_metadata(status);
+    CREATE INDEX IF NOT EXISTS idx_run_metadata_created ON run_metadata(created_at);
+  `);
+
+  console.log('[Migration] ACP schema migration complete');
 } catch (err) {
-  console.error('[Migration] Schema update warning:', err.message);
+  console.error('[Migration] ACP schema migration error:', err.message);
 }
 
 // Migration: Backfill messages for conversations imported without message content
@@ -1300,7 +1460,10 @@ export const queries = {
   markDownloadPaused(downloadId, errorMessage) {
     const stmt = prep('UPDATE  SET status = ?, error_message = ?, lastAttempt = ? WHERE id = ?');
     stmt.run('paused', errorMessage, Date.now(), downloadId);
-  }
+  },
+
+  // ============ ACP-COMPATIBLE QUERIES ============
+  ...createACPQueries(db, prep)
 };
 
 export default { queries };

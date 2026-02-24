@@ -14,6 +14,7 @@ import Busboy from 'busboy';
 import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
+import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 
 const ttsTextAccumulators = new Map();
 
@@ -338,6 +339,7 @@ function discoverAgents() {
 }
 
 const discoveredAgents = discoverAgents();
+initializeDescriptors(discoveredAgents);
 
 const modelCache = new Map();
 
@@ -1884,32 +1886,14 @@ const server = http.createServer(async (req, res) => {
     const agentDescriptorMatch = pathOnly.match(/^\/api\/agents\/([^/]+)\/descriptor$/);
     if (agentDescriptorMatch && req.method === 'GET') {
       const agentId = agentDescriptorMatch[1];
-      const agent = discoveredAgents.find(a => a.id === agentId);
-      
-      if (!agent) {
+      const descriptor = getAgentDescriptor(agentId);
+
+      if (!descriptor) {
         sendJSON(req, res, 404, { error: 'Agent not found' });
         return;
       }
 
-      sendJSON(req, res, 200, {
-        agentId: agent.id,
-        agentName: agent.name,
-        protocol: agent.protocol || 'direct',
-        capabilities: {
-          streaming: true,
-          cancel: true,
-          resume: agent.protocol === 'direct',
-          stateful: true
-        },
-        inputSchema: {
-          type: 'object',
-          properties: {
-            content: { type: 'string', description: 'The prompt to send to the agent' }
-          },
-          required: ['content']
-        },
-        stateFormat: 'opaque'
-      });
+      sendJSON(req, res, 200, descriptor);
       return;
     }
 
