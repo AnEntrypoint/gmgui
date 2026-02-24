@@ -427,7 +427,7 @@ class StreamingRenderer {
     const map = {
       read: 'read', write: 'write', edit: 'edit', bash: 'bash', glob: 'glob', grep: 'grep',
       webfetch: 'web', websearch: 'web', todowrite: 'todo', task: 'task', notebookedit: 'edit',
-      execute: 'execute', sleep: 'sleep', search: 'search'
+      execute: 'execute', sleep: 'sleep', search: 'search', skill: 'skill'
     };
     return `tool-color-${map[n] || 'default'}`;
   }
