@@ -1556,7 +1556,7 @@ class StreamingRenderer {
         </svg>
         <div class="flex-1">
           <h4 class="font-semibold text-blue-900 dark:text-blue-200">Streaming Started</h4>
-          <p class="text-sm text-blue-700 dark:text-blue-300">Agent: ${this.escapeHtml(event.agentId || 'unknown')} • ${time}</p>
+          <p class="text-sm text-blue-700 dark:text-blue-300">${time}</p>
         </div>
       </div>
     `;

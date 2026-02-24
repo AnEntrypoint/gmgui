@@ -583,11 +583,14 @@ class AgentGUIClient {
       let messagesEl = outputEl.querySelector('.conversation-messages');
       if (!messagesEl) {
         const conv = this.state.currentConversation;
-        const wdInfo = conv?.workingDirectory ? ` - ${this.escapeHtml(conv.workingDirectory)}` : '';
+        const wdInfo = conv?.workingDirectory ? `${this.escapeHtml(conv.workingDirectory)}` : '';
+        const timestamp = new Date(conv?.created_at || Date.now()).toLocaleDateString();
+        const metaParts = [timestamp];
+        if (wdInfo) metaParts.push(wdInfo);
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conv?.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conv?.agentType || 'unknown'}${conv?.model ? ' (' + this.escapeHtml(conv.model) + ')' : ''} - ${new Date(conv?.created_at || Date.now()).toLocaleDateString()}${wdInfo}</p>
+            <p class="text-secondary">${metaParts.join(' - ')}</p>
           </div>
           <div class="conversation-messages"></div>
         `;
@@ -1518,11 +1521,14 @@ class AgentGUIClient {
     if (!outputEl) return;
     const conv = this.state.conversations.find(c => c.id === conversationId);
     const title = conv?.title || 'Conversation';
-    const wdInfo = conv?.workingDirectory ? ` - ${this.escapeHtml(conv.workingDirectory)}` : '';
+    const wdInfo = conv?.workingDirectory ? `${this.escapeHtml(conv.workingDirectory)}` : '';
+    const timestamp = conv ? new Date(conv.created_at).toLocaleDateString() : '';
+    const metaParts = [timestamp];
+    if (wdInfo) metaParts.push(wdInfo);
     outputEl.innerHTML = `
       <div class="conversation-header">
         <h2>${this.escapeHtml(title)}</h2>
-        <p class="text-secondary">${conv?.agentType || 'unknown'}${conv?.model ? ' (' + this.escapeHtml(conv.model) + ')' : ''} - ${conv ? new Date(conv.created_at).toLocaleDateString() : ''}${wdInfo}</p>
+        <p class="text-secondary">${metaParts.join(' - ')}</p>
       </div>
       <div class="conversation-messages">
         <div class="skeleton-loading">
@@ -1962,7 +1968,7 @@ class AgentGUIClient {
    * Consolidates duplicate logic for cached and fresh conversation loads
    */
   applyAgentAndModelSelection(conversation, hasActivity) {
-    const agentId = conversation.agentType || 'claude-code';
+    const agentId = conversation.agentId || conversation.agentType || 'claude-code';
     const model = conversation.model || null;
 
     if (hasActivity) {
@@ -2310,11 +2316,14 @@ class AgentGUIClient {
 
       const outputEl = document.getElementById('output');
       if (outputEl) {
-        const wdInfo = conversation.workingDirectory ? ` - ${this.escapeHtml(conversation.workingDirectory)}` : '';
+        const wdInfo = conversation.workingDirectory ? `${this.escapeHtml(conversation.workingDirectory)}` : '';
+        const timestamp = new Date(conversation.created_at).toLocaleDateString();
+        const metaParts = [timestamp];
+        if (wdInfo) metaParts.push(wdInfo);
         outputEl.innerHTML = `
           <div class="conversation-header">
             <h2>${this.escapeHtml(conversation.title || 'Conversation')}</h2>
-            <p class="text-secondary">${conversation.agentType || 'unknown'}${conversation.model ? ' (' + this.escapeHtml(conversation.model) + ')' : ''} - ${new Date(conversation.created_at).toLocaleDateString()}${wdInfo}</p>
+            <p class="text-secondary">${metaParts.join(' - ')}</p>
           </div>
           <div class="conversation-messages"></div>
         `;

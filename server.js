@@ -16,6 +16,7 @@ import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 import { SSEStreamManager } from './lib/sse-stream.js';
+import { WSOptimizer } from './lib/ws-optimizer.js';
 
 const ttsTextAccumulators = new Map();
 
