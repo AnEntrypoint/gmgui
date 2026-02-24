@@ -2231,15 +2231,11 @@ const server = http.createServer(async (req, res) => {
         }
 
         activeExecutions.delete(threadId);
+        activeProcessesByRunId.delete(runId);
         queries.setIsStreaming(threadId, false);
 
-        broadcastSync({
-          type: 'streaming_cancelled',
-          sessionId: execution?.sessionId || runId,
-          conversationId: threadId,
-          runId: runId,
-          timestamp: Date.now()
-        });
+        broadcastSync({ type: 'run_cancelled', runId, threadId, sessionId: execution?.sessionId, timestamp: Date.now() });
+        broadcastSync({ type: 'streaming_cancelled', sessionId: execution?.sessionId || runId, conversationId: threadId, runId, timestamp: Date.now() });
 
         sendJSON(req, res, 200, cancelledRun);
       } catch (err) {
@@ -2273,9 +2269,14 @@ const server = http.createServer(async (req, res) => {
       const startTime = Date.now();
       const pollInterval = setInterval(() => {
         const currentRun = queries.getRun(runId);
-        if (!currentRun || ['success', 'error', 'cancelled'].includes(currentRun.status) || (Date.now() - startTime) > 30000) {
+        const elapsed = Date.now() - startTime;
+        const done = currentRun && ['success', 'error', 'cancelled'].includes(currentRun.status);
+        if (done) {
           clearInterval(pollInterval);
-          sendJSON(req, res, 200, currentRun || run);
+          sendJSON(req, res, 200, currentRun);
+        } else if (elapsed > 30000) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 408, { error: 'Run still pending after 30s', run_id: runId, status: currentRun?.status || run.status });
         }
       }, 500);
       req.on('close', () => clearInterval(pollInterval));
@@ -3031,70 +3032,6 @@ const server = http.createServer(async (req, res) => {
         sseStreamHandlers.delete(runId);
         sseManager.cleanup();
       });
-      return;
-    }
-
-    // POST /threads/{thread_id}/runs/{run_id}/cancel - Cancel a run on a thread
-    const threadRunCancelMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/cancel$/);
-    if (threadRunCancelMatch && req.method === 'POST') {
-      const threadId = threadRunCancelMatch[1];
-      const runId = threadRunCancelMatch[2];
-      try {
-        const run = queries.getRun(runId);
-        if (!run || run.thread_id !== threadId) {
-          sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
-          return;
-        }
-        if (['success', 'error', 'cancelled'].includes(run.status)) {
-          sendJSON(req, res, 409, { error: 'Run already completed or cancelled', type: 'conflict' });
-          return;
-        }
-        const cancelledRun = queries.cancelRun(runId);
-        const execution = activeExecutions.get(threadId);
-        if (execution?.pid) {
-          try { process.kill(-execution.pid, 'SIGTERM'); } catch { try { process.kill(execution.pid, 'SIGTERM'); } catch (e) {} }
-          setTimeout(() => {
-            try { process.kill(-execution.pid, 'SIGKILL'); } catch { try { process.kill(execution.pid, 'SIGKILL'); } catch (e) {} }
-          }, 3000);
-        }
-        if (execution?.sessionId) {
-          queries.updateSession(execution.sessionId, { status: 'error', error: 'Cancelled by user', completed_at: Date.now() });
-        }
-        activeExecutions.delete(threadId);
-        activeProcessesByRunId.delete(runId);
-        queries.setIsStreaming(threadId, false);
-        broadcastSync({ type: 'run_cancelled', runId, threadId, sessionId: execution?.sessionId, timestamp: Date.now() });
-        sendJSON(req, res, 200, cancelledRun);
-      } catch (err) {
-        sendJSON(req, res, 500, { error: err.message, type: 'internal_error' });
-      }
-      return;
-    }
-
-    // GET /threads/{thread_id}/runs/{run_id}/wait - Long-poll for run completion on thread
-    const threadRunWaitMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/wait$/);
-    if (threadRunWaitMatch && req.method === 'GET') {
-      const threadId = threadRunWaitMatch[1];
-      const runId = threadRunWaitMatch[2];
-      const run = queries.getRun(runId);
-      if (!run || run.thread_id !== threadId) {
-        sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
-        return;
-      }
-      const startTime = Date.now();
-      const pollInterval = setInterval(() => {
-        const currentRun = queries.getRun(runId);
-        const elapsed = Date.now() - startTime;
-        const done = currentRun && ['success', 'error', 'cancelled'].includes(currentRun.status);
-        if (done) {
-          clearInterval(pollInterval);
-          sendJSON(req, res, 200, currentRun);
-        } else if (elapsed > 30000) {
-          clearInterval(pollInterval);
-          sendJSON(req, res, 408, { error: 'Run still pending after 30s', run_id: runId, status: currentRun?.status || run.status });
-        }
-      }, 500);
-      req.on('close', () => clearInterval(pollInterval));
       return;
     }
 
