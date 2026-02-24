@@ -1825,6 +1825,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/ws-stats' && req.method === 'GET') {
+      const stats = wsOptimizer.getStats();
+      sendJSON(req, res, 200, stats);
+      return;
+    }
+
     if (pathOnly === '/api/agents/search' && req.method === 'POST') {
       const body = await parseBody(req);
       const result = queries.searchAgents(discoveredAgents, body);
