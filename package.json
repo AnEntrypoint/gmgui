@@ -17,7 +17,8 @@
   "homepage": "https://github.com/AnEntrypoint/agentgui#readme",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js --watch"
+    "dev": "node server.js --watch",
+    "postinstall": "node scripts/patch-fsbrowse.js"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.37",
