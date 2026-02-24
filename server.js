@@ -3749,68 +3749,15 @@ const BROADCAST_TYPES = new Set([
   'model_download_progress', 'stt_progress', 'tts_setup_progress', 'voice_list'
 ]);
 
-const wsBatchQueues = new Map();
-const wsLastMessages = new Map();
-const BATCH_BY_TIER = { excellent: 16, good: 32, fair: 50, poor: 100, bad: 200 };
-
-const TIER_ORDER = ['excellent', 'good', 'fair', 'poor', 'bad'];
-function getBatchInterval(ws) {
-  const tier = ws.latencyTier || 'good';
-  const trend = ws.latencyTrend;
-  if (trend === 'rising' || trend === 'falling') {
-    const idx = TIER_ORDER.indexOf(tier);
-    if (trend === 'rising' && idx < TIER_ORDER.length - 1) return BATCH_BY_TIER[TIER_ORDER[idx + 1]] || 32;
-    if (trend === 'falling' && idx > 0) return BATCH_BY_TIER[TIER_ORDER[idx - 1]] || 32;
-  }
-  return BATCH_BY_TIER[tier] || 32;
-}
-
-function flushWsBatch(ws) {
-  const queue = wsBatchQueues.get(ws);
-  if (!queue || queue.msgs.length === 0) return;
-  if (ws.readyState !== 1) { wsBatchQueues.delete(ws); wsLastMessages.delete(ws); return; }
-  if (queue.msgs.length === 1) {
-    ws.send(queue.msgs[0]);
-  } else {
-    ws.send('[' + queue.msgs.join(',') + ']');
-  }
-  queue.msgs.length = 0;
-  queue.timer = null;
-}
-
-function createMessageKey(event) {
-  return `${event.type}:${event.sessionId || ''}:${event.conversationId || ''}:${event.status || ''}`;
-}
-
-function sendToClient(ws, data) {
-  if (ws.readyState !== 1) return;
-
-  const event = JSON.parse(data);
-  const msgKey = createMessageKey(event);
-  const lastKey = wsLastMessages.get(ws);
-
-  if (msgKey === lastKey) {
-    return;
-  }
-
-  wsLastMessages.set(ws, msgKey);
-
-  let queue = wsBatchQueues.get(ws);
-  if (!queue) { queue = { msgs: [], timer: null }; wsBatchQueues.set(ws, queue); }
-  queue.msgs.push(data);
-  if (!queue.timer) {
-    queue.timer = setTimeout(() => flushWsBatch(ws), getBatchInterval(ws));
-  }
-}
+const wsOptimizer = new WSOptimizer();
 
 function broadcastSync(event) {
-  const data = JSON.stringify(event);
   const isBroadcast = BROADCAST_TYPES.has(event.type);
 
-  // Send to WebSocket clients
+  // Send to WebSocket clients using optimizer
   if (syncClients.size > 0) {
     if (isBroadcast) {
-      for (const ws of syncClients) sendToClient(ws, data);
+      for (const ws of syncClients) wsOptimizer.sendToClient(ws, event);
     } else {
       const targets = new Set();
       if (event.sessionId) {
@@ -3821,7 +3768,7 @@ function broadcastSync(event) {
         const subs = subscriptionIndex.get(`conv-${event.conversationId}`);
         if (subs) for (const ws of subs) targets.add(ws);
       }
-      for (const ws of targets) sendToClient(ws, data);
+      for (const ws of targets) wsOptimizer.sendToClient(ws, event);
     }
   }
 
