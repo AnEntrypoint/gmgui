@@ -361,7 +361,14 @@ class AgentGUIClient {
       this.ui.agentSelector.addEventListener('change', () => {
         if (!this._agentLocked) {
           this.loadModelsForAgent(this.ui.agentSelector.value);
+          this.saveAgentAndModelToConversation();
         }
+      });
+    }
+
+    if (this.ui.modelSelector) {
+      this.ui.modelSelector.addEventListener('change', () => {
+        this.saveAgentAndModelToConversation();
       });
     }
 

@@ -576,16 +576,22 @@ export const queries = {
     const now = Date.now();
     const title = data.title !== undefined ? data.title : conv.title;
     const status = data.status !== undefined ? data.status : conv.status;
+    const agentId = data.agentId !== undefined ? data.agentId : conv.agentId;
+    const agentType = data.agentType !== undefined ? data.agentType : conv.agentType;
+    const model = data.model !== undefined ? data.model : conv.model;
 
     const stmt = prep(
-      `UPDATE conversations SET title = ?, status = ?, updated_at = ? WHERE id = ?`
+      `UPDATE conversations SET title = ?, status = ?, agentId = ?, agentType = ?, model = ?, updated_at = ? WHERE id = ?`
     );
-    stmt.run(title, status, now, id);
+    stmt.run(title, status, agentId, agentType, model, now, id);
 
     return {
       ...conv,
       title,
       status,
+      agentId,
+      agentType,
+      model,
       updated_at: now
     };
   },
