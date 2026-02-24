@@ -420,8 +420,10 @@ class ConversationManager {
     const isStreaming = this.streamingConversations.has(conv.id);
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
+    const agent = this.getAgentDisplayName(conv.agentId || conv.agentType);
+    const modelLabel = conv.model ? ` (${conv.model})` : '';
     const wd = conv.workingDirectory ? pathBasename(conv.workingDirectory) : '';
-    const metaParts = [timestamp];
+    const metaParts = [agent + modelLabel, timestamp];
     if (wd) metaParts.push(wd);
 
     const titleEl = el.querySelector('.conversation-item-title');
@@ -446,8 +448,10 @@ class ConversationManager {
 
     const title = conv.title || `Conversation ${conv.id.slice(0, 8)}`;
     const timestamp = conv.created_at ? new Date(conv.created_at).toLocaleDateString() : 'Unknown';
-    const wd = conv.workingDirectory ? conv.workingDirectory.split('/').pop() : '';
-    const metaParts = [timestamp];
+    const agent = this.getAgentDisplayName(conv.agentId || conv.agentType);
+    const modelLabel = conv.model ? ` (${conv.model})` : '';
+    const wd = conv.workingDirectory ? pathBasename(conv.workingDirectory) : '';
+    const metaParts = [agent + modelLabel, timestamp];
     if (wd) metaParts.push(wd);
 
     const streamingBadge = isStreaming
