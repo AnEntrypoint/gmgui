@@ -3732,6 +3732,7 @@ wss.on('connection', (ws, req) => {
     ws.on('close', () => {
       if (ws.terminalProc) { try { ws.terminalProc.kill(); } catch(e) {} ws.terminalProc = null; }
       syncClients.delete(ws);
+      wsOptimizer.removeClient(ws);
       for (const sub of ws.subscriptions) {
         const idx = subscriptionIndex.get(sub);
         if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(sub); }
@@ -3785,6 +3786,7 @@ const heartbeatInterval = setInterval(() => {
   syncClients.forEach(ws => {
     if (!ws.isAlive) {
       syncClients.delete(ws);
+      wsOptimizer.removeClient(ws);
       return ws.terminate();
     }
     ws.isAlive = false;
