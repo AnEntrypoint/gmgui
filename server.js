@@ -3839,4 +3839,3 @@ function performRecovery() {
 setInterval(performRecovery, 300000);
 
 server.listen(PORT, onServerReady);
-}
