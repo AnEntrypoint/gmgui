@@ -12,8 +12,7 @@ import { OAuth2Client } from 'google-auth-library';
 import express from 'express';
 import Busboy from 'busboy';
 import fsbrowse from 'fsbrowse';
-import { queries, db, prepare } from './database.js';
-import { createACPQueries } from './acp-queries.js';
+import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 
@@ -341,8 +340,6 @@ function discoverAgents() {
 
 const discoveredAgents = discoverAgents();
 initializeDescriptors(discoveredAgents);
-const acpQueries = createACPQueries(db, prepare);
-acpQueries.getAgentDescriptor = getAgentDescriptor;
 
 const modelCache = new Map();
 
@@ -2608,6 +2605,7 @@ const server = http.createServer(async (req, res) => {
 
     // POST /threads - Create empty thread
     if (pathOnly === '/api/threads' && req.method === 'POST') {
+      console.log('[ACP] POST /api/threads HIT');
       try {
         const body = await parseBody(req);
         const metadata = body.metadata || {};

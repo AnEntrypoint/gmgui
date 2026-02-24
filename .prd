@@ -1,0 +1,255 @@
+# AgentGUI ACP Compliance PRD
+
+## Overview
+Transform AgentGUI into a fully ACP (Agent Connect Protocol) v0.2.3 compliant server while fixing UI consistency issues and optimizing WebSocket usage.
+
+**Current Status**: ~30% ACP compliant (basic conversation/message CRUD exists)
+**Target**: 100% ACP compliant with all endpoints, thread management, stateless runs, and run control
+
+**Note on "Slash Commands"**: ACP spec contains no slash command concept. This is purely a client-side UI feature outside ACP scope. If user wants slash commands implemented, that would be a separate UI enhancement task.
+
+---
+
+## Dependency Graph & Execution Waves
+
+### WAVE 3: Streaming & Run Control (2 items - after Wave 2)
+
+**3.1** SSE (Server-Sent Events) Streaming
+- BLOCKS: 2.1, 2.2, 2.3
+- BLOCKED_BY: 4.1
+- Implement SSE endpoint format (Content-Type: text/event-stream)
+- Stream run outputs as ACP `RunOutputStream` format
+- Support both `ValueRunResultUpdate` and `CustomRunResultUpdate` modes
+- Event types: data, error, done
+- Keep-alive pings every 15 seconds
+- Handle client disconnect gracefully
+- Convert existing chunk/event stream to SSE format
+- Parallel SSE + WebSocket support (both work simultaneously)
+
+**3.2** Run Cancellation & Control
+- BLOCKS: 1.1, 1.2
+- BLOCKED_BY: 4.1
+- Implement run status state machine: pending → active → completed/error/cancelled
+- Cancel endpoint kills agent process (SIGTERM then SIGKILL)
+- Update run status to 'cancelled' in database
+- Broadcast cancellation via WebSocket
+- Clean up active execution tracking
+- Return 409 if run already completed/cancelled
+- Wait endpoint implements long-polling (30s timeout, return current status)
+- Handle graceful degradation if agent doesn't support cancellation
+
+### WAVE 4: UI Fixes & Optimization (3 items - after Wave 3)
+
+**4.1** Thread Sidebar UI Consistency
+- BLOCKS: 2.1, 2.2, 3.1
+- BLOCKED_BY: nothing
+- Audit conversation list rendering: verify agent display matches conversation.agentId
+- Ensure model selection persists when loading existing conversation
+- On conversation resume: restore last-used agent and model to UI selectors
+- Fix any duplicate agent/model displays in sidebar or header
+- Test: create conversation with agent A, reload page, verify agent A shown
+- Test: switch to agent B mid-conversation, reload, verify agent B shown
+- Store agent/model in conversation record, use as source of truth
+
+**4.2** WebSocket Usage Optimization
+- BLOCKS: 3.1
+- BLOCKED_BY: nothing
+- Audit all broadcastSync calls: identify high-frequency low-value messages
+- Batch streaming_progress events (max 10 events per 100ms window)
+- Only broadcast to subscribed clients (per sessionId or conversationId)
+- Compress large payloads before WebSocket send
+- Add message priority: high (errors, completion), normal (progress), low (status)
+- Rate limit per client: max 100 msg/sec
+- Implement message deduplication for identical consecutive events
+- Monitor: track bytes sent per client, log if >1MB/sec sustained
+
+**4.3** Consolidate Duplicate Displays
+- BLOCKS: 4.1
+- BLOCKED_BY: nothing
+- Identify all places where agent/model info is displayed
+- Remove duplicate displays: keep one authoritative location per UI section
+- Sidebar: show agent name only (remove if duplicated elsewhere)
+- Header/toolbar: show model + agent if conversation active
+- Message bubbles: show agent avatar/name per message only if multi-agent conversation
+- Test: verify no redundant agent/model text after changes
+
+---
+
+## Additional Enhancements (Non-blocking)
+
+### NICE-TO-HAVE 1: Webhook Callbacks
+- Implement webhook support for run status changes
+- POST to webhook URL when run status changes (pending → active → completed)
+- Retry logic: 3 attempts with exponential backoff
+- Store webhook config in run_metadata table
+- Validate webhook URL format on run creation
+
+### NICE-TO-HAVE 2: Run Interrupts
+- Support interrupt mechanism for agents that implement it
+- Interrupt types: user feedback request, tool approval, configuration needed
+- Store interrupt state in sessions table
+- API endpoints: GET /runs/{id}/interrupts, POST /runs/{id}/resume with interrupt response
+- UI: show interrupt prompt, collect user input, resume run
+
+### NICE-TO-HAVE 3: Enhanced Search & Filtering
+- Full-text search on thread content (messages, agent responses)
+- Filter by agent type, date range, status, metadata fields
+- Search history: recent searches saved per user
+- Autocomplete for search filters
+- Export search results as JSON
+
+### NICE-TO-HAVE 4: Thread Templates
+- Save thread configuration as template
+- Templates include: agent, model, initial prompt, working directory
+- Clone thread from template
+- Share templates between users (if multi-user support added)
+
+---
+
+## Testing Requirements (Per Item)
+
+Each implementation item must include:
+1. Execute in plugin:gm:dev: create test run for every endpoint/function
+2. Success paths: valid inputs, expected outputs verified
+3. Error paths: invalid inputs, 404s, 409s, 422s verified
+4. Edge cases: empty results, large payloads, concurrent requests
+5. Integration tests: end-to-end flow (create thread → run → stream → cancel)
+6. Database verification: inspect tables after operations, verify foreign keys
+7. WebSocket verification: subscribe, receive events, verify payload format
+8. SSE verification: curl endpoint, verify event-stream format
+
+---
+
+## Acceptance Criteria (All Must Pass)
+
+### Core ACP Compliance
+- [ ] All 23 ACP endpoints implemented and tested
+- [ ] All ACP data models match spec (Thread, ThreadState, Run, Agent, etc.)
+- [ ] Error responses follow ACP format (ErrorResponse schema)
+- [ ] SSE streaming works with curl: `curl -N /threads/{id}/runs/stream`
+- [ ] Stateless runs work without thread context
+- [ ] Run cancellation kills agent process within 5 seconds
+- [ ] Thread copy duplicates all states and checkpoints
+- [ ] Agent descriptors return valid JSON matching AgentACPDescriptor schema
+
+### Database Integrity
+- [ ] No orphaned records after thread/run deletion
+- [ ] Foreign key constraints enforced
+- [ ] Thread status correctly reflects run states
+- [ ] Checkpoint sequences monotonically increase
+- [ ] WAL mode enabled, queries under 100ms for typical operations
+
+### UI Consistency
+- [ ] Sidebar shows correct agent for each conversation
+- [ ] Model selection persists after page reload
+- [ ] No duplicate agent/model displays found
+- [ ] Agent/model changes reflected in database immediately
+
+### WebSocket Optimization
+- [ ] Streaming progress events batched (max 10/100ms)
+- [ ] Only subscribed clients receive messages
+- [ ] No client exceeds 1MB/sec sustained WebSocket traffic
+- [ ] Message deduplication prevents identical consecutive events
+
+### Integration & E2E
+- [ ] Full flow: create thread → start run → stream events → cancel → verify cancelled
+- [ ] Stateless run: create run → stream → complete → verify output
+- [ ] Thread search: create 10 threads → search by metadata → verify correct results
+- [ ] Agent search: search by capability "streaming" → verify all streaming agents returned
+- [ ] Thread copy: create thread with 5 runs → copy → verify new thread has all history
+- [ ] Concurrent runs blocked: start run on thread → start second run → verify 409 conflict
+
+---
+
+## Migration Strategy
+
+### Backward Compatibility
+- Existing conversations map to threads (1:1)
+- Existing sessions map to thread runs
+- `/api/conversations/*` endpoints remain functional (alias to `/threads/*`)
+- Old WebSocket message formats supported alongside new ACP formats
+- No breaking changes to current client code
+
+### Rollout Plan
+1. Deploy database schema changes (additive only, no drops)
+2. Deploy new ACP endpoints alongside existing endpoints
+3. Update client to use ACP endpoints where beneficial
+4. Deprecation notice for old endpoints (6 month window)
+5. Remove old endpoints after deprecation period
+
+---
+
+## Out of Scope
+
+- Multi-user authentication/authorization
+- Slash command implementation (not in ACP spec, pure client feature)
+- Agent marketplace or discovery service
+- Real-time collaboration on threads
+- Thread branching/forking (beyond simple copy)
+- Custom agent development framework
+- Billing/metering for agent usage
+
+---
+
+## Technical Notes
+
+### ACP Terminology Mapping
+- AgentGUI "conversations" = ACP "threads"
+- AgentGUI "sessions" = ACP "runs" (stateful, on a thread)
+- AgentGUI "chunks/events" = ACP "run output stream"
+- AgentGUI "claudeSessionId" = ACP checkpoint ID concept
+
+### Known Gotchas
+- ACP requires UUID format for thread_id, run_id, agent_id (current AgentGUI uses strings)
+- SSE requires newline-delimited format, different from current JSON streaming
+- Run cancellation must handle agents that don't support it gracefully
+- Thread status "idle" means no pending runs; must validate on run creation
+- Webhook URLs must be validated to prevent SSRF attacks
+
+### Performance Targets
+- Thread search: <200ms for 10,000 threads
+- Run creation: <50ms (background processing)
+- SSE streaming: <10ms latency per event
+- WebSocket batch: <100ms accumulation window
+- Database writes: <20ms per transaction
+
+---
+
+## Dependencies
+
+**External**:
+- None (all features implemented with existing dependencies)
+
+**Internal**:
+- database.js (extended with new tables/queries)
+- server.js (new route handlers)
+- lib/claude-runner.js (run cancellation support)
+- static/js/client.js (UI consistency fixes)
+- static/js/conversations.js (agent/model persistence)
+- static/js/websocket-manager.js (optimization)
+
+**Configuration**:
+- No new env vars required
+- Existing BASE_URL, PORT, STARTUP_CWD remain unchanged
+
+---
+
+## Success Metrics
+
+- ACP compliance score: 0% → 100%
+- API endpoint coverage: 20 → 43 endpoints
+- WebSocket bandwidth: <50% reduction in bytes/sec per client
+- UI consistency issues: 4 identified → 0 remaining
+- Database tables: 5 → 8 (conversations, messages, sessions, events, chunks, thread_states, checkpoints, run_metadata)
+- Test coverage: endpoint tests for all 43 routes, integration tests for all critical flows
+
+---
+
+## Timeline Estimate
+
+- Wave 1 (Foundation): 3 parallel tasks = 1 completion cycle
+- Wave 2 (Core APIs): 3 parallel tasks = 1 completion cycle
+- Wave 3 (Streaming): 2 tasks = 1 completion cycle
+- Wave 4 (UI Fixes): 3 tasks = 1 completion cycle
+
+**Total**: 4 completion cycles (waves executed sequentially, items within wave executed in parallel with max 3 concurrent subagents per wave)
