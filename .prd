@@ -28,10 +28,10 @@ Transform AgentGUI into a fully ACP (Agent Connect Protocol) v0.2.3 compliant se
 - Run cancellation working
 - Event stream format compliant with ACP spec
 
-### ✅ WAVE 4: UI Fixes & Optimization (COMPLETED - Already Implemented)
-- **4.1** Thread Sidebar UI Consistency: Agent/model persistence working correctly via `applyAgentAndModelSelection()`
-- **4.2** WebSocket Optimization: Adaptive batching (16-200ms), subscription targeting, rate limiting all implemented
-- **4.3** Duplicate Displays: No duplicates found - all displays serve appropriate purposes
+### ✅ WAVE 4: UI Fixes & Optimization (COMPLETED - Enhanced)
+- **4.1** Thread Sidebar UI Consistency: Fixed agentId vs agentType inconsistency, sidebar now correctly uses `agentId`, model column confirmed in database, agent/model restore on page reload working
+- **4.2** WebSocket Optimization: Added message deduplication via `wsLastMessages` Map and `createMessageKey()` function, prevents identical consecutive messages, adaptive batching and rate limiting already present
+- **4.3** Duplicate Displays: Consolidated to show agent + model in sidebar conversation list, no redundant displays found
 
 ---
 
