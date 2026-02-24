@@ -15,6 +15,7 @@ import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
+import { SSEStreamManager } from './lib/sse-stream.js';
 
 const ttsTextAccumulators = new Map();
 
@@ -214,6 +215,8 @@ const activeExecutions = new Map();
 const activeScripts = new Map();
 const messageQueues = new Map();
 const rateLimitState = new Map();
+const activeProcessesByRunId = new Map();
+const acpQueries = queries;
 const STUCK_AGENT_THRESHOLD_MS = 600000;
 const NO_PID_GRACE_PERIOD_MS = 60000;
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60000;
@@ -1769,7 +1772,7 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/agents/search' && req.method === 'POST') {
       const body = await parseBody(req);
-      const result = acpQueries.searchAgents(discoveredAgents, body);
+      const result = queries.searchAgents(discoveredAgents, body);
       sendJSON(req, res, 200, result);
       return;
     }
@@ -1903,14 +1906,14 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 404, { error: 'Agent not found' });
         return;
       }
-      const run = acpQueries.createRun(agent_id, null, input, config, webhook_url);
+      const run = queries.createRun(agent_id, null, input, config, webhook_url);
       sendJSON(req, res, 201, run);
       return;
     }
 
     if (pathOnly === '/api/runs/search' && req.method === 'POST') {
       const body = await parseBody(req);
-      const result = acpQueries.searchRuns(body);
+      const result = queries.searchRuns(body);
       sendJSON(req, res, 200, result);
       return;
     }
@@ -1927,27 +1930,42 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 404, { error: 'Agent not found' });
         return;
       }
-      const run = acpQueries.createRun(agent_id, null, input, config);
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-      res.write('data: ' + JSON.stringify({ type: 'run_created', run_id: run.run_id }) + '\n\n');
+      const run = queries.createRun(agent_id, null, input, config);
+      const sseManager = new SSEStreamManager(res, run.run_id);
+      sseManager.start();
+      sseManager.sendProgress({ type: 'run_created', run_id: run.run_id });
+
       const eventHandler = (eventData) => {
         if (eventData.sessionId === run.run_id || eventData.conversationId === run.thread_id) {
-          res.write('data: ' + JSON.stringify(eventData) + '\n\n');
+          if (eventData.type === 'streaming_progress' && eventData.block) {
+            sseManager.sendProgress(eventData.block);
+          } else if (eventData.type === 'streaming_error') {
+            sseManager.sendError(eventData.error || 'Execution error');
+          } else if (eventData.type === 'streaming_complete') {
+            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
+            sseManager.cleanup();
+          }
         }
       };
-      const cleanup = () => {
-        res.end();
-      };
-      req.on('close', cleanup);
-      const statelessThreadId = acpQueries.getRun(run.run_id)?.thread_id;
+
+      sseStreamHandlers.set(run.run_id, eventHandler);
+      req.on('close', () => {
+        sseStreamHandlers.delete(run.run_id);
+        sseManager.cleanup();
+      });
+
+      const statelessThreadId = queries.getRun(run.run_id)?.thread_id;
       if (statelessThreadId) {
         const conv = queries.getConversation(statelessThreadId);
         if (conv && input?.content) {
-          runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null).catch(() => {});
+          const session = queries.createSession(statelessThreadId);
+          acpQueries.updateRunStatus(run.run_id, 'active');
+          activeExecutions.set(statelessThreadId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
+          activeProcessesByRunId.set(run.run_id, { threadId: statelessThreadId, sessionId: session.id });
+          queries.setIsStreaming(statelessThreadId, true);
+          processMessageWithStreaming(statelessThreadId, null, session.id, input.content, agent_id, config?.model || null)
+            .then(() => { acpQueries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
+            .catch((err) => { acpQueries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
         }
       }
       return;
@@ -1965,15 +1983,15 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 404, { error: 'Agent not found' });
         return;
       }
-      const run = acpQueries.createRun(agent_id, null, input, config);
-      const statelessThreadId = acpQueries.getRun(run.run_id)?.thread_id;
+      const run = queries.createRun(agent_id, null, input, config);
+      const statelessThreadId = queries.getRun(run.run_id)?.thread_id;
       if (statelessThreadId && input?.content) {
         try {
           await runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null);
-          const finalRun = acpQueries.getRun(run.run_id);
+          const finalRun = queries.getRun(run.run_id);
           sendJSON(req, res, 200, finalRun);
         } catch (err) {
-          acpQueries.updateRunStatus(run.run_id, 'error');
+          queries.updateRunStatus(run.run_id, 'error');
           sendJSON(req, res, 500, { error: err.message });
         }
       } else {
@@ -1987,7 +2005,7 @@ const server = http.createServer(async (req, res) => {
       const runId = oldRunByIdMatch1[1];
 
       if (req.method === 'GET') {
-        const run = acpQueries.getRun(runId);
+        const run = queries.getRun(runId);
         if (!run) {
           sendJSON(req, res, 404, { error: 'Run not found' });
           return;
@@ -1998,7 +2016,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST') {
         const body = await parseBody(req);
-        const run = acpQueries.getRun(runId);
+        const run = queries.getRun(runId);
         if (!run) {
           sendJSON(req, res, 404, { error: 'Run not found' });
           return;
@@ -2016,7 +2034,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'DELETE') {
         try {
-          acpQueries.deleteRun(runId);
+          queries.deleteRun(runId);
           res.writeHead(204);
           res.end();
         } catch (err) {
@@ -2029,17 +2047,22 @@ const server = http.createServer(async (req, res) => {
     const runWaitMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/wait$/);
     if (runWaitMatch && req.method === 'GET') {
       const runId = runWaitMatch[1];
-      const run = acpQueries.getRun(runId);
+      const run = queries.getRun(runId);
       if (!run) {
         sendJSON(req, res, 404, { error: 'Run not found' });
         return;
       }
       const startTime = Date.now();
       const pollInterval = setInterval(() => {
-        const currentRun = acpQueries.getRun(runId);
-        if (!currentRun || ['success', 'error', 'cancelled'].includes(currentRun.status) || (Date.now() - startTime) > 30000) {
+        const currentRun = queries.getRun(runId);
+        const elapsed = Date.now() - startTime;
+        const done = currentRun && ['success', 'error', 'cancelled'].includes(currentRun.status);
+        if (done) {
           clearInterval(pollInterval);
-          sendJSON(req, res, 200, currentRun || run);
+          sendJSON(req, res, 200, currentRun);
+        } else if (elapsed > 30000) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 408, { error: 'Run still pending after 30s', run_id: runId, status: currentRun?.status || run.status });
         }
       }, 500);
       req.on('close', () => clearInterval(pollInterval));
@@ -2049,26 +2072,34 @@ const server = http.createServer(async (req, res) => {
     const runStreamMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/stream$/);
     if (runStreamMatch && req.method === 'GET') {
       const runId = runStreamMatch[1];
-      const run = acpQueries.getRun(runId);
+      const run = queries.getRun(runId);
       if (!run) {
         sendJSON(req, res, 404, { error: 'Run not found' });
         return;
       }
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      });
-      res.write('data: ' + JSON.stringify({ type: 'joined', run_id: runId }) + '\n\n');
+
+      const sseManager = new SSEStreamManager(res, runId);
+      sseManager.start();
+      sseManager.sendProgress({ type: 'joined', run_id: runId });
+
       const eventHandler = (eventData) => {
         if (eventData.sessionId === runId || eventData.conversationId === run.thread_id) {
-          res.write('data: ' + JSON.stringify(eventData) + '\n\n');
+          if (eventData.type === 'streaming_progress' && eventData.block) {
+            sseManager.sendProgress(eventData.block);
+          } else if (eventData.type === 'streaming_error') {
+            sseManager.sendError(eventData.error || 'Execution error');
+          } else if (eventData.type === 'streaming_complete') {
+            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
+            sseManager.cleanup();
+          }
         }
       };
-      const cleanup = () => {
-        res.end();
-      };
-      req.on('close', cleanup);
+
+      sseStreamHandlers.set(runId, eventHandler);
+      req.on('close', () => {
+        sseStreamHandlers.delete(runId);
+        sseManager.cleanup();
+      });
       return;
     }
 
@@ -2076,17 +2107,65 @@ const server = http.createServer(async (req, res) => {
     if (oldRunCancelMatch1 && req.method === 'POST') {
       const runId = oldRunCancelMatch1[1];
       try {
-        const run = acpQueries.cancelRun(runId);
-        const execution = activeExecutions.get(run.thread_id);
-        if (execution?.process) {
-          execution.process.kill('SIGTERM');
-          setTimeout(() => {
-            if (execution.process && !execution.process.killed) {
-              execution.process.kill('SIGKILL');
-            }
-          }, 5000);
+        const run = queries.getRun(runId);
+        if (!run) {
+          sendJSON(req, res, 404, { error: 'Run not found' });
+          return;
         }
-        sendJSON(req, res, 200, run);
+
+        if (['success', 'error', 'cancelled'].includes(run.status)) {
+          sendJSON(req, res, 409, { error: 'Run already completed or cancelled' });
+          return;
+        }
+
+        const cancelledRun = queries.cancelRun(runId);
+
+        const threadId = run.thread_id;
+        if (threadId) {
+          const execution = activeExecutions.get(threadId);
+          if (execution?.pid) {
+            try {
+              process.kill(-execution.pid, 'SIGTERM');
+            } catch {
+              try {
+                process.kill(execution.pid, 'SIGTERM');
+              } catch (e) {
+                console.error(`[cancel] Failed to SIGTERM PID ${execution.pid}:`, e.message);
+              }
+            }
+
+            setTimeout(() => {
+              try {
+                process.kill(-execution.pid, 'SIGKILL');
+              } catch {
+                try {
+                  process.kill(execution.pid, 'SIGKILL');
+                } catch (e) {}
+              }
+            }, 3000);
+          }
+
+          if (execution?.sessionId) {
+            queries.updateSession(execution.sessionId, {
+              status: 'error',
+              error: 'Cancelled by user',
+              completed_at: Date.now()
+            });
+          }
+
+          activeExecutions.delete(threadId);
+          queries.setIsStreaming(threadId, false);
+
+          broadcastSync({
+            type: 'streaming_cancelled',
+            sessionId: execution?.sessionId || runId,
+            conversationId: threadId,
+            runId: runId,
+            timestamp: Date.now()
+          });
+        }
+
+        sendJSON(req, res, 200, cancelledRun);
       } catch (err) {
         if (err.message === 'Run not found') {
           sendJSON(req, res, 404, { error: err.message });
@@ -2096,6 +2175,113 @@ const server = http.createServer(async (req, res) => {
           sendJSON(req, res, 500, { error: err.message });
         }
       }
+      return;
+    }
+
+    const threadRunCancelMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)\/cancel$/);
+    if (threadRunCancelMatch && req.method === 'POST') {
+      const threadId = threadRunCancelMatch[1];
+      const runId = threadRunCancelMatch[2];
+
+      try {
+        const run = queries.getRun(runId);
+        if (!run) {
+          sendJSON(req, res, 404, { error: 'Run not found' });
+          return;
+        }
+
+        if (run.thread_id !== threadId) {
+          sendJSON(req, res, 400, { error: 'Run does not belong to specified thread' });
+          return;
+        }
+
+        if (['success', 'error', 'cancelled'].includes(run.status)) {
+          sendJSON(req, res, 409, { error: 'Run already completed or cancelled' });
+          return;
+        }
+
+        const cancelledRun = queries.cancelRun(runId);
+
+        const execution = activeExecutions.get(threadId);
+        if (execution?.pid) {
+          try {
+            process.kill(-execution.pid, 'SIGTERM');
+          } catch {
+            try {
+              process.kill(execution.pid, 'SIGTERM');
+            } catch (e) {
+              console.error(`[cancel] Failed to SIGTERM PID ${execution.pid}:`, e.message);
+            }
+          }
+
+          setTimeout(() => {
+            try {
+              process.kill(-execution.pid, 'SIGKILL');
+            } catch {
+              try {
+                process.kill(execution.pid, 'SIGKILL');
+              } catch (e) {}
+            }
+          }, 3000);
+        }
+
+        if (execution?.sessionId) {
+          queries.updateSession(execution.sessionId, {
+            status: 'error',
+            error: 'Cancelled by user',
+            completed_at: Date.now()
+          });
+        }
+
+        activeExecutions.delete(threadId);
+        queries.setIsStreaming(threadId, false);
+
+        broadcastSync({
+          type: 'streaming_cancelled',
+          sessionId: execution?.sessionId || runId,
+          conversationId: threadId,
+          runId: runId,
+          timestamp: Date.now()
+        });
+
+        sendJSON(req, res, 200, cancelledRun);
+      } catch (err) {
+        if (err.message === 'Run not found') {
+          sendJSON(req, res, 404, { error: err.message });
+        } else if (err.message.includes('already completed')) {
+          sendJSON(req, res, 409, { error: err.message });
+        } else {
+          sendJSON(req, res, 500, { error: err.message });
+        }
+      }
+      return;
+    }
+
+    const threadRunWaitMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)\/wait$/);
+    if (threadRunWaitMatch && req.method === 'GET') {
+      const threadId = threadRunWaitMatch[1];
+      const runId = threadRunWaitMatch[2];
+
+      const run = queries.getRun(runId);
+      if (!run) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      if (run.thread_id !== threadId) {
+        sendJSON(req, res, 400, { error: 'Run does not belong to specified thread' });
+        return;
+      }
+
+      const startTime = Date.now();
+      const pollInterval = setInterval(() => {
+        const currentRun = queries.getRun(runId);
+        if (!currentRun || ['success', 'error', 'cancelled'].includes(currentRun.status) || (Date.now() - startTime) > 30000) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 200, currentRun || run);
+        }
+      }, 500);
+      req.on('close', () => clearInterval(pollInterval));
       return;
     }
 
@@ -2742,6 +2928,179 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // POST /threads/{thread_id}/runs/stream - Create run on thread and stream output
+    const threadRunsStreamMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/stream$/);
+    if (threadRunsStreamMatch && req.method === 'POST') {
+      const threadId = threadRunsStreamMatch[1];
+      try {
+        const body = await parseBody(req);
+        const { agent_id, input, config } = body;
+
+        const thread = queries.getThread(threadId);
+        if (!thread) {
+          sendJSON(req, res, 404, { error: 'Thread not found', type: 'not_found' });
+          return;
+        }
+
+        if (thread.status !== 'idle') {
+          sendJSON(req, res, 409, { error: 'Thread has pending runs', type: 'conflict' });
+          return;
+        }
+
+        const agent = discoveredAgents.find(a => a.id === agent_id);
+        if (!agent) {
+          sendJSON(req, res, 404, { error: 'Agent not found', type: 'not_found' });
+          return;
+        }
+
+        const run = queries.createRun(agent_id, threadId, input, config);
+        const sseManager = new SSEStreamManager(res, run.run_id);
+        sseManager.start();
+        sseManager.sendProgress({ type: 'run_created', run_id: run.run_id, thread_id: threadId });
+
+        const eventHandler = (eventData) => {
+          if (eventData.sessionId === run.run_id || eventData.conversationId === threadId) {
+            if (eventData.type === 'streaming_progress' && eventData.block) {
+              sseManager.sendProgress(eventData.block);
+            } else if (eventData.type === 'streaming_error') {
+              sseManager.sendError(eventData.error || 'Execution error');
+            } else if (eventData.type === 'streaming_complete') {
+              sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
+              sseManager.cleanup();
+            }
+          }
+        };
+
+        sseStreamHandlers.set(run.run_id, eventHandler);
+        req.on('close', () => {
+          sseStreamHandlers.delete(run.run_id);
+          sseManager.cleanup();
+        });
+
+        const conv = queries.getConversation(threadId);
+        if (conv && input?.content) {
+          const session = queries.createSession(threadId);
+          queries.updateRunStatus(run.run_id, 'active');
+          activeExecutions.set(threadId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
+          activeProcessesByRunId.set(run.run_id, { threadId, sessionId: session.id });
+          queries.setIsStreaming(threadId, true);
+          processMessageWithStreaming(threadId, null, session.id, input.content, agent_id, config?.model || null)
+            .then(() => { queries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
+            .catch((err) => { queries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
+        }
+      } catch (err) {
+        sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
+      }
+      return;
+    }
+
+    // GET /threads/{thread_id}/runs/{run_id}/stream - Stream output from run on thread
+    const threadRunStreamMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/stream$/);
+    if (threadRunStreamMatch && req.method === 'GET') {
+      const threadId = threadRunStreamMatch[1];
+      const runId = threadRunStreamMatch[2];
+
+      const thread = queries.getThread(threadId);
+      if (!thread) {
+        sendJSON(req, res, 404, { error: 'Thread not found', type: 'not_found' });
+        return;
+      }
+
+      const run = queries.getRun(runId);
+      if (!run || run.thread_id !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
+        return;
+      }
+
+      const sseManager = new SSEStreamManager(res, runId);
+      sseManager.start();
+      sseManager.sendProgress({ type: 'joined', run_id: runId, thread_id: threadId });
+
+      const eventHandler = (eventData) => {
+        if (eventData.sessionId === runId || eventData.conversationId === threadId) {
+          if (eventData.type === 'streaming_progress' && eventData.block) {
+            sseManager.sendProgress(eventData.block);
+          } else if (eventData.type === 'streaming_error') {
+            sseManager.sendError(eventData.error || 'Execution error');
+          } else if (eventData.type === 'streaming_complete') {
+            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
+            sseManager.cleanup();
+          }
+        }
+      };
+
+      sseStreamHandlers.set(runId, eventHandler);
+      req.on('close', () => {
+        sseStreamHandlers.delete(runId);
+        sseManager.cleanup();
+      });
+      return;
+    }
+
+    // POST /threads/{thread_id}/runs/{run_id}/cancel - Cancel a run on a thread
+    const threadRunCancelMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/cancel$/);
+    if (threadRunCancelMatch && req.method === 'POST') {
+      const threadId = threadRunCancelMatch[1];
+      const runId = threadRunCancelMatch[2];
+      try {
+        const run = queries.getRun(runId);
+        if (!run || run.thread_id !== threadId) {
+          sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
+          return;
+        }
+        if (['success', 'error', 'cancelled'].includes(run.status)) {
+          sendJSON(req, res, 409, { error: 'Run already completed or cancelled', type: 'conflict' });
+          return;
+        }
+        const cancelledRun = queries.cancelRun(runId);
+        const execution = activeExecutions.get(threadId);
+        if (execution?.pid) {
+          try { process.kill(-execution.pid, 'SIGTERM'); } catch { try { process.kill(execution.pid, 'SIGTERM'); } catch (e) {} }
+          setTimeout(() => {
+            try { process.kill(-execution.pid, 'SIGKILL'); } catch { try { process.kill(execution.pid, 'SIGKILL'); } catch (e) {} }
+          }, 3000);
+        }
+        if (execution?.sessionId) {
+          queries.updateSession(execution.sessionId, { status: 'error', error: 'Cancelled by user', completed_at: Date.now() });
+        }
+        activeExecutions.delete(threadId);
+        activeProcessesByRunId.delete(runId);
+        queries.setIsStreaming(threadId, false);
+        broadcastSync({ type: 'run_cancelled', runId, threadId, sessionId: execution?.sessionId, timestamp: Date.now() });
+        sendJSON(req, res, 200, cancelledRun);
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message, type: 'internal_error' });
+      }
+      return;
+    }
+
+    // GET /threads/{thread_id}/runs/{run_id}/wait - Long-poll for run completion on thread
+    const threadRunWaitMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/wait$/);
+    if (threadRunWaitMatch && req.method === 'GET') {
+      const threadId = threadRunWaitMatch[1];
+      const runId = threadRunWaitMatch[2];
+      const run = queries.getRun(runId);
+      if (!run || run.thread_id !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
+        return;
+      }
+      const startTime = Date.now();
+      const pollInterval = setInterval(() => {
+        const currentRun = queries.getRun(runId);
+        const elapsed = Date.now() - startTime;
+        const done = currentRun && ['success', 'error', 'cancelled'].includes(currentRun.status);
+        if (done) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 200, currentRun);
+        } else if (elapsed > 30000) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 408, { error: 'Run still pending after 30s', run_id: runId, status: currentRun?.status || run.status });
+        }
+      }, 500);
+      req.on('close', () => clearInterval(pollInterval));
+      return;
+    }
+
     if (routePath.startsWith('/api/image/')) {
       const imagePath = routePath.slice('/api/image/'.length);
       const decodedPath = decodeURIComponent(imagePath);
@@ -3316,6 +3675,7 @@ const wss = new WebSocketServer({
 const hotReloadClients = [];
 const syncClients = new Set();
 const subscriptionIndex = new Map();
+const sseStreamHandlers = new Map();
 
 wss.on('connection', (ws, req) => {
   // req.url in WebSocket is just the path (e.g., '/gm/sync'), not a full URL
@@ -3489,25 +3849,33 @@ function sendToClient(ws, data) {
 }
 
 function broadcastSync(event) {
-  if (syncClients.size === 0) return;
   const data = JSON.stringify(event);
   const isBroadcast = BROADCAST_TYPES.has(event.type);
 
-  if (isBroadcast) {
-    for (const ws of syncClients) sendToClient(ws, data);
-    return;
+  // Send to WebSocket clients
+  if (syncClients.size > 0) {
+    if (isBroadcast) {
+      for (const ws of syncClients) sendToClient(ws, data);
+    } else {
+      const targets = new Set();
+      if (event.sessionId) {
+        const subs = subscriptionIndex.get(event.sessionId);
+        if (subs) for (const ws of subs) targets.add(ws);
+      }
+      if (event.conversationId) {
+        const subs = subscriptionIndex.get(`conv-${event.conversationId}`);
+        if (subs) for (const ws of subs) targets.add(ws);
+      }
+      for (const ws of targets) sendToClient(ws, data);
+    }
   }
 
-  const targets = new Set();
-  if (event.sessionId) {
-    const subs = subscriptionIndex.get(event.sessionId);
-    if (subs) for (const ws of subs) targets.add(ws);
+  // Send to SSE handlers
+  if (sseStreamHandlers.size > 0) {
+    for (const [runId, handler] of sseStreamHandlers.entries()) {
+      handler(event);
+    }
   }
-  if (event.conversationId) {
-    const subs = subscriptionIndex.get(`conv-${event.conversationId}`);
-    if (subs) for (const ws of subs) targets.add(ws);
-  }
-  for (const ws of targets) sendToClient(ws, data);
 }
 
 // Heartbeat interval to detect stale connections
