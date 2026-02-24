@@ -1447,6 +1447,56 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // POST /runs/stream - Create stateless run and stream output (MUST be before generic /runs/:id route)
+    if (pathOnly === '/api/runs/stream' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { agent_id, input, config } = body;
+      if (!agent_id) {
+        sendJSON(req, res, 422, { error: 'agent_id is required' });
+        return;
+      }
+      const agent = discoveredAgents.find(a => a.id === agent_id);
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+      const run = queries.createRun(agent_id, null, input, config);
+      const sseManager = new SSEStreamManager(res, run.run_id);
+      sseManager.start();
+      sseManager.sendProgress({ type: 'run_created', run_id: run.run_id });
+
+      const eventHandler = (eventData) => {
+        if (eventData.sessionId === run.run_id || eventData.conversationId === run.thread_id) {
+          if (eventData.type === 'streaming_progress' && eventData.block) {
+            sseManager.sendProgress(eventData.block);
+          } else if (eventData.type === 'streaming_error') {
+            sseManager.sendError(eventData.error || 'Execution error');
+          } else if (eventData.type === 'streaming_complete') {
+            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
+            sseManager.cleanup();
+          }
+        }
+      };
+
+      sseStreamHandlers.set(run.run_id, eventHandler);
+      req.on('close', () => {
+        sseStreamHandlers.delete(run.run_id);
+        sseManager.cleanup();
+      });
+
+      const statelessThreadId = queries.getRun(run.run_id)?.thread_id;
+      if (statelessThreadId) {
+        const conv = queries.getConversation(statelessThreadId);
+        if (conv && input?.content) {
+          runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null).catch((err) => {
+            sseManager.sendError(err.message);
+            sseManager.cleanup();
+          });
+        }
+      }
+      return;
+    }
+
     const oldRunByIdMatch = pathOnly.match(/^\/api\/runs\/([^/]+)$/);
     if (oldRunByIdMatch) {
     const runId = oldRunByIdMatch[1];
@@ -1915,59 +1965,6 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const result = queries.searchRuns(body);
       sendJSON(req, res, 200, result);
-      return;
-    }
-
-    if (pathOnly === '/api/runs/stream' && req.method === 'POST') {
-      const body = await parseBody(req);
-      const { agent_id, input, config } = body;
-      if (!agent_id) {
-        sendJSON(req, res, 422, { error: 'agent_id is required' });
-        return;
-      }
-      const agent = discoveredAgents.find(a => a.id === agent_id);
-      if (!agent) {
-        sendJSON(req, res, 404, { error: 'Agent not found' });
-        return;
-      }
-      const run = queries.createRun(agent_id, null, input, config);
-      const sseManager = new SSEStreamManager(res, run.run_id);
-      sseManager.start();
-      sseManager.sendProgress({ type: 'run_created', run_id: run.run_id });
-
-      const eventHandler = (eventData) => {
-        if (eventData.sessionId === run.run_id || eventData.conversationId === run.thread_id) {
-          if (eventData.type === 'streaming_progress' && eventData.block) {
-            sseManager.sendProgress(eventData.block);
-          } else if (eventData.type === 'streaming_error') {
-            sseManager.sendError(eventData.error || 'Execution error');
-          } else if (eventData.type === 'streaming_complete') {
-            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
-            sseManager.cleanup();
-          }
-        }
-      };
-
-      sseStreamHandlers.set(run.run_id, eventHandler);
-      req.on('close', () => {
-        sseStreamHandlers.delete(run.run_id);
-        sseManager.cleanup();
-      });
-
-      const statelessThreadId = queries.getRun(run.run_id)?.thread_id;
-      if (statelessThreadId) {
-        const conv = queries.getConversation(statelessThreadId);
-        if (conv && input?.content) {
-          const session = queries.createSession(statelessThreadId);
-          acpQueries.updateRunStatus(run.run_id, 'active');
-          activeExecutions.set(statelessThreadId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
-          activeProcessesByRunId.set(run.run_id, { threadId: statelessThreadId, sessionId: session.id });
-          queries.setIsStreaming(statelessThreadId, true);
-          processMessageWithStreaming(statelessThreadId, null, session.id, input.content, agent_id, config?.model || null)
-            .then(() => { acpQueries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
-            .catch((err) => { acpQueries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
-        }
-      }
       return;
     }
 
