@@ -1444,9 +1444,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const runByIdMatch = pathOnly.match(/^\/api\/runs\/([^/]+)$/);
-    if (runByIdMatch) {
-      const runId = runByIdMatch[1];
+    const oldRunByIdMatch = pathOnly.match(/^\/api\/runs\/([^/]+)$/);
+    if (oldRunByIdMatch) {
+    const runId = oldRunByIdMatch[1];
       const session = queries.getSession(runId);
       
       if (!session) {
@@ -1511,9 +1511,9 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    const runCancelMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/cancel$/);
+    const oldRunCancelMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/cancel$/);
     if (runCancelMatch && req.method === 'POST') {
-      const runId = runCancelMatch[1];
+      const runId = oldRunCancelMatch[1];
       const session = queries.getSession(runId);
       
       if (!session) {
@@ -1767,34 +1767,10 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const agentsSearchMatch = pathOnly.match(/^\/api\/agents\/search$/);
-    if (agentsSearchMatch && req.method === 'POST') {
-      let body = '';
-      for await (const chunk of req) { body += chunk; }
-      let parsed = {};
-      try { parsed = body ? JSON.parse(body) : {}; } catch {}
-
-      const { query } = parsed;
-      let results = discoveredAgents;
-
-      if (query) {
-        const q = query.toLowerCase();
-        results = discoveredAgents.filter(a => 
-          a.name.toLowerCase().includes(q) || 
-          a.id.toLowerCase().includes(q) ||
-          (a.description && a.description.toLowerCase().includes(q))
-        );
-      }
-
-      const agents = results.map(a => ({
-        id: a.id,
-        name: a.name,
-        description: a.description || '',
-        icon: a.icon || null,
-        status: 'available'
-      }));
-
-      sendJSON(req, res, 200, agents);
+    if (pathOnly === '/api/agents/search' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const result = acpQueries.searchAgents(discoveredAgents, body);
+      sendJSON(req, res, 200, result);
       return;
     }
 
@@ -1911,6 +1887,214 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 200, { models });
       } catch (err) {
         sendJSON(req, res, 200, { models: [] });
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/runs' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { agent_id, input, config, webhook_url } = body;
+      if (!agent_id) {
+        sendJSON(req, res, 422, { error: 'agent_id is required' });
+        return;
+      }
+      const agent = discoveredAgents.find(a => a.id === agent_id);
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+      const run = acpQueries.createRun(agent_id, null, input, config, webhook_url);
+      sendJSON(req, res, 201, run);
+      return;
+    }
+
+    if (pathOnly === '/api/runs/search' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const result = acpQueries.searchRuns(body);
+      sendJSON(req, res, 200, result);
+      return;
+    }
+
+    if (pathOnly === '/api/runs/stream' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { agent_id, input, config } = body;
+      if (!agent_id) {
+        sendJSON(req, res, 422, { error: 'agent_id is required' });
+        return;
+      }
+      const agent = discoveredAgents.find(a => a.id === agent_id);
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+      const run = acpQueries.createRun(agent_id, null, input, config);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+      res.write('data: ' + JSON.stringify({ type: 'run_created', run_id: run.run_id }) + '\n\n');
+      const eventHandler = (eventData) => {
+        if (eventData.sessionId === run.run_id || eventData.conversationId === run.thread_id) {
+          res.write('data: ' + JSON.stringify(eventData) + '\n\n');
+        }
+      };
+      const cleanup = () => {
+        res.end();
+      };
+      req.on('close', cleanup);
+      const statelessThreadId = acpQueries.getRun(run.run_id)?.thread_id;
+      if (statelessThreadId) {
+        const conv = queries.getConversation(statelessThreadId);
+        if (conv && input?.content) {
+          runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    if (pathOnly === '/api/runs/wait' && req.method === 'POST') {
+      const body = await parseBody(req);
+      const { agent_id, input, config } = body;
+      if (!agent_id) {
+        sendJSON(req, res, 422, { error: 'agent_id is required' });
+        return;
+      }
+      const agent = discoveredAgents.find(a => a.id === agent_id);
+      if (!agent) {
+        sendJSON(req, res, 404, { error: 'Agent not found' });
+        return;
+      }
+      const run = acpQueries.createRun(agent_id, null, input, config);
+      const statelessThreadId = acpQueries.getRun(run.run_id)?.thread_id;
+      if (statelessThreadId && input?.content) {
+        try {
+          await runClaudeWithStreaming(agent_id, statelessThreadId, input.content, config?.model || null);
+          const finalRun = acpQueries.getRun(run.run_id);
+          sendJSON(req, res, 200, finalRun);
+        } catch (err) {
+          acpQueries.updateRunStatus(run.run_id, 'error');
+          sendJSON(req, res, 500, { error: err.message });
+        }
+      } else {
+        sendJSON(req, res, 200, run);
+      }
+      return;
+    }
+
+    const oldRunByIdMatch1 = pathOnly.match(/^\/api\/runs\/([^/]+)$/);
+    if (oldRunByIdMatch1) {
+      const runId = oldRunByIdMatch1[1];
+
+      if (req.method === 'GET') {
+        const run = acpQueries.getRun(runId);
+        if (!run) {
+          sendJSON(req, res, 404, { error: 'Run not found' });
+          return;
+        }
+        sendJSON(req, res, 200, run);
+        return;
+      }
+
+      if (req.method === 'POST') {
+        const body = await parseBody(req);
+        const run = acpQueries.getRun(runId);
+        if (!run) {
+          sendJSON(req, res, 404, { error: 'Run not found' });
+          return;
+        }
+        if (run.status !== 'pending') {
+          sendJSON(req, res, 409, { error: 'Run is not resumable' });
+          return;
+        }
+        if (body.input?.content && run.thread_id) {
+          runClaudeWithStreaming(run.agent_id, run.thread_id, body.input.content, null).catch(() => {});
+        }
+        sendJSON(req, res, 200, run);
+        return;
+      }
+
+      if (req.method === 'DELETE') {
+        try {
+          acpQueries.deleteRun(runId);
+          res.writeHead(204);
+          res.end();
+        } catch (err) {
+          sendJSON(req, res, 404, { error: 'Run not found' });
+        }
+        return;
+      }
+    }
+
+    const runWaitMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/wait$/);
+    if (runWaitMatch && req.method === 'GET') {
+      const runId = runWaitMatch[1];
+      const run = acpQueries.getRun(runId);
+      if (!run) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+      const startTime = Date.now();
+      const pollInterval = setInterval(() => {
+        const currentRun = acpQueries.getRun(runId);
+        if (!currentRun || ['success', 'error', 'cancelled'].includes(currentRun.status) || (Date.now() - startTime) > 30000) {
+          clearInterval(pollInterval);
+          sendJSON(req, res, 200, currentRun || run);
+        }
+      }, 500);
+      req.on('close', () => clearInterval(pollInterval));
+      return;
+    }
+
+    const runStreamMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/stream$/);
+    if (runStreamMatch && req.method === 'GET') {
+      const runId = runStreamMatch[1];
+      const run = acpQueries.getRun(runId);
+      if (!run) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+      res.write('data: ' + JSON.stringify({ type: 'joined', run_id: runId }) + '\n\n');
+      const eventHandler = (eventData) => {
+        if (eventData.sessionId === runId || eventData.conversationId === run.thread_id) {
+          res.write('data: ' + JSON.stringify(eventData) + '\n\n');
+        }
+      };
+      const cleanup = () => {
+        res.end();
+      };
+      req.on('close', cleanup);
+      return;
+    }
+
+    const oldRunCancelMatch1 = pathOnly.match(/^\/api\/runs\/([^/]+)\/cancel$/);
+    if (runCancelMatch && req.method === 'POST') {
+      const runId = oldRunCancelMatch1[1];
+      try {
+        const run = acpQueries.cancelRun(runId);
+        const execution = activeExecutions.get(run.thread_id);
+        if (execution?.process) {
+          execution.process.kill('SIGTERM');
+          setTimeout(() => {
+            if (execution.process && !execution.process.killed) {
+              execution.process.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+        sendJSON(req, res, 200, run);
+      } catch (err) {
+        if (err.message === 'Run not found') {
+          sendJSON(req, res, 404, { error: err.message });
+        } else if (err.message.includes('already completed')) {
+          sendJSON(req, res, 409, { error: err.message });
+        } else {
+          sendJSON(req, res, 500, { error: err.message });
+        }
       }
       return;
     }
@@ -2174,9 +2358,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const threadByIdMatch = pathOnly.match(/^\/api\/threads\/([^/]+)$/);
-    if (threadByIdMatch) {
-      const threadId = threadByIdMatch[1];
+    const oldThreadByIdMatch = pathOnly.match(/^\/api\/threads\/([^/]+)$/);
+    if (oldThreadByIdMatch) {
+    const threadId = oldThreadByIdMatch[1];
       const conv = queries.getConversation(threadId);
       
       if (!conv) {
@@ -2236,9 +2420,9 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    const threadHistoryMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/history$/);
+    const oldThreadHistoryMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/history$/);
     if (threadHistoryMatch && req.method === 'GET') {
-      const threadId = threadHistoryMatch[1];
+      const threadId = oldThreadHistoryMatch[1];
       const conv = queries.getConversation(threadId);
       
       if (!conv) {
@@ -2261,7 +2445,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const threadCopyMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/copy$/);
+    const oldThreadCopyMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/copy$/);
     if (threadCopyMatch && req.method === 'POST') {
       const threadId = threadCopyMatch[1];
       const original = queries.getConversation(threadId);
@@ -2357,6 +2541,143 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    const threadRunsStreamMatch = pathOnly.match(/^\/api\/threads\/([^\/]+)\/runs\/stream$/);
+    if (threadRunsStreamMatch && req.method === 'POST') {
+      const threadId = threadRunsStreamMatch[1];
+      const conv = queries.getConversation(threadId);
+
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      const activeEntry = activeExecutions.get(threadId);
+      if (activeEntry) {
+        sendJSON(req, res, 409, { error: 'Thread already has an active run' });
+        return;
+      }
+
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { input, agentId } = parsed;
+      if (!input) {
+        sendJSON(req, res, 400, { error: 'Missing input in request body' });
+        return;
+      }
+
+      const resolvedAgentId = agentId || conv.agentId || 'claude-code';
+      const resolvedModel = parsed.model || conv.model || null;
+
+      const session = queries.createSession(threadId, resolvedAgentId, 'pending');
+      const message = queries.createMessage(threadId, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+
+      const eventListeners = [];
+      const broadcastListener = (event) => {
+        if (event.sessionId === session.id) {
+          if (event.type === 'streaming_progress') {
+            res.write(`event: message\ndata: ${JSON.stringify(event)}\n\n`);
+          } else if (event.type === 'streaming_complete') {
+            res.write(`event: done\ndata: ${JSON.stringify({ status: 'completed' })}\n\n`);
+            res.end();
+          } else if (event.type === 'streaming_error') {
+            res.write(`event: error\ndata: ${JSON.stringify({ error: event.error })}\n\n`);
+            res.end();
+          }
+        }
+      };
+      eventListeners.push(broadcastListener);
+
+      req.on('close', () => {
+        eventListeners.length = 0;
+      });
+
+      processMessageWithStreaming(threadId, message.id, session.id, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+      return;
+    }
+
+    const threadRunsWaitMatch = pathOnly.match(/^\/api\/threads\/([^\/]+)\/runs\/wait$/);
+    if (threadRunsWaitMatch && req.method === 'POST') {
+      const threadId = threadRunsWaitMatch[1];
+      const conv = queries.getConversation(threadId);
+
+      if (!conv) {
+        sendJSON(req, res, 404, { error: 'Thread not found' });
+        return;
+      }
+
+      const activeEntry = activeExecutions.get(threadId);
+      if (activeEntry) {
+        sendJSON(req, res, 409, { error: 'Thread already has an active run' });
+        return;
+      }
+
+      let body = '';
+      for await (const chunk of req) { body += chunk; }
+      let parsed = {};
+      try { parsed = body ? JSON.parse(body) : {}; } catch {}
+
+      const { input, agentId } = parsed;
+      if (!input) {
+        sendJSON(req, res, 400, { error: 'Missing input in request body' });
+        return;
+      }
+
+      const resolvedAgentId = agentId || conv.agentId || 'claude-code';
+      const resolvedModel = parsed.model || conv.model || null;
+
+      const session = queries.createSession(threadId, resolvedAgentId, 'pending');
+      const message = queries.createMessage(threadId, 'user', typeof input === 'string' ? input : JSON.stringify(input));
+
+      const waitPromise = new Promise((resolve, reject) => {
+        const checkInterval = setInterval(() => {
+          const updatedSession = queries.getSession(session.id);
+          if (!updatedSession) {
+            clearInterval(checkInterval);
+            reject(new Error('Session not found'));
+            return;
+          }
+          if (['success', 'error', 'interrupted', 'cancelled'].includes(updatedSession.status)) {
+            clearInterval(checkInterval);
+            resolve(updatedSession);
+          }
+        }, 500);
+
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          const updatedSession = queries.getSession(session.id);
+          resolve(updatedSession || session);
+        }, 300000);
+      });
+
+      processMessageWithStreaming(threadId, message.id, session.id, typeof input === 'string' ? input : JSON.stringify(input), resolvedAgentId, resolvedModel);
+
+      try {
+        const completedSession = await waitPromise;
+        sendJSON(req, res, 200, {
+          id: completedSession.id,
+          threadId: threadId,
+          status: completedSession.status,
+          started_at: completedSession.started_at,
+          completed_at: completedSession.completed_at,
+          agentId: resolvedAgentId,
+          output: completedSession.response || null
+        });
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+
     const threadRunByIdMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)$/);
     if (threadRunByIdMatch) {
       const threadId = threadRunByIdMatch[1];
@@ -2426,6 +2747,106 @@ const server = http.createServer(async (req, res) => {
         return;
       }
     }
+
+    const threadRunWaitMatch = pathOnly.match(/^\/api\/threads\/([^\/]+)\/runs\/([^\/]+)\/wait$/);
+    if (threadRunWaitMatch && req.method === 'GET') {
+      const threadId = threadRunWaitMatch[1];
+      const runId = threadRunWaitMatch[2];
+      const session = queries.getSession(runId);
+
+      if (!session || session.conversationId !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      const waitPromise = new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          const updatedSession = queries.getSession(runId);
+          if (!updatedSession) {
+            clearInterval(checkInterval);
+            resolve(session);
+            return;
+          }
+          if (['success', 'error', 'interrupted', 'cancelled'].includes(updatedSession.status)) {
+            clearInterval(checkInterval);
+            resolve(updatedSession);
+          }
+        }, 500);
+
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          const updatedSession = queries.getSession(runId) || session;
+          resolve(updatedSession);
+        }, 30000);
+      });
+
+      try {
+        const completedSession = await waitPromise;
+        sendJSON(req, res, 200, {
+          id: completedSession.id,
+          threadId: threadId,
+          status: completedSession.status,
+          started_at: completedSession.started_at,
+          completed_at: completedSession.completed_at,
+          agentId: completedSession.agentId,
+          output: completedSession.response || null
+        });
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    const threadRunStreamMatch = pathOnly.match(/^\/api\/threads\/([^\/]+)\/runs\/([^\/]+)\/stream$/);
+    if (threadRunStreamMatch && req.method === 'GET') {
+      const threadId = threadRunStreamMatch[1];
+      const runId = threadRunStreamMatch[2];
+      const session = queries.getSession(runId);
+
+      if (!session || session.conversationId !== threadId) {
+        sendJSON(req, res, 404, { error: 'Run not found' });
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      });
+
+      const chunks = queries.getSessionChunks(runId, 0);
+      for (const chunk of chunks) {
+        res.write(`event: message\ndata: ${JSON.stringify(chunk)}\n\n`);
+      }
+
+      const eventListeners = [];
+      const broadcastListener = (event) => {
+        if (event.sessionId === runId) {
+          if (event.type === 'streaming_progress') {
+            res.write(`event: message\ndata: ${JSON.stringify(event)}\n\n`);
+          } else if (event.type === 'streaming_complete') {
+            res.write(`event: done\ndata: ${JSON.stringify({ status: 'completed' })}\n\n`);
+            res.end();
+          } else if (event.type === 'streaming_error') {
+            res.write(`event: error\ndata: ${JSON.stringify({ error: event.error })}\n\n`);
+            res.end();
+          }
+        }
+      };
+      eventListeners.push(broadcastListener);
+
+      req.on('close', () => {
+        eventListeners.length = 0;
+      });
+
+      if (['success', 'error', 'interrupted', 'cancelled'].includes(session.status)) {
+        res.write(`event: done\ndata: ${JSON.stringify({ status: session.status })}\n\n`);
+        res.end();
+      }
+
+      return;
+    }
+
 
     const threadRunCancelMatch = pathOnly.match(/^\/api\/threads\/([^/]+)\/runs\/([^/]+)\/cancel$/);
     if (threadRunCancelMatch && req.method === 'POST') {
@@ -2734,13 +3155,155 @@ const server = http.createServer(async (req, res) => {
     if (pathOnly === '/api/git/push' && req.method === 'POST') {
       try {
         const isWindows = os.platform() === 'win32';
-        const gitCommand = isWindows 
+        const gitCommand = isWindows
           ? 'git add -A & git commit -m "Auto-commit" & git push'
           : 'git add -A && git commit -m "Auto-commit" && git push';
         execSync(gitCommand, { encoding: 'utf-8', cwd: STARTUP_CWD, shell: isWindows });
         sendJSON(req, res, 200, { success: true });
       } catch (err) {
         sendJSON(req, res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // ============================================================
+    // THREAD API ENDPOINTS (ACP v0.2.3)
+    // ============================================================
+
+    // POST /threads - Create empty thread
+    if (pathOnly === '/api/threads' && req.method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const metadata = body.metadata || {};
+        const thread = queries.createThread(metadata);
+        sendJSON(req, res, 201, thread);
+      } catch (err) {
+        sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
+      }
+      return;
+    }
+
+    // POST /threads/search - Search threads
+    if (pathOnly === '/api/threads/search' && req.method === 'POST') {
+      try {
+        const body = await parseBody(req);
+        const result = queries.searchThreads(body);
+        sendJSON(req, res, 200, result);
+      } catch (err) {
+        sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
+      }
+      return;
+    }
+
+    // GET /threads/{thread_id} - Get thread by ID
+    const acpThreadMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})$/);
+    if (acpThreadMatch && req.method === 'GET') {
+      const threadId = threadByIdMatch[1];
+      try {
+        const thread = queries.getThread(threadId);
+        if (!thread) {
+          sendJSON(req, res, 404, { error: 'Thread not found', type: 'not_found' });
+        } else {
+          sendJSON(req, res, 200, thread);
+        }
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message, type: 'internal_error' });
+      }
+      return;
+    }
+
+    // PATCH /threads/{thread_id} - Update thread metadata
+    if (acpThreadMatch && req.method === 'PATCH') {
+      const threadId = threadByIdMatch[1];
+      try {
+        const body = await parseBody(req);
+        const thread = queries.patchThread(threadId, body);
+        sendJSON(req, res, 200, thread);
+      } catch (err) {
+        if (err.message.includes('not found')) {
+          sendJSON(req, res, 404, { error: err.message, type: 'not_found' });
+        } else {
+          sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
+        }
+      }
+      return;
+    }
+
+    // DELETE /threads/{thread_id} - Delete thread (fail if pending runs exist)
+    if (acpThreadMatch && req.method === 'DELETE') {
+      const threadId = threadByIdMatch[1];
+      try {
+        queries.deleteThread(threadId);
+        res.writeHead(204);
+        res.end();
+      } catch (err) {
+        if (err.message.includes('not found')) {
+          sendJSON(req, res, 404, { error: err.message, type: 'not_found' });
+        } else if (err.message.includes('pending runs')) {
+          sendJSON(req, res, 409, { error: err.message, type: 'conflict' });
+        } else {
+          sendJSON(req, res, 500, { error: err.message, type: 'internal_error' });
+        }
+      }
+      return;
+    }
+
+    // GET /threads/{thread_id}/history - Get thread state history with pagination
+    const threadHistoryMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/history$/);
+    if (threadHistoryMatch && req.method === 'GET') {
+      const threadId = threadHistoryMatch[1];
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+        const before = url.searchParams.get('before') || null;
+
+        // Convert 'before' cursor to offset if needed
+        let offset = 0;
+        if (before) {
+          // Simple cursor-based pagination: before is an offset value
+          offset = parseInt(before, 10);
+        }
+
+        const result = queries.getThreadHistory(threadId, limit, offset);
+
+        // Generate next_cursor if there are more results
+        const response = {
+          states: result.states,
+          next_cursor: result.hasMore ? String(offset + limit) : null
+        };
+
+        sendJSON(req, res, 200, response);
+      } catch (err) {
+        if (err.message.includes('not found')) {
+          sendJSON(req, res, 404, { error: err.message, type: 'not_found' });
+        } else {
+          sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
+        }
+      }
+      return;
+    }
+
+    // POST /threads/{thread_id}/copy - Copy thread with all states/checkpoints
+    const threadCopyMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/copy$/);
+    if (threadCopyMatch && req.method === 'POST') {
+      const sourceThreadId = threadCopyMatch[1];
+      try {
+        const body = await parseBody(req);
+        const newThread = queries.copyThread(sourceThreadId);
+
+        // Update metadata if provided
+        if (body.metadata) {
+          const updated = queries.patchThread(newThread.thread_id, { metadata: body.metadata });
+          sendJSON(req, res, 201, updated);
+        } else {
+          sendJSON(req, res, 201, newThread);
+        }
+      } catch (err) {
+        if (err.message.includes('not found')) {
+          sendJSON(req, res, 404, { error: err.message, type: 'not_found' });
+        } else {
+          sendJSON(req, res, 500, { error: err.message, type: 'internal_error' });
+        }
       }
       return;
     }

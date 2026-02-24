@@ -144,8 +144,28 @@ export function createACPQueries(db, prep) {
       const ths = rows.map(r => ({ thread_id: r.id, created_at: iso(r.created_at), updated_at: iso(r.updated_at), metadata: jp(r.metadata), status: r.status || 'idle' }));
       return { threads: ths, total: tot, limit, offset, hasMore: offset + limit < tot };
     },
-    searchAgents(flt = {}) {
-      return [];
+    searchAgents(agents, flt = {}) {
+      const { name, version, capabilities, limit = 50, offset = 0 } = flt;
+      let results = agents;
+      if (name) {
+        const n = name.toLowerCase();
+        results = results.filter(a => a.name.toLowerCase().includes(n) || a.id.toLowerCase().includes(n));
+      }
+      if (capabilities) {
+        results = results.filter(a => {
+          const desc = this.getAgentDescriptor ? this.getAgentDescriptor(a.id) : null;
+          if (!desc) return false;
+          const caps = desc.specs?.capabilities || {};
+          if (capabilities.streaming !== undefined && !caps.streaming) return false;
+          if (capabilities.threads !== undefined && caps.threads !== capabilities.threads) return false;
+          if (capabilities.interrupts !== undefined && caps.interrupts !== capabilities.interrupts) return false;
+          return true;
+        });
+      }
+      const total = results.length;
+      const paginated = results.slice(offset, offset + limit);
+      const agents_list = paginated.map(a => ({ agent_id: a.id, name: a.name, version: version || '1.0.0', path: a.path }));
+      return { agents: agents_list, total, limit, offset, hasMore: offset + limit < total };
     },
     searchRuns(flt = {}) {
       const { agent_id, thread_id, status, limit = 50, offset = 0 } = flt;
