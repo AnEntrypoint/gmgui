@@ -1,11 +1,9 @@
 (function() {
   const BASE = window.__BASE_URL || '';
   let currentConversationId = null;
+  let currentWorkingDirectory = null;
   let scriptState = { running: false, script: null, hasStart: false, hasDev: false };
-  let terminal = null;
-  let fitAddon = null;
   let hasTerminalContent = false;
-  let resizeObserver = null;
 
   function init() {
     setupListeners();
@@ -16,9 +14,8 @@
     window.addEventListener('conversation-selected', function(e) {
       currentConversationId = e.detail.conversationId;
       hasTerminalContent = false;
-      if (terminal) terminal.clear();
       hideTerminalTab();
-      checkScripts();
+      fetchConversationAndCheckScripts();
     });
 
     window.addEventListener('ws-message', function(e) {
@@ -26,22 +23,24 @@
       if (!data || !currentConversationId) return;
       if (data.conversationId !== currentConversationId) return;
 
+      const term = getTerminal();
+
       if (data.type === 'script_started') {
         scriptState.running = true;
         scriptState.script = data.script;
         hasTerminalContent = false;
-        if (terminal) terminal.clear();
+        if (term) term.clear();
         updateButtons();
         showTerminalTab();
       } else if (data.type === 'script_stopped') {
         scriptState.running = false;
         const msg = data.error ? data.error : ('exited with code ' + (data.code || 0));
-        if (terminal) terminal.writeln('\r\n\x1b[90m[process ' + msg + ']\x1b[0m');
+        if (term) term.writeln('\r\n\x1b[90m[process ' + msg + ']\x1b[0m');
         updateButtons();
       } else if (data.type === 'script_output') {
         hasTerminalContent = true;
         showTerminalTab();
-        if (terminal) terminal.write(data.data);
+        if (term) term.write(data.data);
       }
     });
 
@@ -56,6 +55,23 @@
     if (startBtn) startBtn.addEventListener('click', function() { runScript('start'); });
     if (devBtn) devBtn.addEventListener('click', function() { runScript('dev'); });
     if (stopBtn) stopBtn.addEventListener('click', function() { stopScript(); });
+  }
+
+  function fetchConversationAndCheckScripts() {
+    if (!currentConversationId) return;
+    
+    fetch(BASE + '/api/conversations/' + currentConversationId)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        currentWorkingDirectory = data.conversation?.workingDirectory || null;
+        if (currentWorkingDirectory) {
+          showTerminalTab();
+        }
+        checkScripts();
+      })
+      .catch(function() {
+        checkScripts();
+      });
   }
 
   function checkScripts() {
@@ -113,10 +129,11 @@
         updateButtons();
         showTerminalTab();
         switchToTerminalView();
-        ensureTerminal();
-        if (terminal) {
-          terminal.clear();
-          terminal.writeln('\x1b[36m[running npm run ' + script + ']\x1b[0m\r\n');
+        
+        var term = getTerminal();
+        if (term) {
+          term.clear();
+          term.writeln('\x1b[36m[running npm run ' + script + ']\x1b[0m\r\n');
         }
       }
     })
@@ -153,41 +170,17 @@
     if (termBtn) termBtn.click();
   }
 
-  function ensureTerminal() {
-    if (terminal) return;
-    if (typeof window.Terminal === 'undefined') {
-      setTimeout(ensureTerminal, 200);
-      return;
+  function getTerminal() {
+    if (window.terminalModule && window.terminalModule.getTerminal) {
+      return window.terminalModule.getTerminal();
     }
-    var container = document.getElementById('terminalOutput');
-    if (!container) return;
-
-    terminal = new window.Terminal({
-      cursorBlink: false,
-      scrollback: 10000,
-      fontSize: 13,
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, 'Courier New', monospace",
-      theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
-      convertEol: true,
-      disableStdin: true
-    });
-
-    if (window.FitAddon) {
-      fitAddon = new window.FitAddon.FitAddon();
-      terminal.loadAddon(fitAddon);
-    }
-
-    terminal.open(container);
-    fitTerminal();
-
-    if (resizeObserver) resizeObserver.disconnect();
-    resizeObserver = new ResizeObserver(debounce(fitTerminal, 100));
-    resizeObserver.observe(container);
+    return null;
   }
 
   function fitTerminal() {
-    if (fitAddon) {
-      try { fitAddon.fit(); } catch {}
+    var term = getTerminal();
+    if (term && term._core && term._core._renderService) {
+      try { term.fit(); } catch {}
     }
   }
 
@@ -201,8 +194,7 @@
 
   window.addEventListener('view-switched', function(e) {
     if (e.detail && e.detail.view === 'terminal') {
-      ensureTerminal();
-      setTimeout(fitTerminal, 50);
+      setTimeout(fitTerminal, 100);
     }
   });
 
@@ -214,6 +206,6 @@
 
   window.scriptRunner = {
     getState: function() { return scriptState; },
-    getTerminal: function() { return terminal; }
+    getTerminal: getTerminal
   };
 })();

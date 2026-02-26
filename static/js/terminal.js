@@ -101,5 +101,10 @@
     }
   });
 
-  window.terminalModule = { start: startTerminal, stop: stopTerminal };
+  window.terminalModule = { 
+    start: startTerminal, 
+    stop: stopTerminal,
+    getTerminal: function() { return term; },
+    isActive: function() { return termActive; }
+  };
 })();
