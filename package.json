@@ -22,6 +22,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^2.1.37",
+    "@google/gemini-cli": "latest",
+    "@kilocode/cli": "latest",
+    "opencode-ai": "latest",
     "@huggingface/transformers": "^3.8.1",
     "audio-decode": "^2.2.3",
     "better-sqlite3": "^12.6.2",

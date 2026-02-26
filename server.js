@@ -311,6 +311,8 @@ expressApp.use(BASE_URL + '/files/:conversationId', (req, res, next) => {
 
 function findCommand(cmd) {
   const isWindows = os.platform() === 'win32';
+  const localBin = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', '.bin', isWindows ? cmd + '.cmd' : cmd);
+  if (fs.existsSync(localBin)) return localBin;
   try {
     if (isWindows) {
       const result = execSync(`where ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
