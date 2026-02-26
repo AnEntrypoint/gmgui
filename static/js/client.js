@@ -107,6 +107,11 @@ class AgentGUIClient {
       // Setup UI elements (must happen before loading data so DOM refs exist)
       this.setupUI();
 
+      // Connect WebSocket before loading data (RPC requires connection)
+      if (this.config.autoConnect) {
+        await this.connectWebSocket();
+      }
+
       // Load initial data
       await this.loadAgents();
       await this.loadConversations();
@@ -116,11 +121,6 @@ class AgentGUIClient {
 
       // Enable controls for initial interaction
       this.enableControls();
-
-      // Connect WebSocket
-      if (this.config.autoConnect) {
-        await this.connectWebSocket();
-      }
 
       // Restore state from URL on page load
       this.restoreStateFromUrl();

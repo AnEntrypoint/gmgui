@@ -3,6 +3,7 @@ class WsClient {
     this._ws = wsManager;
     this._pending = new Map();
     this._installed = false;
+    this._connectPromise = null;
     this._install();
   }
 
@@ -42,6 +43,17 @@ class WsClient {
     this._ws.on('disconnected', () => this.cancelAll());
   }
 
+  _ensureConnected() {
+    if (this._ws.isConnected) return Promise.resolve();
+    if (this._connectPromise) return this._connectPromise;
+    this._connectPromise = this._ws.connect().then(() => {
+      this._connectPromise = null;
+    }).catch(() => {
+      this._connectPromise = null;
+    });
+    return this._connectPromise;
+  }
+
   _id() {
     let id = '';
     for (let i = 0; i < 8; i++) id += ((Math.random() * 16) | 0).toString(16);
@@ -49,14 +61,16 @@ class WsClient {
   }
 
   request(method, params = {}, timeout = 30000) {
-    return new Promise((resolve, reject) => {
-      const r = this._id();
-      const timer = setTimeout(() => {
-        this._pending.delete(r);
-        reject(new Error(`RPC timeout: ${method}`));
-      }, timeout);
-      this._pending.set(r, { resolve, reject, timer });
-      this._ws.sendMessage({ r, m: method, p: params });
+    return this._ensureConnected().then(() => {
+      return new Promise((resolve, reject) => {
+        const r = this._id();
+        const timer = setTimeout(() => {
+          this._pending.delete(r);
+          reject(new Error(`RPC timeout: ${method}`));
+        }, timeout);
+        this._pending.set(r, { resolve, reject, timer });
+        this._ws.sendMessage({ r, m: method, p: params });
+      });
     });
   }
 
@@ -79,5 +93,10 @@ class WsClient {
 
 window.WsClient = WsClient;
 
-window.wsManager = new WebSocketManager();
-window.wsClient = new WsClient(window.wsManager);
+try {
+  window.wsManager = new WebSocketManager();
+  window.wsClient = new WsClient(window.wsManager);
+  window.wsManager.connect().catch(function() {});
+} catch (e) {
+  console.error('[ws-client] Failed to initialize:', e);
+}
