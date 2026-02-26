@@ -54,7 +54,7 @@ try {
     // to avoid duplication like C:\\C:\\dev
     if (baseDriveLetter && sanitizedIsAbsoluteOnDrive && sanitizedDriveLetter === baseDriveLetter) {
       // Remove drive letter and leading slashes to make it relative
-      const relativePath = sanitized.replace(/^[A-Z]:[\/\\]?/i, '');
+      const relativePath = sanitized.replace(/^[A-Z]:(?:\/|\\)?/i, '');
       fullPath = path.resolve(normalizedBase, relativePath);
     } else {
       fullPath = path.resolve(normalizedBase, sanitized);
