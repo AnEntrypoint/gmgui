@@ -193,12 +193,16 @@ class ConversationManager {
   getParentPath(dirPath) {
     const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
     const parts = pathSplit(expanded);
+    const isWindows = expanded.includes('\\') || /^[A-Za-z]:/.test(expanded);
+    const separator = isWindows ? '\\' : '/';
     if (parts.length <= 1) {
-      const separator = expanded.includes('\\') ? '\\' : '/';
-      return separator;
+      return isWindows && parts[0] && parts[0].endsWith(':') ? parts[0] + separator : separator;
     }
     parts.pop();
-    const separator = expanded.includes('\\') ? '\\' : '/';
+    if (isWindows) {
+      const joined = parts.join(separator);
+      return parts.length === 1 && parts[0].endsWith(':') ? joined + separator : joined;
+    }
     return separator + parts.join(separator);
   }
 
