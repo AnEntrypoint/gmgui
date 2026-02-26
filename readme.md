@@ -4,6 +4,7 @@ A multi-agent GUI for AI coding assistants. Connects to CLI-based agents (Claude
 
 ## Quick Start
 
+
 ```bash
 npx agentgui
 ```
@@ -74,3 +75,4 @@ MIT
 ## Repository
 
 https://github.com/AnEntrypoint/agentgui
+
