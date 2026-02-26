@@ -1,5 +1,4 @@
 (function() {
-  const BASE = window.__BASE_URL || '';
   let currentConversationId = null;
   let currentWorkingDirectory = null;
   let scriptState = { running: false, script: null, hasStart: false, hasDev: false };
@@ -59,25 +58,18 @@
 
   function fetchConversationAndCheckScripts() {
     if (!currentConversationId) return;
-    
-    fetch(BASE + '/api/conversations/' + currentConversationId)
-      .then(function(r) { return r.json(); })
+    window.wsClient.rpc('conv.get', { id: currentConversationId })
       .then(function(data) {
         currentWorkingDirectory = data.conversation?.workingDirectory || null;
-        if (currentWorkingDirectory) {
-          showTerminalTab();
-        }
+        if (currentWorkingDirectory) showTerminalTab();
         checkScripts();
       })
-      .catch(function() {
-        checkScripts();
-      });
+      .catch(function() { checkScripts(); });
   }
 
   function checkScripts() {
     if (!currentConversationId) return;
-    fetch(BASE + '/api/conversations/' + currentConversationId + '/scripts')
-      .then(function(r) { return r.json(); })
+    window.wsClient.rpc('conv.scripts', { id: currentConversationId })
       .then(function(data) {
         scriptState.hasStart = data.hasStart;
         scriptState.hasDev = data.hasDev;
@@ -115,42 +107,29 @@
 
   function runScript(script) {
     if (!currentConversationId || scriptState.running) return;
-    fetch(BASE + '/api/conversations/' + currentConversationId + '/run-script', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: script })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.ok) {
-        scriptState.running = true;
-        scriptState.script = script;
-        hasTerminalContent = false;
-        updateButtons();
-        showTerminalTab();
-        switchToTerminalView();
-        
-        var term = getTerminal();
-        if (term) {
-          term.clear();
-          term.writeln('\x1b[36m[running npm run ' + script + ']\x1b[0m\r\n');
+    window.wsClient.rpc('conv.run-script', { id: currentConversationId, script: script })
+      .then(function(data) {
+        if (data.ok) {
+          scriptState.running = true;
+          scriptState.script = script;
+          hasTerminalContent = false;
+          updateButtons();
+          showTerminalTab();
+          switchToTerminalView();
+          var term = getTerminal();
+          if (term) {
+            term.clear();
+            term.writeln('\x1b[36m[running npm run ' + script + ']\x1b[0m\r\n');
+          }
         }
-      }
-    })
-    .catch(function(err) {
-      console.error('Failed to start script:', err);
-    });
+      })
+      .catch(function(err) { console.error('Failed to start script:', err); });
   }
 
   function stopScript() {
     if (!currentConversationId) return;
-    fetch(BASE + '/api/conversations/' + currentConversationId + '/stop-script', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}'
-    }).catch(function(err) {
-      console.error('Failed to stop script:', err);
-    });
+    window.wsClient.rpc('conv.stop-script', { id: currentConversationId })
+      .catch(function(err) { console.error('Failed to stop script:', err); });
   }
 
   function showTerminalTab() {

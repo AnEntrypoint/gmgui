@@ -3892,7 +3892,7 @@ registerUtilHandlers(wsRouter, {
   broadcastSync, getSpeech, getProviderConfigs, saveProviderConfig,
   startGeminiOAuth, exchangeGeminiOAuthCode,
   geminiOAuthState: () => geminiOAuthState,
-  STARTUP_CWD
+  STARTUP_CWD, activeScripts
 });
 
 wsRouter.onLegacy((data, ws) => {

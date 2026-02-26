@@ -131,8 +131,7 @@ class GMGUIApp {
 
   async fetchMessages(conversationId) {
     try {
-      const res = await fetch(BASE_URL + `/api/conversations/${conversationId}/messages`);
-      const data = await res.json();
+      const data = await window.wsClient.rpc('msg.ls', { id: conversationId });
       return data.messages || [];
     } catch (e) {
       console.error('[APP] Error fetching messages:', e);
@@ -289,18 +288,8 @@ class GMGUIApp {
     if (!content || !this.currentConversation || !this.selectedAgent) return;
 
     try {
-      const res = await fetch(BASE_URL + `/api/conversations/${this.currentConversation}/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          agentId: this.selectedAgent
-        })
-      });
-
-      if (res.ok) {
-        input.value = '';
-      }
+      await window.wsClient.rpc('msg.send', { id: this.currentConversation, content, agentId: this.selectedAgent });
+      input.value = '';
     } catch (e) {
       console.error('[APP] Error sending message:', e);
     }

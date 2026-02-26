@@ -14,9 +14,10 @@ class AgentGUIClient {
       ...config
     };
 
-    // Initialize components
+    // Initialize components - reuse global wsManager/wsClient if available
     this.renderer = new StreamingRenderer(config.renderer || {});
-    this.wsManager = new WebSocketManager(config.websocket || {});
+    this.wsManager = window.wsManager || new WebSocketManager(config.websocket || {});
+    if (!window.wsManager) window.wsManager = this.wsManager;
     this.eventProcessor = new EventProcessor(config.eventProcessor || {});
 
     // Application state
@@ -881,8 +882,7 @@ class AgentGUIClient {
 
   async _promptPushIfWeOwnRemote() {
     try {
-      const result = await fetch(window.__BASE_URL + '/api/git/check-remote-ownership');
-      const { ownsRemote, hasChanges, hasUnpushed, remoteUrl } = await result.json();
+      const { ownsRemote, hasChanges, hasUnpushed, remoteUrl } = await window.wsClient.rpc('git.check');
       if (ownsRemote && (hasChanges || hasUnpushed)) {
         const conv = this.state.currentConversation;
         if (conv) {
@@ -987,8 +987,7 @@ class AgentGUIClient {
     if (!outputEl) return;
 
     try {
-      const response = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue`);
-      const { queue } = await response.json();
+      const { queue } = await window.wsClient.rpc('q.ls', { id: conversationId });
 
       let queueEl = outputEl.querySelector('.queue-indicator');
       if (!queue || queue.length === 0) {
@@ -1015,7 +1014,7 @@ class AgentGUIClient {
           const index = parseInt(e.target.dataset.index);
           const msgId = queue[index].messageId;
           if (await window.UIDialog.confirm('Delete this queued message?', 'Delete Message')) {
-            await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${msgId}`, { method: 'DELETE' });
+            await window.wsClient.rpc('q.del', { id: conversationId, messageId: msgId });
           }
         });
       });
@@ -1026,11 +1025,7 @@ class AgentGUIClient {
           const q = queue[index];
           const newContent = await window.UIDialog.prompt('Edit message:', q.content, 'Edit Queued Message');
           if (newContent !== null && newContent !== q.content) {
-            fetch(window.__BASE_URL + `/api/conversations/${conversationId}/queue/${q.messageId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ content: newContent })
-            });
+            window.wsClient.rpc('q.upd', { id: conversationId, messageId: q.messageId, content: newContent });
           }
         });
       });
@@ -1281,12 +1276,7 @@ class AgentGUIClient {
       } else {
         const body = { agentId, title: savedPrompt.substring(0, 50) };
         if (model) body.model = model;
-        const response = await fetch(window.__BASE_URL + '/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const { conversation } = await response.json();
+        const { conversation } = await window.wsClient.rpc('conv.new', body);
         this.state.currentConversation = conversation;
         this.lockAgentAndModel(agentId, model);
 
@@ -1351,10 +1341,7 @@ class AgentGUIClient {
     if (lastSeq < 0) return;
 
     try {
-      const url = `${window.__BASE_URL}/api/sessions/${sessionId}/chunks?sinceSeq=${lastSeq}`;
-      const resp = await fetch(url);
-      if (!resp.ok) return;
-      const { chunks: rawChunks } = await resp.json();
+      const { chunks: rawChunks } = await window.wsClient.rpc('sess.chunks', { id: sessionId, sinceSeq: lastSeq });
       if (!rawChunks || rawChunks.length === 0) return;
 
       const chunks = rawChunks.map(c => ({
@@ -1545,42 +1532,28 @@ class AgentGUIClient {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
 
-      const streamBody = { content: prompt, agentId };
+      const streamBody = { id: conversationId, content: prompt, agentId };
       if (model) streamBody.model = model;
-      const response = await fetch(`${window.__BASE_URL}/api/conversations/${conversationId}/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(streamBody)
-      });
-
-      if (response.status === 404) {
-        console.warn('Conversation not found, recreating:', conversationId);
-        const conv = this.state.currentConversation;
-        const createBody = {
-          agentId,
-          title: conv?.title || prompt.substring(0, 50),
-          workingDirectory: conv?.workingDirectory || null
-        };
-        if (model) createBody.model = model;
-        const createResp = await fetch(window.__BASE_URL + '/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(createBody)
-        });
-        if (!createResp.ok) throw new Error(`Failed to recreate conversation: HTTP ${createResp.status}`);
-        const { conversation: newConv } = await createResp.json();
-        this.state.currentConversation = newConv;
-        if (window.conversationManager) {
-          window.conversationManager.loadConversations();
-          window.conversationManager.select(newConv.id);
+      let result;
+      try {
+        result = await window.wsClient.rpc('msg.stream', streamBody);
+      } catch (e) {
+        if (e.code === 404) {
+          console.warn('Conversation not found, recreating:', conversationId);
+          const conv = this.state.currentConversation;
+          const createBody = { agentId, title: conv?.title || prompt.substring(0, 50), workingDirectory: conv?.workingDirectory || null };
+          if (model) createBody.model = model;
+          const { conversation: newConv } = await window.wsClient.rpc('conv.new', createBody);
+          this.state.currentConversation = newConv;
+          if (window.conversationManager) {
+            window.conversationManager.loadConversations();
+            window.conversationManager.select(newConv.id);
+          }
+          this.updateUrlForConversation(newConv.id);
+          return this.streamToConversation(newConv.id, prompt, agentId, model);
         }
-        this.updateUrlForConversation(newConv.id);
-        return this.streamToConversation(newConv.id, prompt, agentId, model);
+        throw e;
       }
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const result = await response.json();
 
       if (result.queued) {
         console.log('Message queued, position:', result.queuePosition);
@@ -1607,26 +1580,8 @@ class AgentGUIClient {
   async fetchChunks(conversationId, since = 0) {
     if (!conversationId) return [];
 
-    if (this.chunkPollState.abortController) {
-      this.chunkPollState.abortController.abort();
-    }
-    this.chunkPollState.abortController = new AbortController();
-    const signal = this.chunkPollState.abortController.signal;
-
     try {
-      const params = new URLSearchParams();
-      if (since > 0) {
-        params.append('since', since.toString());
-      }
-
-      const url = `${window.__BASE_URL}/api/conversations/${conversationId}/chunks?${params.toString()}`;
-      const response = await fetch(url, { signal });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
+      const data = await window.wsClient.rpc('conv.chunks', { id: conversationId, since: since > 0 ? since : 0 });
       if (!data.ok || !Array.isArray(data.chunks)) {
         throw new Error('Invalid chunks response');
       }
@@ -1663,9 +1618,8 @@ class AgentGUIClient {
 
     const checkSessionStatus = async () => {
       if (!this.state.currentSession?.id) return false;
-      const sessionResponse = await fetch(`${window.__BASE_URL}/api/sessions/${this.state.currentSession.id}`);
-      if (!sessionResponse.ok) return false;
-      const { session } = await sessionResponse.json();
+      let session;
+      try { ({ session } = await window.wsClient.rpc('sess.get', { id: this.state.currentSession.id })); } catch { return false; }
       if (session && (session.status === 'complete' || session.status === 'error')) {
         if (session.status === 'complete') {
           this.handleStreamingComplete({ sessionId: session.id, conversationId, timestamp: Date.now() });
@@ -1867,8 +1821,7 @@ class AgentGUIClient {
   async loadAgents() {
     return this._dedupedFetch('loadAgents', async () => {
       try {
-        const response = await fetch(window.__BASE_URL + '/api/agents');
-        const { agents } = await response.json();
+        const { agents } = await window.wsClient.rpc('agent.ls');
         this.state.agents = agents;
 
         if (this.ui.agentSelector) {
@@ -1891,8 +1844,7 @@ class AgentGUIClient {
 
   async checkSpeechStatus() {
     try {
-      const response = await fetch(window.__BASE_URL + '/api/speech-status');
-      const status = await response.json();
+      const status = await window.wsClient.rpc('speech.status');
       if (status.modelsComplete) {
         this._modelDownloadProgress = { done: true, complete: true };
         this._modelDownloadInProgress = false;
@@ -1918,8 +1870,7 @@ class AgentGUIClient {
       return;
     }
     try {
-      const response = await fetch(window.__BASE_URL + `/api/agents/${agentId}/models`);
-      const { models } = await response.json();
+      const { models } = await window.wsClient.rpc('agent.models', { id: agentId });
       this._modelCache.set(agentId, models || []);
       this._populateModelSelector(models || []);
     } catch (error) {
@@ -1990,8 +1941,7 @@ class AgentGUIClient {
   async loadConversations() {
     return this._dedupedFetch('loadConversations', async () => {
       try {
-        const response = await fetch(window.__BASE_URL + '/api/conversations');
-        const { conversations } = await response.json();
+        const { conversations } = await window.wsClient.rpc('conv.ls');
         this.state.conversations = conversations;
         return conversations;
       } catch (error) {
@@ -2180,17 +2130,7 @@ class AgentGUIClient {
       if (workingDirectory) body.workingDirectory = workingDirectory;
       if (model) body.model = model;
 
-      const response = await fetch(window.__BASE_URL + '/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create conversation: ${response.status}`);
-      }
-
-      const { conversation } = await response.json();
+      const { conversation } = await window.wsClient.rpc('conv.new', body);
 
       await this.loadConversations();
 
@@ -2282,20 +2222,22 @@ class AgentGUIClient {
 
       this._showSkeletonLoading(conversationId);
 
-      const resp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/full`, { signal: convSignal });
-      if (resp.status === 404) {
-        console.warn('Conversation no longer exists:', conversationId);
-        this.state.currentConversation = null;
-        if (window.conversationManager) {
-          window.conversationManager.loadConversations();
+      let fullData;
+      try {
+        fullData = await window.wsClient.rpc('conv.full', { id: conversationId });
+      } catch (e) {
+        if (e.code === 404) {
+          console.warn('Conversation no longer exists:', conversationId);
+          this.state.currentConversation = null;
+          if (window.conversationManager) window.conversationManager.loadConversations();
+          const outputEl = document.getElementById('output');
+          if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
+          this.enableControls();
+          return;
         }
-        const outputEl = document.getElementById('output');
-        if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
-        this.enableControls();
-        return;
+        throw e;
       }
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = await resp.json();
+      const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = fullData;
 
       this.state.currentConversation = conversation;
       const hasActivity = (allMessages && allMessages.length > 0) || isActivelyStreaming || latestSession || this.state.streamingConversations.has(conversationId);
@@ -2337,11 +2279,9 @@ class AgentGUIClient {
             loadMoreBtn.disabled = true;
             loadMoreBtn.textContent = 'Loading...';
             try {
-              const fullResp = await fetch(window.__BASE_URL + `/api/conversations/${conversationId}/full?allChunks=1`);
-              if (fullResp.ok) {
-                this.invalidateCache(conversationId);
-                await this.loadConversationMessages(conversationId);
-              }
+              await window.wsClient.rpc('conv.full', { id: conversationId, allChunks: true });
+              this.invalidateCache(conversationId);
+              await this.loadConversationMessages(conversationId);
             } catch (e) {
               loadMoreBtn.textContent = 'Failed to load. Try again.';
               loadMoreBtn.disabled = false;

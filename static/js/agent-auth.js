@@ -1,5 +1,4 @@
 (function() {
-  var BASE = window.__BASE_URL || '';
   var btn = document.getElementById('agentAuthBtn');
   var dropdown = document.getElementById('agentAuthDropdown');
   var agents = [], providers = {}, authRunning = false, editingProvider = null;
@@ -20,13 +19,13 @@
   function refresh() { fetchAuthStatus(); fetchProviderConfigs(); }
 
   function fetchAuthStatus() {
-    fetch(BASE + '/api/agents/auth-status').then(function(r) { return r.json(); })
+    window.wsClient.rpc('agent.authstat')
       .then(function(data) { agents = data.agents || []; updateButton(); renderDropdown(); })
       .catch(function() {});
   }
 
   function fetchProviderConfigs() {
-    fetch(BASE + '/api/auth/configs').then(function(r) { return r.json(); })
+    window.wsClient.rpc('auth.configs')
       .then(function(data) { providers = data || {}; updateButton(); renderDropdown(); })
       .catch(function() {});
   }
@@ -114,12 +113,10 @@
   function toggleEdit(pid) { editingProvider = editingProvider === pid ? null : pid; renderDropdown(); }
 
   function saveProviderKey(providerId, apiKey) {
-    fetch(BASE + '/api/auth/save-config', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ providerId: providerId, apiKey: apiKey, defaultModel: '' })
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.success) { editingProvider = null; fetchProviderConfigs(); }
-    }).catch(function() { editingProvider = null; renderDropdown(); });
+    window.wsClient.rpc('auth.save', { providerId: providerId, apiKey: apiKey, defaultModel: '' })
+      .then(function(data) {
+        if (data.success) { editingProvider = null; fetchProviderConfigs(); }
+      }).catch(function() { editingProvider = null; renderDropdown(); });
   }
 
   function toggleDropdown(e) {
@@ -201,64 +198,62 @@
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Verifying...'; }
     if (errorEl) errorEl.style.display = 'none';
 
-    fetch(BASE + '/api/gemini-oauth/complete', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url })
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.success) {
-        cleanupOAuthPolling();
-        authRunning = false;
-        removeOAuthModal();
-        refresh();
-      } else {
-        if (errorEl) { errorEl.textContent = data.error || 'Failed to complete authentication.'; errorEl.style.display = 'block'; }
+    window.wsClient.rpc('gemini.complete', { url: url })
+      .then(function(data) {
+        if (data.success) {
+          cleanupOAuthPolling();
+          authRunning = false;
+          removeOAuthModal();
+          refresh();
+        } else {
+          if (errorEl) { errorEl.textContent = data.error || 'Failed to complete authentication.'; errorEl.style.display = 'block'; }
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Complete Sign-In'; }
+        }
+      }).catch(function(e) {
+        if (errorEl) { errorEl.textContent = e.message; errorEl.style.display = 'block'; }
         if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Complete Sign-In'; }
-      }
-    }).catch(function(e) {
-      if (errorEl) { errorEl.textContent = e.message; errorEl.style.display = 'block'; }
-      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Complete Sign-In'; }
-    });
+      });
   }
 
   function triggerAuth(agentId) {
     if (authRunning) return;
-    fetch(BASE + '/api/agents/' + agentId + '/auth', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
-    }).then(function(r) { return r.json(); }).then(function(data) {
-      if (data.ok) {
-        authRunning = true; showTerminalTab(); switchToTerminalView();
-        var term = getTerminal();
-        if (term) { term.clear(); term.writeln('\x1b[36m[authenticating ' + agentId + ']\x1b[0m\r\n'); }
-        if (data.authUrl) {
-          window.open(data.authUrl, '_blank');
-          if (agentId === 'gemini') {
-            showOAuthWaitingModal();
-            cleanupOAuthPolling();
-            oauthPollInterval = setInterval(function() {
-              fetch(BASE + '/api/gemini-oauth/status').then(function(r) { return r.json(); }).then(function(status) {
-                if (status.status === 'success') {
-                  cleanupOAuthPolling();
-                  authRunning = false;
-                  removeOAuthModal();
-                  refresh();
-                } else if (status.status === 'error') {
-                  cleanupOAuthPolling();
-                  authRunning = false;
-                  removeOAuthModal();
-                }
-              }).catch(function() {});
-            }, 1500);
-            oauthFallbackTimer = setTimeout(function() {
-              if (authRunning) showOAuthPasteFallback();
-            }, 30000);
-            oauthPollTimeout = setTimeout(function() {
+    window.wsClient.rpc('agent.auth', { id: agentId })
+      .then(function(data) {
+        if (data.ok) {
+          authRunning = true; showTerminalTab(); switchToTerminalView();
+          var term = getTerminal();
+          if (term) { term.clear(); term.writeln('\x1b[36m[authenticating ' + agentId + ']\x1b[0m\r\n'); }
+          if (data.authUrl) {
+            window.open(data.authUrl, '_blank');
+            if (agentId === 'gemini') {
+              showOAuthWaitingModal();
               cleanupOAuthPolling();
-              if (authRunning) { authRunning = false; removeOAuthModal(); }
-            }, 5 * 60 * 1000);
+              oauthPollInterval = setInterval(function() {
+                window.wsClient.rpc('gemini.status')
+                  .then(function(status) {
+                    if (status.status === 'success') {
+                      cleanupOAuthPolling();
+                      authRunning = false;
+                      removeOAuthModal();
+                      refresh();
+                    } else if (status.status === 'error') {
+                      cleanupOAuthPolling();
+                      authRunning = false;
+                      removeOAuthModal();
+                    }
+                  }).catch(function() {});
+              }, 1500);
+              oauthFallbackTimer = setTimeout(function() {
+                if (authRunning) showOAuthPasteFallback();
+              }, 30000);
+              oauthPollTimeout = setTimeout(function() {
+                cleanupOAuthPolling();
+                if (authRunning) { authRunning = false; removeOAuthModal(); }
+              }, 5 * 60 * 1000);
+            }
           }
         }
-      }
-    }).catch(function() {});
+      }).catch(function() {});
   }
 
   function onWsMessage(e) {

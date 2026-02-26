@@ -78,3 +78,6 @@ class WsClient {
 }
 
 window.WsClient = WsClient;
+
+window.wsManager = new WebSocketManager();
+window.wsClient = new WsClient(window.wsManager);
