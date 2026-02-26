@@ -23,6 +23,17 @@ import { register as registerSessionHandlers } from './lib/ws-handlers-session.j
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
 
+
+process.on('uncaughtException', (err, origin) => {
+  console.error('[FATAL] Uncaught exception (contained):', err.message, '| origin:', origin);
+  console.error(err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled rejection (contained):', reason instanceof Error ? reason.message : reason);
+  if (reason instanceof Error) console.error(reason.stack);
+});
+
 const ttsTextAccumulators = new Map();
 
 let speechModule = null;
@@ -1673,6 +1684,8 @@ const server = http.createServer(async (req, res) => {
       };
       child.stdout.on('data', onData('stdout'));
       child.stderr.on('data', onData('stderr'));
+      child.stdout.on('error', () => {});
+      child.stderr.on('error', () => {});
       child.on('error', (err) => {
         activeScripts.delete(conversationId);
         broadcastSync({ type: 'script_stopped', conversationId, code: 1, error: err.message, timestamp: Date.now() });
@@ -2442,6 +2455,8 @@ const server = http.createServer(async (req, res) => {
       };
       child.stdout.on('data', onData('stdout'));
       child.stderr.on('data', onData('stderr'));
+      child.stdout.on('error', () => {});
+      child.stderr.on('error', () => {});
       child.on('error', (err) => {
         activeScripts.delete(conversationId);
         broadcastSync({ type: 'script_stopped', conversationId, code: 1, error: err.message, timestamp: Date.now() });
@@ -2476,6 +2491,8 @@ const server = http.createServer(async (req, res) => {
       };
       child.stdout.on('data', onData('stdout'));
       child.stderr.on('data', onData('stderr'));
+      child.stdout.on('error', () => {});
+      child.stderr.on('error', () => {});
       child.on('error', (err) => {
         activeScripts.delete(conversationId);
         broadcastSync({ type: 'script_stopped', conversationId, code: 1, error: err.message, timestamp: Date.now() });
@@ -3790,6 +3807,9 @@ const wss = new WebSocketServer({
     threshold: 256
   }
 });
+wss.on('error', (err) => {
+  console.error('[WSS] WebSocket server error (contained):', err.message);
+});
 const hotReloadClients = [];
 const syncClients = new Set();
 const subscriptionIndex = new Map();
@@ -3813,8 +3833,11 @@ wss.on('connection', (ws, req) => {
       timestamp: Date.now()
     }));
 
+    ws.on('error', (err) => {
+      console.error('[WS] Client error (contained):', ws.clientId, err.message);
+    });
     ws.on('message', (msg) => {
-      wsRouter.onMessage(ws, msg);
+      try { wsRouter.onMessage(ws, msg); } catch (e) { console.error('[WS] Message handler error (contained):', e.message); }
     });
 
     ws.on('pong', () => { ws.isAlive = true; });
@@ -3842,31 +3865,33 @@ const BROADCAST_TYPES = new Set([
 const wsOptimizer = new WSOptimizer();
 
 function broadcastSync(event) {
-  const isBroadcast = BROADCAST_TYPES.has(event.type);
+  try {
+    const isBroadcast = BROADCAST_TYPES.has(event.type);
 
-  // Send to WebSocket clients using optimizer
-  if (syncClients.size > 0) {
-    if (isBroadcast) {
-      for (const ws of syncClients) wsOptimizer.sendToClient(ws, event);
-    } else {
-      const targets = new Set();
-      if (event.sessionId) {
-        const subs = subscriptionIndex.get(event.sessionId);
-        if (subs) for (const ws of subs) targets.add(ws);
+    if (syncClients.size > 0) {
+      if (isBroadcast) {
+        for (const ws of syncClients) { try { wsOptimizer.sendToClient(ws, event); } catch (e) {} }
+      } else {
+        const targets = new Set();
+        if (event.sessionId) {
+          const subs = subscriptionIndex.get(event.sessionId);
+          if (subs) for (const ws of subs) targets.add(ws);
+        }
+        if (event.conversationId) {
+          const subs = subscriptionIndex.get(`conv-${event.conversationId}`);
+          if (subs) for (const ws of subs) targets.add(ws);
+        }
+        for (const ws of targets) { try { wsOptimizer.sendToClient(ws, event); } catch (e) {} }
       }
-      if (event.conversationId) {
-        const subs = subscriptionIndex.get(`conv-${event.conversationId}`);
-        if (subs) for (const ws of subs) targets.add(ws);
-      }
-      for (const ws of targets) wsOptimizer.sendToClient(ws, event);
     }
-  }
 
-  // Send to SSE handlers
-  if (sseStreamHandlers.size > 0) {
-    for (const [runId, handler] of sseStreamHandlers.entries()) {
-      handler(event);
+    if (sseStreamHandlers.size > 0) {
+      for (const [runId, handler] of sseStreamHandlers.entries()) {
+        try { handler(event); } catch (e) {}
+      }
     }
+  } catch (err) {
+    console.error('[BROADCAST] Error (contained):', err.message);
   }
 }
 
@@ -3898,6 +3923,7 @@ registerUtilHandlers(wsRouter, {
 });
 
 wsRouter.onLegacy((data, ws) => {
+  try {
   if (data.type === 'subscribe') {
     if (data.sessionId) {
       ws.subscriptions.add(data.sessionId);
@@ -3968,10 +3994,18 @@ wsRouter.onLegacy((data, ws) => {
       if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
       ws.terminalProc = null;
     });
+    proc.on('error', (err) => {
+      console.error('[TERMINAL] Spawn error (contained):', err.message);
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code: 1, error: err.message }));
+      ws.terminalProc = null;
+    });
+    proc.stdin.on('error', () => {});
+    proc.stdout.on('error', () => {});
+    proc.stderr.on('error', () => {});
     ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
   } else if (data.type === 'terminal_input') {
     if (ws.terminalProc && ws.terminalProc.stdin.writable) {
-      ws.terminalProc.stdin.write(Buffer.from(data.data, 'base64'));
+      try { ws.terminalProc.stdin.write(Buffer.from(data.data, 'base64')); } catch (e) {}
     }
   } else if (data.type === 'terminal_stop') {
     if (ws.terminalProc) {
@@ -3979,6 +4013,8 @@ wsRouter.onLegacy((data, ws) => {
       ws.terminalProc = null;
     }
   }
+
+  } catch (err) { console.error('[WS-LEGACY] Handler error (contained):', err.message); }
 });
 
 // Heartbeat interval to detect stale connections
@@ -4019,8 +4055,7 @@ server.on('error', (err) => {
       server.listen(PORT, onServerReady);
     }, 3000);
   } else {
-    console.error('Server error:', err.message);
-    process.exit(1);
+    console.error('[SERVER] Error (contained):', err.message);
   }
 });
 
