@@ -126,17 +126,18 @@
       }
     });
 
-    fetch(BASE + '/api/speech-status')
-      .then(function(res) { return res.json(); })
-      .then(function(status) {
-        if (status.modelsComplete) {
-          if (voiceBtn) voiceBtn.style.display = '';
-          if (indicator) indicator.classList.remove('active');
-        } else if (status.modelsDownloading) {
-          if (indicator) indicator.classList.add('active');
-        }
-      })
-      .catch(function() {});
+    if (window.wsClient) {
+      window.wsClient.rpc('speech.status')
+        .then(function(status) {
+          if (status.modelsComplete) {
+            if (voiceBtn) voiceBtn.style.display = '';
+            if (indicator) indicator.classList.remove('active');
+          } else if (status.modelsDownloading) {
+            if (indicator) indicator.classList.add('active');
+          }
+        })
+        .catch(function() {});
+    }
   }
 
   function switchView(view) {

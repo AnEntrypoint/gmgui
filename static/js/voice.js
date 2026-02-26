@@ -72,43 +72,44 @@
       });
       return;
     }
-    fetch(BASE + '/api/voices')
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        if (!data.ok || !Array.isArray(data.voices)) return;
-        selector.innerHTML = '';
-        var builtIn = data.voices.filter(function(v) { return !v.isCustom; });
-        var custom = data.voices.filter(function(v) { return v.isCustom; });
-        if (builtIn.length) {
-          var grp1 = document.createElement('optgroup');
-          grp1.label = 'Built-in Voices';
-          builtIn.forEach(function(voice) {
-            var opt = document.createElement('option');
-            opt.value = voice.id;
-            var parts = [];
-            if (voice.gender) parts.push(voice.gender);
-            if (voice.accent) parts.push(voice.accent);
-            opt.textContent = voice.name + (parts.length ? ' (' + parts.join(', ') + ')' : '');
-            grp1.appendChild(opt);
-          });
-          selector.appendChild(grp1);
-        }
-        if (custom.length) {
-          var grp2 = document.createElement('optgroup');
-          grp2.label = 'Custom Voices';
-          custom.forEach(function(voice) {
-            var opt = document.createElement('option');
-            opt.value = voice.id;
-            opt.textContent = voice.name;
-            grp2.appendChild(opt);
-          });
-          selector.appendChild(grp2);
-        }
-        if (saved && selector.querySelector('option[value="' + saved + '"]')) {
-          selector.value = saved;
-        }
-      })
-      .catch(function(err) { console.error('[Voice] Failed to load voices:', err); });
+    if (window.wsClient) {
+      window.wsClient.rpc('voices')
+        .then(function(data) {
+          if (!data.ok || !Array.isArray(data.voices)) return;
+          selector.innerHTML = '';
+          var builtIn = data.voices.filter(function(v) { return !v.isCustom; });
+          var custom = data.voices.filter(function(v) { return v.isCustom; });
+          if (builtIn.length) {
+            var grp1 = document.createElement('optgroup');
+            grp1.label = 'Built-in Voices';
+            builtIn.forEach(function(voice) {
+              var opt = document.createElement('option');
+              opt.value = voice.id;
+              var parts = [];
+              if (voice.gender) parts.push(voice.gender);
+              if (voice.accent) parts.push(voice.accent);
+              opt.textContent = voice.name + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+              grp1.appendChild(opt);
+            });
+            selector.appendChild(grp1);
+          }
+          if (custom.length) {
+            var grp2 = document.createElement('optgroup');
+            grp2.label = 'Custom Voices';
+            custom.forEach(function(voice) {
+              var opt = document.createElement('option');
+              opt.value = voice.id;
+              opt.textContent = voice.name;
+              grp2.appendChild(opt);
+            });
+            selector.appendChild(grp2);
+          }
+          if (saved && selector.querySelector('option[value="' + saved + '"]')) {
+            selector.value = saved;
+          }
+        })
+        .catch(function(err) { console.error('[Voice] Failed to load voices:', err); });
+    }
     selector.addEventListener('change', function() {
       selectedVoiceId = selector.value;
       localStorage.setItem('voice-selected-id', selectedVoiceId);
@@ -760,35 +761,39 @@
     }
     isLoadingHistory = true;
     subscribeToConversation(conversationId);
-    fetch(BASE + '/api/conversations/' + conversationId + '/chunks')
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        isLoadingHistory = false;
-        if (!data.ok || !Array.isArray(data.chunks) || data.chunks.length === 0) {
-          showVoiceEmpty(container);
-          return;
-        }
-        var hasContent = false;
-        _voiceBreakNext = false;
-        data.chunks.forEach(function(chunk) {
-          if (chunk.sequence !== undefined) renderedSeqs.add(chunk.sequence);
-          var block = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
-          if (!block) return;
-          if (block.type === 'text' && block.text) {
-            addVoiceBlock(block.text, false);
-            hasContent = true;
-          } else if (block.type === 'result') {
-            _voiceBreakNext = true;
-          } else {
-            _voiceBreakNext = true;
+    if (window.wsClient) {
+      window.wsClient.rpc('conv.chunks', { id: conversationId })
+        .then(function(data) {
+          isLoadingHistory = false;
+          if (!data.ok || !Array.isArray(data.chunks) || data.chunks.length === 0) {
+            showVoiceEmpty(container);
+            return;
           }
+          var hasContent = false;
+          _voiceBreakNext = false;
+          data.chunks.forEach(function(chunk) {
+            if (chunk.sequence !== undefined) renderedSeqs.add(chunk.sequence);
+            var block = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
+            if (!block) return;
+            if (block.type === 'text' && block.text) {
+              addVoiceBlock(block.text, false);
+              hasContent = true;
+            } else if (block.type === 'result') {
+              _voiceBreakNext = true;
+            } else {
+              _voiceBreakNext = true;
+            }
+          });
+          if (!hasContent) showVoiceEmpty(container);
+        })
+        .catch(function() {
+          isLoadingHistory = false;
+          showVoiceEmpty(container);
         });
-        if (!hasContent) showVoiceEmpty(container);
-      })
-      .catch(function() {
-        isLoadingHistory = false;
-        showVoiceEmpty(container);
-      });
+    } else {
+      isLoadingHistory = false;
+      showVoiceEmpty(container);
+    }
   }
 
   function subscribeToConversation(conversationId) {

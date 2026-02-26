@@ -17,6 +17,11 @@ import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 import { SSEStreamManager } from './lib/sse-stream.js';
 import { WSOptimizer } from './lib/ws-optimizer.js';
+import { WsRouter } from './lib/ws-protocol.js';
+import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
+import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
+import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
+import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
 
 const ttsTextAccumulators = new Map();
 
@@ -3300,6 +3305,82 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
           });
 
           if (block.type === 'text' && block.text) {
+            // Check for rate limit message in text content
+            const rateLimitTextMatch = block.text.match(/you'?ve hit your limit|rate limit exceeded/i);
+            if (rateLimitTextMatch) {
+              debugLog(`[rate-limit] Detected rate limit message in stream for conv ${conversationId}`);
+              
+              // Extract reset time from message
+              let retryAfterSec = 300; // default 5 minutes
+              const resetTimeMatch = block.text.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(?(UTC|[A-Z]{2,4})\)?/i);
+              if (resetTimeMatch) {
+                let hours = parseInt(resetTimeMatch[1], 10);
+                const minutes = resetTimeMatch[2] ? parseInt(resetTimeMatch[2], 10) : 0;
+                const period = resetTimeMatch[3]?.toLowerCase();
+                
+                if (period === 'pm' && hours !== 12) hours += 12;
+                if (period === 'am' && hours === 12) hours = 0;
+                
+                const now = new Date();
+                const resetTime = new Date(now);
+                resetTime.setUTCHours(hours, minutes, 0, 0);
+                
+                if (resetTime <= now) {
+                  resetTime.setUTCDate(resetTime.getUTCDate() + 1);
+                }
+                
+                retryAfterSec = Math.max(60, Math.ceil((resetTime.getTime() - now.getTime()) / 1000));
+                debugLog(`[rate-limit] Parsed reset time: ${resetTime.toISOString()}, retry in ${retryAfterSec}s`);
+              }
+              
+              // Kill the running process
+              const entry = activeExecutions.get(conversationId);
+              if (entry && entry.pid) {
+                try {
+                  process.kill(entry.pid);
+                  debugLog(`[rate-limit] Killed process ${entry.pid} for conv ${conversationId}`);
+                } catch (e) {
+                  debugLog(`[rate-limit] Failed to kill process: ${e.message}`);
+                }
+              }
+              
+              // Set flag to stop processing and trigger retry
+              rateLimitState.set(conversationId, { 
+                retryAt: Date.now() + (retryAfterSec * 1000), 
+                cooldownMs: retryAfterSec * 1000, 
+                retryCount: 0,
+                isStreamDetected: true
+              });
+              
+              // Broadcast rate limit event
+              broadcastSync({
+                type: 'rate_limit_hit',
+                sessionId,
+                conversationId,
+                retryAfterMs: retryAfterSec * 1000,
+                retryAt: Date.now() + (retryAfterSec * 1000),
+                retryCount: 1,
+                timestamp: Date.now()
+              });
+              
+              batcher.drain();
+              activeExecutions.delete(conversationId);
+              queries.setIsStreaming(conversationId, false);
+              
+              // Schedule retry
+              setTimeout(() => {
+                rateLimitState.delete(conversationId);
+                broadcastSync({
+                  type: 'rate_limit_clear',
+                  conversationId,
+                  timestamp: Date.now()
+                });
+                scheduleRetry(conversationId, messageId, content, agentId, model);
+              }, retryAfterSec * 1000);
+              
+              return; // Stop processing events
+            }
+            
             eagerTTS(block.text, conversationId, sessionId);
           }
         }
@@ -3354,6 +3435,74 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
 
         if (parsed.result) {
           const resultText = typeof parsed.result === 'string' ? parsed.result : JSON.stringify(parsed.result);
+          
+          // Check for rate limit message in result
+          const rateLimitResultMatch = resultText.match(/you'?ve hit your limit|rate limit exceeded/i);
+          if (rateLimitResultMatch) {
+            debugLog(`[rate-limit] Detected rate limit in result for conv ${conversationId}`);
+            
+            let retryAfterSec = 300;
+            const resetTimeMatch = resultText.match(/resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(?(UTC|[A-Z]{2,4})\)?/i);
+            if (resetTimeMatch) {
+              let hours = parseInt(resetTimeMatch[1], 10);
+              const minutes = resetTimeMatch[2] ? parseInt(resetTimeMatch[2], 10) : 0;
+              const period = resetTimeMatch[3]?.toLowerCase();
+              
+              if (period === 'pm' && hours !== 12) hours += 12;
+              if (period === 'am' && hours === 12) hours = 0;
+              
+              const now = new Date();
+              const resetTime = new Date(now);
+              resetTime.setUTCHours(hours, minutes, 0, 0);
+              
+              if (resetTime <= now) {
+                resetTime.setUTCDate(resetTime.getUTCDate() + 1);
+              }
+              
+              retryAfterSec = Math.max(60, Math.ceil((resetTime.getTime() - now.getTime()) / 1000));
+            }
+            
+            const entry = activeExecutions.get(conversationId);
+            if (entry && entry.pid) {
+              try {
+                process.kill(entry.pid);
+              } catch (e) {}
+            }
+            
+            rateLimitState.set(conversationId, { 
+              retryAt: Date.now() + (retryAfterSec * 1000), 
+              cooldownMs: retryAfterSec * 1000, 
+              retryCount: 0,
+              isStreamDetected: true
+            });
+            
+            broadcastSync({
+              type: 'rate_limit_hit',
+              sessionId,
+              conversationId,
+              retryAfterMs: retryAfterSec * 1000,
+              retryAt: Date.now() + (retryAfterSec * 1000),
+              retryCount: 1,
+              timestamp: Date.now()
+            });
+            
+            batcher.drain();
+            activeExecutions.delete(conversationId);
+            queries.setIsStreaming(conversationId, false);
+            
+            setTimeout(() => {
+              rateLimitState.delete(conversationId);
+              broadcastSync({
+                type: 'rate_limit_clear',
+                conversationId,
+                timestamp: Date.now()
+              });
+              scheduleRetry(conversationId, messageId, content, agentId, model);
+            }, retryAfterSec * 1000);
+            
+            return;
+          }
+          
           if (resultText) eagerTTS(resultText, conversationId, sessionId);
         }
 
@@ -3420,6 +3569,13 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     };
 
     const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(content, cwd, agentId || 'claude-code', config);
+    
+    // Check if rate limit was already handled in stream detection
+    if (rateLimitState.get(conversationId)?.isStreamDetected) {
+      debugLog(`[rate-limit] Rate limit already handled in stream for conv ${conversationId}, skipping success handler`);
+      return;
+    }
+    
     activeExecutions.delete(conversationId);
     batcher.drain();
     debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
@@ -3450,6 +3606,13 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
   } catch (error) {
     const elapsed = Date.now() - startTime;
     debugLog(`[stream] Error after ${elapsed}ms: ${error.message}`);
+
+    // Check if rate limit was already handled in stream detection
+    const existingState = rateLimitState.get(conversationId);
+    if (existingState?.isStreamDetected) {
+      debugLog(`[rate-limit] Rate limit already handled in stream for conv ${conversationId}, skipping catch handler`);
+      return;
+    }
 
     const isRateLimit = error.rateLimited ||
       /rate.?limit|429|too many requests|overloaded|throttl/i.test(error.message);
@@ -3649,97 +3812,7 @@ wss.on('connection', (ws, req) => {
     }));
 
     ws.on('message', (msg) => {
-      try {
-        const data = JSON.parse(msg);
-        if (data.type === 'subscribe') {
-          if (data.sessionId) {
-            ws.subscriptions.add(data.sessionId);
-            if (!subscriptionIndex.has(data.sessionId)) subscriptionIndex.set(data.sessionId, new Set());
-            subscriptionIndex.get(data.sessionId).add(ws);
-          }
-          if (data.conversationId) {
-            const key = `conv-${data.conversationId}`;
-            ws.subscriptions.add(key);
-            if (!subscriptionIndex.has(key)) subscriptionIndex.set(key, new Set());
-            subscriptionIndex.get(key).add(ws);
-          }
-          const subTarget = data.sessionId || data.conversationId;
-          debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${subTarget}`);
-          ws.send(JSON.stringify({
-            type: 'subscription_confirmed',
-            sessionId: data.sessionId,
-            conversationId: data.conversationId,
-            timestamp: Date.now()
-          }));
-        } else if (data.type === 'unsubscribe') {
-          if (data.sessionId) {
-            ws.subscriptions.delete(data.sessionId);
-            const idx = subscriptionIndex.get(data.sessionId);
-            if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(data.sessionId); }
-          }
-          if (data.conversationId) {
-            const key = `conv-${data.conversationId}`;
-            ws.subscriptions.delete(key);
-            const idx = subscriptionIndex.get(key);
-            if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(key); }
-          }
-          debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId || data.conversationId}`);
-        } else if (data.type === 'get_subscriptions') {
-          ws.send(JSON.stringify({
-            type: 'subscriptions',
-            subscriptions: Array.from(ws.subscriptions),
-            timestamp: Date.now()
-          }));
-        } else if (data.type === 'set_voice') {
-          ws.ttsVoiceId = data.voiceId || 'default';
-        } else if (data.type === 'latency_report') {
-          ws.latencyTier = data.quality || 'good';
-          ws.latencyAvg = data.avg || 0;
-          ws.latencyTrend = data.trend || 'stable';
-        } else if (data.type === 'ping') {
-          ws.send(JSON.stringify({
-            type: 'pong',
-            requestId: data.requestId,
-            timestamp: Date.now()
-          }));
-        } else if (data.type === 'terminal_start') {
-          if (ws.terminalProc) {
-            try { ws.terminalProc.kill(); } catch(e) {}
-          }
-          const { spawn } = require('child_process');
-          const shell = process.env.SHELL || '/bin/bash';
-          const cwd = data.cwd || process.env.STARTUP_CWD || process.env.HOME || '/';
-          const proc = spawn(shell, [], { cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, stdio: ['pipe', 'pipe', 'pipe'] });
-          ws.terminalProc = proc;
-          proc.stdout.on('data', (chunk) => {
-            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
-          });
-          proc.stderr.on('data', (chunk) => {
-            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
-          });
-          proc.on('exit', (code) => {
-            if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
-            ws.terminalProc = null;
-          });
-          ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
-        } else if (data.type === 'terminal_input') {
-          if (ws.terminalProc && ws.terminalProc.stdin.writable) {
-            ws.terminalProc.stdin.write(Buffer.from(data.data, 'base64'));
-          }
-        } else if (data.type === 'terminal_stop') {
-          if (ws.terminalProc) {
-            try { ws.terminalProc.kill(); } catch(e) {}
-            ws.terminalProc = null;
-          }
-        }
-      } catch (e) {
-        console.error('WebSocket message parse error:', e.message);
-        ws.send(JSON.stringify({
-          type: 'error',
-          error: 'Invalid message format',
-          timestamp: Date.now()
-        }));
-      }
+      wsRouter.onMessage(ws, msg);
     });
 
     ws.on('pong', () => { ws.isAlive = true; });
@@ -3794,6 +3867,117 @@ function broadcastSync(event) {
     }
   }
 }
+
+// WebSocket protocol router
+const wsRouter = new WsRouter();
+
+registerConvHandlers(wsRouter, {
+  queries, activeExecutions, messageQueues, rateLimitState,
+  broadcastSync, processMessageWithStreaming
+});
+
+registerSessionHandlers(wsRouter, {
+  db: queries, discoveredAgents, getModelsForAgent, modelCache,
+  getAgentDescriptor, activeScripts, broadcastSync,
+  startGeminiOAuth, geminiOAuthState: () => geminiOAuthState
+});
+
+registerRunHandlers(wsRouter, {
+  queries, discoveredAgents, activeExecutions, activeProcessesByRunId,
+  broadcastSync, processMessageWithStreaming
+});
+
+registerUtilHandlers(wsRouter, {
+  queries, wsOptimizer, modelDownloadState, ensureModelsDownloaded,
+  broadcastSync, getSpeech, getProviderConfigs, saveProviderConfig,
+  startGeminiOAuth, exchangeGeminiOAuthCode,
+  geminiOAuthState: () => geminiOAuthState,
+  STARTUP_CWD
+});
+
+wsRouter.onLegacy((data, ws) => {
+  if (data.type === 'subscribe') {
+    if (data.sessionId) {
+      ws.subscriptions.add(data.sessionId);
+      if (!subscriptionIndex.has(data.sessionId)) subscriptionIndex.set(data.sessionId, new Set());
+      subscriptionIndex.get(data.sessionId).add(ws);
+    }
+    if (data.conversationId) {
+      const key = `conv-${data.conversationId}`;
+      ws.subscriptions.add(key);
+      if (!subscriptionIndex.has(key)) subscriptionIndex.set(key, new Set());
+      subscriptionIndex.get(key).add(ws);
+    }
+    const subTarget = data.sessionId || data.conversationId;
+    debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${subTarget}`);
+    ws.send(JSON.stringify({
+      type: 'subscription_confirmed',
+      sessionId: data.sessionId,
+      conversationId: data.conversationId,
+      timestamp: Date.now()
+    }));
+  } else if (data.type === 'unsubscribe') {
+    if (data.sessionId) {
+      ws.subscriptions.delete(data.sessionId);
+      const idx = subscriptionIndex.get(data.sessionId);
+      if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(data.sessionId); }
+    }
+    if (data.conversationId) {
+      const key = `conv-${data.conversationId}`;
+      ws.subscriptions.delete(key);
+      const idx = subscriptionIndex.get(key);
+      if (idx) { idx.delete(ws); if (idx.size === 0) subscriptionIndex.delete(key); }
+    }
+    debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId || data.conversationId}`);
+  } else if (data.type === 'get_subscriptions') {
+    ws.send(JSON.stringify({
+      type: 'subscriptions',
+      subscriptions: Array.from(ws.subscriptions),
+      timestamp: Date.now()
+    }));
+  } else if (data.type === 'set_voice') {
+    ws.ttsVoiceId = data.voiceId || 'default';
+  } else if (data.type === 'latency_report') {
+    ws.latencyTier = data.quality || 'good';
+    ws.latencyAvg = data.avg || 0;
+    ws.latencyTrend = data.trend || 'stable';
+  } else if (data.type === 'ping') {
+    ws.send(JSON.stringify({
+      type: 'pong',
+      requestId: data.requestId,
+      timestamp: Date.now()
+    }));
+  } else if (data.type === 'terminal_start') {
+    if (ws.terminalProc) {
+      try { ws.terminalProc.kill(); } catch(e) {}
+    }
+    const { spawn } = require('child_process');
+    const shell = process.env.SHELL || '/bin/bash';
+    const cwd = data.cwd || process.env.STARTUP_CWD || process.env.HOME || '/';
+    const proc = spawn(shell, [], { cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, stdio: ['pipe', 'pipe', 'pipe'] });
+    ws.terminalProc = proc;
+    proc.stdout.on('data', (chunk) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+    });
+    proc.stderr.on('data', (chunk) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+    });
+    proc.on('exit', (code) => {
+      if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
+      ws.terminalProc = null;
+    });
+    ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
+  } else if (data.type === 'terminal_input') {
+    if (ws.terminalProc && ws.terminalProc.stdin.writable) {
+      ws.terminalProc.stdin.write(Buffer.from(data.data, 'base64'));
+    }
+  } else if (data.type === 'terminal_stop') {
+    if (ws.terminalProc) {
+      try { ws.terminalProc.kill(); } catch(e) {}
+      ws.terminalProc = null;
+    }
+  }
+});
 
 // Heartbeat interval to detect stale connections
 const heartbeatInterval = setInterval(() => {

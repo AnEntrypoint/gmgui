@@ -384,10 +384,7 @@ class AgentGUIClient {
       this.ui.stopButton.addEventListener('click', async () => {
         if (!this.state.currentConversation) return;
         try {
-          const resp = await fetch(`${window.__BASE_URL}/api/conversations/${this.state.currentConversation.id}/cancel`, {
-            method: 'POST'
-          });
-          const data = await resp.json();
+          const data = await window.wsClient.rpc('conv.cancel', { id: this.state.currentConversation.id });
           console.log('Stop response:', data);
         } catch (err) {
           console.error('Failed to stop:', err);
@@ -401,12 +398,7 @@ class AgentGUIClient {
         const instructions = await window.UIDialog.prompt('Enter instructions to inject into the running agent:', '', 'Inject Instructions');
         if (!instructions) return;
         try {
-          const resp = await fetch(`${window.__BASE_URL}/api/conversations/${this.state.currentConversation.id}/inject`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: instructions })
-          });
-          const data = await resp.json();
+          const data = await window.wsClient.rpc('conv.inject', { id: this.state.currentConversation.id, content: instructions });
           console.log('Inject response:', data);
         } catch (err) {
           console.error('Failed to inject:', err);
@@ -603,9 +595,8 @@ class AgentGUIClient {
         `;
         messagesEl = outputEl.querySelector('.conversation-messages');
         try {
-          const fullResp = await fetch(window.__BASE_URL + `/api/conversations/${data.conversationId}/full`);
-          if (fullResp.ok) {
-            const fullData = await fullResp.json();
+          const fullData = await window.wsClient.rpc('conv.full', { id: data.conversationId });
+          if (fullData) {
             const priorChunks = (fullData.chunks || []).map(c => ({
               ...c,
               block: typeof c.data === 'string' ? JSON.parse(c.data) : c.data
