@@ -2571,6 +2571,14 @@ class AgentGUIClient {
     return this.getEffectiveAgentId();
   }
 
+  saveAgentAndModelToConversation() {
+    const convId = this.state.currentConversation;
+    if (!convId || this._agentLocked) return;
+    const agentId = this.getEffectiveAgentId();
+    const model = this.getCurrentModel();
+    window.wsClient.rpc('conv.upd', { id: convId, agentType: agentId, model: model || undefined }).catch(() => {});
+  }
+
   /**
    * Get current selected model
    */
