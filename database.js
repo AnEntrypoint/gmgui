@@ -329,7 +329,7 @@ try {
   const result = db.prepare("PRAGMA table_info(conversations)").all();
   const columnNames = result.map(r => r.name);
   const requiredColumns = {
-    agentType: 'TEXT DEFAULT "claude-code"',
+    agentType: 'TEXT',
     source: 'TEXT DEFAULT "gui"',
     externalId: 'TEXT',
     firstPrompt: 'TEXT',

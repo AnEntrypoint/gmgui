@@ -1260,7 +1260,7 @@ class AgentGUIClient {
     const prompt = this.ui.messageInput?.value || '';
     const conv = this.state.currentConversation;
     const isNewConversation = conv && !conv.messageCount && !this.state.streamingConversations.has(conv.id);
-    const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent() || 'claude-code';
+    const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent();
     const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
@@ -1970,7 +1970,7 @@ class AgentGUIClient {
    * Consolidates duplicate logic for cached and fresh conversation loads
    */
   applyAgentAndModelSelection(conversation, hasActivity) {
-    const agentId = conversation.agentId || conversation.agentType || 'claude-code';
+    const agentId = conversation.agentId || conversation.agentType || null;
     const model = conversation.model || null;
 
     if (hasActivity) {
@@ -1980,7 +1980,8 @@ class AgentGUIClient {
       this.unlockAgentAndModel();
       this._setCliSelectorToAgent(agentId);
 
-      this.loadModelsForAgent(agentId).then(() => {
+      const effectiveAgentId = agentId || this.getEffectiveAgentId();
+      this.loadModelsForAgent(effectiveAgentId).then(() => {
         if (model && this.ui.modelSelector) {
           this.ui.modelSelector.value = model;
         }
@@ -2185,7 +2186,7 @@ class AgentGUIClient {
    */
   async createNewConversation(workingDirectory, title) {
     try {
-      const agentId = this.ui.agentSelector?.value || 'claude-code';
+      const agentId = this.getEffectiveAgentId();
       const model = this.ui.modelSelector?.value || null;
       const convTitle = title || 'New Conversation';
       const body = { agentId, title: convTitle };
@@ -2461,7 +2462,7 @@ class AgentGUIClient {
           this.state.currentSession = {
             id: latestSession.id,
             conversationId: conversationId,
-            agentId: conversation.agentType || 'claude-code',
+            agentId: conversation.agentType || null,
             startTime: latestSession.created_at
           };
 
@@ -2564,7 +2565,7 @@ class AgentGUIClient {
     if (this.ui.agentSelector?.value && this.ui.agentSelector.style.display !== 'none') {
       return this.ui.agentSelector.value;
     }
-    return this.ui.cliSelector?.value || 'claude-code';
+    return this.ui.cliSelector?.value || null;
   }
 
   getCurrentAgent() {

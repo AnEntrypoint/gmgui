@@ -462,11 +462,7 @@ async function fetchClaudeModelsFromAPI() {
             const data = JSON.parse(body);
             const items = (data.data || []).filter(m => m.id && m.id.startsWith('claude-'));
             if (items.length === 0) return resolve(null);
-            const models = [{ id: '', label: 'Default' }];
-            for (const m of items) {
-              const label = m.display_name || modelIdToLabel(m.id);
-              models.push({ id: m.id, label });
-            }
+            const models = items.map(m => ({ id: m.id, label: m.display_name || modelIdToLabel(m.id) }));
             resolve(models);
           } catch { resolve(null); }
         });
@@ -497,12 +493,10 @@ async function fetchGeminiModelsFromAPI() {
             const data = JSON.parse(body);
             const items = (data.models || []).filter(m => m.name && m.name.includes('gemini'));
             if (items.length === 0) return resolve(null);
-            const models = [{ id: '', label: 'Default' }];
-            for (const m of items) {
+            const models = items.map(m => {
               const modelId = m.name.replace(/^models\//, '');
-              const label = modelId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-              models.push({ id: modelId, label });
-            }
+              return { id: modelId, label: modelId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
+            });
             resolve(models);
           } catch { resolve(null); }
         });
