@@ -442,87 +442,8 @@ function modelIdToLabel(id) {
   return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-async function fetchClaudeModelsFromAPI() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const https = await import('https');
-    return new Promise((resolve) => {
-      const req = https.default.request({
-        hostname: 'api.anthropic.com', path: '/v1/models', method: 'GET',
-        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        timeout: 8000
-      }, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            const items = (data.data || []).filter(m => m.id && m.id.startsWith('claude-'));
-            if (items.length === 0) return resolve(null);
-            const models = items.map(m => ({ id: m.id, label: m.display_name || modelIdToLabel(m.id) }));
-            resolve(models);
-          } catch { resolve(null); }
-        });
-      });
-      req.on('error', () => resolve(null));
-      req.on('timeout', () => { req.destroy(); resolve(null); });
-      req.end();
-    });
-  } catch { return null; }
-}
-
-async function fetchGeminiModelsFromAPI() {
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const https = await import('https');
-    return new Promise((resolve) => {
-      const req = https.default.request({
-        hostname: 'generativelanguage.googleapis.com',
-        path: '/v1beta/models?key=' + apiKey,
-        method: 'GET',
-        timeout: 8000
-      }, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const data = JSON.parse(body);
-            const items = (data.models || []).filter(m => m.name && m.name.includes('gemini'));
-            if (items.length === 0) return resolve(null);
-            const models = items.map(m => {
-              const modelId = m.name.replace(/^models\//, '');
-              return { id: modelId, label: modelId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
-            });
-            resolve(models);
-          } catch { resolve(null); }
-        });
-      });
-      req.on('error', () => resolve(null));
-      req.on('timeout', () => { req.destroy(); resolve(null); });
-      req.end();
-    });
-  } catch { return null; }
-}
-
-async function getModelsForAgent(agentId) {
-  const cached = modelCache.get(agentId);
-  if (cached && Date.now() - cached.timestamp < 3600000) {
-    return cached.models;
-  }
-
-  let models = null;
-
-  if (agentId === 'claude-code') {
-    models = await fetchClaudeModelsFromAPI();
-  } else if (agentId === 'gemini') {
-    models = await fetchGeminiModelsFromAPI();
-  }
-
-  const result = models || [];
-  modelCache.set(agentId, { models: result, timestamp: Date.now() });
-  return result;
+async function getModelsForAgent() {
+  return [];
 }
 
 const GEMINI_SCOPES = [
