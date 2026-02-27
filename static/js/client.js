@@ -355,7 +355,6 @@ class AgentGUIClient {
     this.ui.messageInput = document.querySelector('[data-message-input]');
     this.ui.sendButton = document.querySelector('[data-send-button]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
-    this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
 
     if (this.ui.agentSelector) {
@@ -1900,37 +1899,15 @@ class AgentGUIClient {
 
   lockAgentAndModel(agentId, model) {
     this._agentLocked = true;
-    
-    // Find the agent to determine protocol
-    const agent = this.state.agents.find(a => a.id === agentId);
-    
-    if (agent) {
-      if (agent.protocol === 'cli') {
-        if (this.ui.agentSelector) {
-          this.ui.agentSelector.value = agentId;
-          this.ui.agentSelector.disabled = true;
-        }
-        if (this.ui.agentSelector) {
-          this.ui.agentSelector.value = '';
-          this.ui.agentSelector.disabled = true;
-          this.ui.agentSelector.style.display = 'none';
-        }
-      } else {
-        if (this.ui.agentSelector) {
-          this.ui.agentSelector.value = agentId;
-          this.ui.agentSelector.disabled = true;
-        }
-        if (this.ui.agentSelector) {
-          this.ui.agentSelector.value = '';
-          this.ui.agentSelector.disabled = true;
-          this.ui.agentSelector.style.display = 'none';
-        }
-      }
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.value = agentId;
+      this.ui.agentSelector.disabled = true;
     }
-    
+
     this.loadModelsForAgent(agentId).then(() => {
       if (this.ui.modelSelector && model) {
         this.ui.modelSelector.value = model;
+        this.ui.modelSelector.disabled = true;
       }
     });
   }
@@ -1939,17 +1916,10 @@ class AgentGUIClient {
     this._agentLocked = false;
     if (this.ui.agentSelector) {
       this.ui.agentSelector.disabled = false;
-    }
-    if (this.ui.agentSelector) {
-      this.ui.agentSelector.disabled = false;
-    }
-    
-    // Show both selectors again when unlocking
-    if (this.ui.agentSelector && this.state.agents.some(a => a.protocol === 'cli')) {
       this.ui.agentSelector.style.display = 'inline-block';
     }
-    if (this.ui.agentSelector && this.state.agents.some(a => a.protocol === 'acp')) {
-      this.ui.agentSelector.style.display = 'inline-block';
+    if (this.ui.modelSelector) {
+      this.ui.modelSelector.disabled = false;
     }
   }
 
@@ -1965,31 +1935,10 @@ class AgentGUIClient {
       this.lockAgentAndModel(agentId, model);
     } else {
       this.unlockAgentAndModel();
-      // Find the agent to determine protocol
-      const agent = this.state.agents.find(a => a.id === agentId);
-      
-      if (agent) {
-        if (agent.protocol === 'cli') {
-          if (this.ui.agentSelector) {
-            this.ui.agentSelector.value = agentId;
-            this.ui.agentSelector.style.display = 'inline-block';
-          }
-          if (this.ui.agentSelector) {
-            this.ui.agentSelector.value = '';
-            this.ui.agentSelector.style.display = 'none';
-          }
-        } else {
-          if (this.ui.agentSelector) {
-            this.ui.agentSelector.value = agentId;
-            this.ui.agentSelector.style.display = 'inline-block';
-          }
-          if (this.ui.agentSelector) {
-            this.ui.agentSelector.value = '';
-            this.ui.agentSelector.style.display = 'none';
-          }
-        }
+      if (this.ui.agentSelector) {
+        this.ui.agentSelector.value = agentId;
       }
-      
+
       this.loadModelsForAgent(agentId).then(() => {
         if (model && this.ui.modelSelector) {
           this.ui.modelSelector.value = model;
