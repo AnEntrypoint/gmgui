@@ -384,9 +384,9 @@ function discoverAgents() {
   const agents = [];
   const binaries = [
     { cmd: 'claude', id: 'claude-code', name: 'Claude Code', icon: 'C', protocol: 'cli' },
-    { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O', protocol: 'acp' },
-    { cmd: 'gemini', id: 'gemini', name: 'Gemini CLI', icon: 'G', protocol: 'acp' },
-    { cmd: 'kilo', id: 'kilo', name: 'Kilo Code', icon: 'K', protocol: 'acp' },
+    { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O', protocol: 'acp', npxPackage: 'opencode-ai' },
+    { cmd: 'gemini', id: 'gemini', name: 'Gemini CLI', icon: 'G', protocol: 'acp', npxPackage: '@google/gemini-cli' },
+    { cmd: 'kilo', id: 'kilo', name: 'Kilo Code', icon: 'K', protocol: 'acp', npxPackage: '@kilocode/cli' },
     { cmd: 'goose', id: 'goose', name: 'Goose', icon: 'g', protocol: 'acp' },
     { cmd: 'openhands', id: 'openhands', name: 'OpenHands', icon: 'H', protocol: 'acp' },
     { cmd: 'augment', id: 'augment', name: 'Augment Code', icon: 'A', protocol: 'acp' },
@@ -400,13 +400,11 @@ function discoverAgents() {
   ];
   for (const bin of binaries) {
     const result = findCommand(bin.cmd);
-    if (result) agents.push({ 
-      id: bin.id, 
-      name: bin.name, 
-      icon: bin.icon, 
-      path: result, 
-      protocol: bin.protocol 
-    });
+    if (result) {
+      agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result, protocol: bin.protocol });
+    } else if (bin.npxPackage) {
+      agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: null, protocol: bin.protocol, npxPackage: bin.npxPackage, npxLaunchable: true });
+    }
   }
   return agents;
 }
