@@ -1951,6 +1951,9 @@ class AgentGUIClient {
     this._agentLocked = false;
     if (this.ui.cliSelector) {
       this.ui.cliSelector.disabled = false;
+      if (this.ui.cliSelector.options.length > 0) {
+        this.ui.cliSelector.style.display = 'inline-block';
+      }
     }
     if (this.ui.agentSelector) {
       this.ui.agentSelector.disabled = false;
