@@ -567,6 +567,32 @@ async function getModelsForAgent(agentId) {
     }
   }
 
+  // Fallback default models for agents that fail to retrieve models
+  const fallbackModels = {
+    'gemini': [
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+      { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
+    ],
+    'opencode': [
+      { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+      { id: 'claude-haiku-4-20250514', label: 'Claude Haiku 4' },
+      { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+      { id: 'gemini-pro', label: 'Gemini Pro' }
+    ],
+    'kilo': [
+      { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { id: 'gpt-4', label: 'GPT-4' }
+    ]
+  };
+
+  if (fallbackModels[agentId]) {
+    modelCache.set(agentId, { models: fallbackModels[agentId], timestamp: Date.now() });
+    return fallbackModels[agentId];
+  }
+
   return [];
 }
 

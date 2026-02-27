@@ -943,7 +943,7 @@ export const queries = {
     try {
       const claudeDir = path.join(os.homedir(), '.claude');
       const projectsDir = path.join(claudeDir, 'projects');
-      
+
       if (!fs.existsSync(projectsDir)) {
         return false;
       }
@@ -953,14 +953,34 @@ export const queries = {
       for (const project of projects) {
         const projectPath = path.join(projectsDir, project);
         const sessionFile = path.join(projectPath, `${sessionId}.jsonl`);
-        
+
         if (fs.existsSync(sessionFile)) {
           fs.unlinkSync(sessionFile);
-          console.log(`[deleteClaudeSessionFile] Deleted Claude session: ${sessionFile}`);
+          console.log(`[deleteClaudeSessionFile] Deleted Claude session file: ${sessionFile}`);
+
+          // Also remove the entry from sessions-index.json if it exists
+          const indexPath = path.join(projectPath, 'sessions-index.json');
+          if (fs.existsSync(indexPath)) {
+            try {
+              const indexContent = fs.readFileSync(indexPath, 'utf8');
+              const index = JSON.parse(indexContent);
+              if (index.entries && Array.isArray(index.entries)) {
+                const originalLength = index.entries.length;
+                index.entries = index.entries.filter(entry => entry.sessionId !== sessionId);
+                if (index.entries.length < originalLength) {
+                  fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), { encoding: 'utf8' });
+                  console.log(`[deleteClaudeSessionFile] Removed session ${sessionId} from sessions-index.json in ${projectPath}`);
+                }
+              }
+            } catch (indexErr) {
+              console.error(`[deleteClaudeSessionFile] Failed to update sessions-index.json in ${projectPath}:`, indexErr.message);
+            }
+          }
+
           return true;
         }
       }
-      
+
       return false;
     } catch (err) {
       console.error(`[deleteClaudeSessionFile] Error deleting session ${sessionId}:`, err.message);

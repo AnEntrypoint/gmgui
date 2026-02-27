@@ -13,7 +13,7 @@
     window.addEventListener('conversation-selected', function(e) {
       currentConversationId = e.detail.conversationId;
       hasTerminalContent = false;
-      hideTerminalTab();
+      // Do not hide terminal tab; it should always be visible
       fetchConversationAndCheckScripts();
     });
 
@@ -61,10 +61,15 @@
     window.wsClient.rpc('conv.get', { id: currentConversationId })
       .then(function(data) {
         currentWorkingDirectory = data.conversation?.workingDirectory || null;
-        if (currentWorkingDirectory) showTerminalTab();
+        // Always show the terminal tab, even without a working directory
+        showTerminalTab();
         checkScripts();
       })
-      .catch(function() { checkScripts(); });
+      .catch(function() {
+        // Still show terminal tab on error
+        showTerminalTab();
+        checkScripts();
+      });
   }
 
   function checkScripts() {
