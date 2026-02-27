@@ -568,18 +568,7 @@ async function getModelsForAgent(agentId) {
   let models = null;
 
   if (agentId === 'claude-code') {
-    const hardcodedModels = [
-      { id: 'haiku', label: 'Haiku (Default)' },
-      { id: 'sonnet', label: 'Sonnet' },
-      { id: 'opus', label: 'Opus' },
-    ];
-
-    const apiModels = await fetchClaudeModelsFromAPI();
-    if (apiModels) {
-      models = [...hardcodedModels, ...apiModels.slice(1)];
-    } else {
-      models = hardcodedModels;
-    }
+    models = await fetchClaudeModelsFromAPI();
   } else if (agentId === 'gemini') {
     models = await fetchGeminiModelsFromAPI();
   }
@@ -632,88 +621,8 @@ async function getModelsForAgent(agentId) {
     }
   }
 
-  // Fallback default models for agents that fail to retrieve models
-  const fallbackModels = {
-    'claude-code': [
-      { id: 'haiku', label: 'Haiku (Default)' },
-      { id: 'sonnet', label: 'Sonnet' },
-      { id: 'opus', label: 'Opus' }
-    ],
-    'gemini': [
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
-      { id: 'gemini-2.0-pro', label: 'Gemini 2.0 Pro' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }
-    ],
-    'opencode': [
-      { id: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-      { id: 'claude-haiku-4-20250514', label: 'Claude Haiku 4' },
-      { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-      { id: 'gemini-pro', label: 'Gemini Pro' }
-    ],
-    'kilo': [
-      { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
-      { id: 'gpt-4', label: 'GPT-4' }
-    ],
-    'goose': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'goose-pro', label: 'Goose Pro' }
-    ],
-    'openhands': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'openhands-1', label: 'OpenHands 1' }
-    ],
-    'augment': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'augment-pro', label: 'Augment Pro' }
-    ],
-    'cline': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'cline-1', label: 'Cline 1' }
-    ],
-    'kimi': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'kimi-pro', label: 'Kimi Pro' }
-    ],
-    'qwen': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'qwen-7b', label: 'Qwen 7B' },
-      { id: 'qwen-14b', label: 'Qwen 14B' }
-    ],
-    'codex': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'code-davinci-002', label: 'Code Davinci 002' },
-      { id: 'code-cushman-001', label: 'Code Cushman 001' }
-    ],
-    'mistral': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'mistral-small', label: 'Mistral Small' },
-      { id: 'mistral-medium', label: 'Mistral Medium' },
-      { id: 'mistral-large', label: 'Mistral Large' }
-    ],
-    'kiro': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'kiro-1', label: 'Kiro 1' }
-    ],
-    'fast-agent': [
-      { id: 'default', label: 'Default Model' },
-      { id: 'fast-agent-1', label: 'Fast Agent 1' }
-    ]
-  };
-
-  if (fallbackModels[agentId]) {
-    const models = fallbackModels[agentId];
-    modelCache.set(agentId, { models, timestamp: Date.now() });
-    return models;
-  }
-
-  // Default fallback for any other agent
-  const defaultFallback = [
-    { id: 'default', label: 'Default Model' }
-  ];
-  modelCache.set(agentId, { models: defaultFallback, timestamp: Date.now() });
-  return defaultFallback;
+  modelCache.set(agentId, { models: [], timestamp: Date.now() });
+  return [];
 }
 
 const GEMINI_SCOPES = [
