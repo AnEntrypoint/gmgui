@@ -354,14 +354,34 @@ class AgentGUIClient {
     this.ui.statusIndicator = document.querySelector('[data-status-indicator]');
     this.ui.messageInput = document.querySelector('[data-message-input]');
     this.ui.sendButton = document.querySelector('[data-send-button]');
-    this.ui.agentSelector = document.querySelector('[data-agent-selector]');
+    this.ui.cliAgentSelector = document.querySelector('[data-cli-agent-selector]');
+    this.ui.acpAgentSelector = document.querySelector('[data-acp-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
 
-    if (this.ui.agentSelector) {
-      this.ui.agentSelector.addEventListener('change', () => {
+    if (this.ui.cliAgentSelector) {
+      this.ui.cliAgentSelector.addEventListener('change', () => {
         if (!this._agentLocked) {
-          this.loadModelsForAgent(this.ui.agentSelector.value);
+          this.loadModelsForAgent(this.ui.cliAgentSelector.value);
           this.saveAgentAndModelToConversation();
+          // Hide ACP selector when CLI is selected
+          if (this.ui.acpAgentSelector) {
+            this.ui.acpAgentSelector.value = '';
+            this.ui.acpAgentSelector.style.display = 'none';
+          }
+        }
+      });
+    }
+
+    if (this.ui.acpAgentSelector) {
+      this.ui.acpAgentSelector.addEventListener('change', () => {
+        if (!this._agentLocked) {
+          this.loadModelsForAgent(this.ui.acpAgentSelector.value);
+          this.saveAgentAndModelToConversation();
+          // Hide CLI selector when ACP is selected
+          if (this.ui.cliAgentSelector) {
+            this.ui.cliAgentSelector.value = '';
+            this.ui.cliAgentSelector.style.display = 'none';
+          }
         }
       });
     }
@@ -1248,7 +1268,7 @@ class AgentGUIClient {
     const prompt = this.ui.messageInput?.value || '';
     const conv = this.state.currentConversation;
     const isNewConversation = conv && !conv.messageCount && !this.state.streamingConversations.has(conv.id);
-    const agentId = (isNewConversation ? this.ui.agentSelector?.value : null) || conv?.agentType || this.ui.agentSelector?.value || 'claude-code';
+    const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent() || 'claude-code';
     const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
@@ -1822,10 +1842,34 @@ class AgentGUIClient {
         const { agents } = await window.wsClient.rpc('agent.ls');
         this.state.agents = agents;
 
-        if (this.ui.agentSelector) {
-          this.ui.agentSelector.innerHTML = agents
-            .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
-            .join('');
+        // Split agents by protocol
+        const cliAgents = agents.filter(agent => agent.protocol === 'cli');
+        const acpAgents = agents.filter(agent => agent.protocol === 'acp');
+
+        // Populate CLI agent selector
+        if (this.ui.cliAgentSelector) {
+          if (cliAgents.length > 0) {
+            this.ui.cliAgentSelector.innerHTML = cliAgents
+              .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
+              .join('');
+            this.ui.cliAgentSelector.style.display = 'inline-block';
+          } else {
+            this.ui.cliAgentSelector.innerHTML = '';
+            this.ui.cliAgentSelector.style.display = 'none';
+          }
+        }
+
+        // Populate ACP agent selector
+        if (this.ui.acpAgentSelector) {
+          if (acpAgents.length > 0) {
+            this.ui.acpAgentSelector.innerHTML = acpAgents
+              .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
+              .join('');
+            this.ui.acpAgentSelector.style.display = 'inline-block';
+          } else {
+            this.ui.acpAgentSelector.innerHTML = '';
+            this.ui.acpAgentSelector.style.display = 'none';
+          }
         }
 
         window.dispatchEvent(new CustomEvent('agents-loaded', { detail: { agents } }));
@@ -1892,10 +1936,34 @@ class AgentGUIClient {
 
   lockAgentAndModel(agentId, model) {
     this._agentLocked = true;
-    if (this.ui.agentSelector) {
-      this.ui.agentSelector.value = agentId;
-      this.ui.agentSelector.disabled = true;
+    
+    // Find the agent to determine protocol
+    const agent = this.state.agents.find(a => a.id === agentId);
+    
+    if (agent) {
+      if (agent.protocol === 'cli') {
+        if (this.ui.cliAgentSelector) {
+          this.ui.cliAgentSelector.value = agentId;
+          this.ui.cliAgentSelector.disabled = true;
+        }
+        if (this.ui.acpAgentSelector) {
+          this.ui.acpAgentSelector.value = '';
+          this.ui.acpAgentSelector.disabled = true;
+          this.ui.acpAgentSelector.style.display = 'none';
+        }
+      } else {
+        if (this.ui.acpAgentSelector) {
+          this.ui.acpAgentSelector.value = agentId;
+          this.ui.acpAgentSelector.disabled = true;
+        }
+        if (this.ui.cliAgentSelector) {
+          this.ui.cliAgentSelector.value = '';
+          this.ui.cliAgentSelector.disabled = true;
+          this.ui.cliAgentSelector.style.display = 'none';
+        }
+      }
     }
+    
     this.loadModelsForAgent(agentId).then(() => {
       if (this.ui.modelSelector && model) {
         this.ui.modelSelector.value = model;
@@ -1905,8 +1973,19 @@ class AgentGUIClient {
 
   unlockAgentAndModel() {
     this._agentLocked = false;
-    if (this.ui.agentSelector) {
-      this.ui.agentSelector.disabled = false;
+    if (this.ui.cliAgentSelector) {
+      this.ui.cliAgentSelector.disabled = false;
+    }
+    if (this.ui.acpAgentSelector) {
+      this.ui.acpAgentSelector.disabled = false;
+    }
+    
+    // Show both selectors again when unlocking
+    if (this.ui.cliAgentSelector && this.state.agents.some(a => a.protocol === 'cli')) {
+      this.ui.cliAgentSelector.style.display = 'inline-block';
+    }
+    if (this.ui.acpAgentSelector && this.state.agents.some(a => a.protocol === 'acp')) {
+      this.ui.acpAgentSelector.style.display = 'inline-block';
     }
   }
 
@@ -1922,9 +2001,31 @@ class AgentGUIClient {
       this.lockAgentAndModel(agentId, model);
     } else {
       this.unlockAgentAndModel();
-      if (this.ui.agentSelector) {
-        this.ui.agentSelector.value = agentId;
+      // Find the agent to determine protocol
+      const agent = this.state.agents.find(a => a.id === agentId);
+      
+      if (agent) {
+        if (agent.protocol === 'cli') {
+          if (this.ui.cliAgentSelector) {
+            this.ui.cliAgentSelector.value = agentId;
+            this.ui.cliAgentSelector.style.display = 'inline-block';
+          }
+          if (this.ui.acpAgentSelector) {
+            this.ui.acpAgentSelector.value = '';
+            this.ui.acpAgentSelector.style.display = 'none';
+          }
+        } else {
+          if (this.ui.acpAgentSelector) {
+            this.ui.acpAgentSelector.value = agentId;
+            this.ui.acpAgentSelector.style.display = 'inline-block';
+          }
+          if (this.ui.cliAgentSelector) {
+            this.ui.cliAgentSelector.value = '';
+            this.ui.cliAgentSelector.style.display = 'none';
+          }
+        }
       }
+      
       this.loadModelsForAgent(agentId).then(() => {
         if (model && this.ui.modelSelector) {
           this.ui.modelSelector.value = model;
@@ -2494,10 +2595,23 @@ class AgentGUIClient {
   }
 
   /**
-   * Get application state
+   * Get current selected agent
    */
-  getState() {
-    return { ...this.state };
+  getCurrentAgent() {
+    if (this.ui.cliAgentSelector?.value) {
+      return this.ui.cliAgentSelector.value;
+    }
+    if (this.ui.acpAgentSelector?.value) {
+      return this.ui.acpAgentSelector.value;
+    }
+    return 'claude-code';
+  }
+
+  /**
+   * Get current selected model
+   */
+  getCurrentModel() {
+    return this.ui.modelSelector?.value || null;
   }
 
   /**

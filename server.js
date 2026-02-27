@@ -345,24 +345,30 @@ function findCommand(cmd) {
 function discoverAgents() {
   const agents = [];
   const binaries = [
-    { cmd: 'claude', id: 'claude-code', name: 'Claude Code', icon: 'C' },
-    { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O' },
-    { cmd: 'gemini', id: 'gemini', name: 'Gemini CLI', icon: 'G' },
-    { cmd: 'kilo', id: 'kilo', name: 'Kilo Code', icon: 'K' },
-    { cmd: 'goose', id: 'goose', name: 'Goose', icon: 'g' },
-    { cmd: 'openhands', id: 'openhands', name: 'OpenHands', icon: 'H' },
-    { cmd: 'augment', id: 'augment', name: 'Augment Code', icon: 'A' },
-    { cmd: 'cline', id: 'cline', name: 'Cline', icon: 'c' },
-    { cmd: 'kimi', id: 'kimi', name: 'Kimi CLI', icon: 'K' },
-    { cmd: 'qwen-code', id: 'qwen', name: 'Qwen Code', icon: 'Q' },
-    { cmd: 'codex', id: 'codex', name: 'Codex CLI', icon: 'X' },
-    { cmd: 'mistral-vibe', id: 'mistral', name: 'Mistral Vibe', icon: 'M' },
-    { cmd: 'kiro', id: 'kiro', name: 'Kiro CLI', icon: 'k' },
-    { cmd: 'fast-agent', id: 'fast-agent', name: 'fast-agent', icon: 'F' },
+    { cmd: 'claude', id: 'claude-code', name: 'Claude Code', icon: 'C', protocol: 'cli' },
+    { cmd: 'opencode', id: 'opencode', name: 'OpenCode', icon: 'O', protocol: 'acp' },
+    { cmd: 'gemini', id: 'gemini', name: 'Gemini CLI', icon: 'G', protocol: 'acp' },
+    { cmd: 'kilo', id: 'kilo', name: 'Kilo Code', icon: 'K', protocol: 'acp' },
+    { cmd: 'goose', id: 'goose', name: 'Goose', icon: 'g', protocol: 'acp' },
+    { cmd: 'openhands', id: 'openhands', name: 'OpenHands', icon: 'H', protocol: 'acp' },
+    { cmd: 'augment', id: 'augment', name: 'Augment Code', icon: 'A', protocol: 'acp' },
+    { cmd: 'cline', id: 'cline', name: 'Cline', icon: 'c', protocol: 'acp' },
+    { cmd: 'kimi', id: 'kimi', name: 'Kimi CLI', icon: 'K', protocol: 'acp' },
+    { cmd: 'qwen-code', id: 'qwen', name: 'Qwen Code', icon: 'Q', protocol: 'acp' },
+    { cmd: 'codex', id: 'codex', name: 'Codex CLI', icon: 'X', protocol: 'acp' },
+    { cmd: 'mistral-vibe', id: 'mistral', name: 'Mistral Vibe', icon: 'M', protocol: 'acp' },
+    { cmd: 'kiro', id: 'kiro', name: 'Kiro CLI', icon: 'k', protocol: 'acp' },
+    { cmd: 'fast-agent', id: 'fast-agent', name: 'fast-agent', icon: 'F', protocol: 'acp' },
   ];
   for (const bin of binaries) {
     const result = findCommand(bin.cmd);
-    if (result) agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result });
+    if (result) agents.push({ 
+      id: bin.id, 
+      name: bin.name, 
+      icon: bin.icon, 
+      path: result, 
+      protocol: bin.protocol 
+    });
   }
   return agents;
 }

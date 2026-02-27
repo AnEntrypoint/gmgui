@@ -818,6 +818,16 @@
       max-width: 200px;
     }
 
+    .cli-agent-selector {
+      /* CLI agents have a different background color */
+      background-color: var(--color-bg-secondary);
+    }
+
+    .acp-agent-selector {
+      /* ACP agents have a different background color */
+      background-color: var(--color-bg-secondary);
+    }
+
     .agent-selector:disabled, .model-selector:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -3169,7 +3179,8 @@
       <!-- Input area: fixed at bottom -->
       <div class="input-section">
         <div class="input-wrapper">
-          <select class="agent-selector" data-agent-selector title="Select agent"></select>
+          <select class="agent-selector cli-agent-selector" data-cli-agent-selector title="Select CLI agent"></select>
+          <select class="agent-selector acp-agent-selector" data-acp-agent-selector title="Select ACP agent"></select>
           <select class="model-selector" data-model-selector title="Select model" data-empty="true"></select>
           <textarea
             class="message-textarea"
