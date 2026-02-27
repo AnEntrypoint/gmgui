@@ -34,39 +34,38 @@ class EventConsolidator {
     return { consolidated: result, stats };
   }
 
-  _mergeTextBlocks(chunks, stats) {
-    const result = [];
-    let pending = null;
-    const MAX_MERGE = 50 * 1024;
+   _mergeTextBlocks(chunks, stats) {
+     const result = [];
+     let pending = null;
+     const MAX_MERGE = 50 * 1024;
 
-    for (const c of chunks) {
-      if (c.block?.type === 'text') {
-        if (pending) {
-          const pendingText = pending.block.text || '';
-          const newText = c.block.text || '';
-          const combined = pendingText + newText;
-          if (combined.length <= MAX_MERGE) {
-            const needsSpace = pendingText.length > 0 && !pendingText.endsWith(' ') && !pendingText.endsWith('\n') && newText.length > 0 && !newText.startsWith(' ') && !newText.startsWith('\n');
-            pending = {
-              ...pending,
-              block: { ...pending.block, text: needsSpace ? pendingText + ' ' + newText : combined },
-              created_at: c.created_at,
-              _mergedSequences: [...(pending._mergedSequences || [pending.sequence]), c.sequence]
-            };
-            stats.textMerged++;
-            continue;
-          }
-        }
-        if (pending) result.push(pending);
-        pending = { ...c, _mergedSequences: [c.sequence] };
-      } else {
-        if (pending) { result.push(pending); pending = null; }
-        result.push(c);
-      }
-    }
-    if (pending) result.push(pending);
-    return result;
-  }
+     for (const c of chunks) {
+       if (c.block?.type === 'text') {
+         if (pending) {
+           const pendingText = pending.block.text || '';
+           const newText = c.block.text || '';
+           const combined = pendingText + newText;
+           if (combined.length <= MAX_MERGE) {
+             pending = {
+               ...pending,
+               block: { ...pending.block, text: combined },
+               created_at: c.created_at,
+               _mergedSequences: [...(pending._mergedSequences || [pending.sequence]), c.sequence]
+             };
+             stats.textMerged++;
+             continue;
+           }
+         }
+         if (pending) result.push(pending);
+         pending = { ...c, _mergedSequences: [c.sequence] };
+       } else {
+         if (pending) { result.push(pending); pending = null; }
+         result.push(c);
+       }
+     }
+     if (pending) result.push(pending);
+     return result;
+   }
 
   _collapseToolPairs(chunks, stats) {
     const toolUseMap = {};

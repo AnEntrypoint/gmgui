@@ -34,6 +34,11 @@ process.on('unhandledRejection', (reason, promise) => {
   if (reason instanceof Error) console.error(reason.stack);
 });
 
+process.on('SIGINT', () => { console.log('[SIGNAL] SIGINT received (ignored - uncrashable)'); });
+process.on('SIGHUP', () => { console.log('[SIGNAL] SIGHUP received (ignored - uncrashable)'); });
+process.on('beforeExit', (code) => { console.log('[PROCESS] beforeExit with code:', code); });
+process.on('exit', (code) => { console.log('[PROCESS] exit with code:', code); });
+
 const ttsTextAccumulators = new Map();
 
 let speechModule = null;
@@ -1047,6 +1052,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
+  if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') return;
 
   const pathOnly = req.url.split('?')[0];
 
@@ -4044,7 +4050,8 @@ if (watch) {
   } catch (e) { console.error('Watch error:', e.message); }
 }
 
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
+  console.log('[SIGNAL] SIGTERM received - graceful shutdown');
   wss.close(() => server.close(() => process.exit(0)));
 });
 

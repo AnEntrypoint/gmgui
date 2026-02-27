@@ -1,0 +1,62 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Fetch npm stats
+        id: npm-stats
+        run: |
+          PKG_NAME=$(jq -r '.name' package.json)
+          echo "Fetching weekly downloads for $PKG_NAME..."
+
+          # Try to fetch stats; if curl fails, use fallback
+          RESPONSE=$(curl -s "https://api.npmjs.org/downloads/point/last-week/$PKG_NAME" 2>/dev/null || echo '{"downloads":null}')
+          DOWNLOADS=$(echo "$RESPONSE" | jq -r '.downloads // 0')
+
+          # Create stats.json file in docs folder
+          echo "{\"downloads\":$DOWNLOADS,\"lastUpdated\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > docs/stats.json
+
+          echo "downloads=$DOWNLOADS" >> $GITHUB_OUTPUT
+          echo "Weekly downloads: $DOWNLOADS"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

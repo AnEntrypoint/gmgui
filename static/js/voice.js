@@ -579,7 +579,7 @@
   }
 
   function stripHtml(text) {
-    return text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    return text.replace(/<[^>]*>/g, '').replace(/[ \t]+/g, ' ').trim();
   }
 
   function addVoiceBlock(text, isUser) {

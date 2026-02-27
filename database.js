@@ -559,7 +559,7 @@ export const queries = {
 
   getConversationsList() {
     const stmt = prep(
-      'SELECT id, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming, model FROM conversations WHERE status != ? ORDER BY updated_at DESC'
+      'SELECT id, agentId, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming, model FROM conversations WHERE status != ? ORDER BY updated_at DESC'
     );
     return stmt.all('deleted');
   },
@@ -619,13 +619,13 @@ export const queries = {
   },
 
   getStreamingConversations() {
-    const stmt = prep('SELECT id, title, claudeSessionId, agentType FROM conversations WHERE isStreaming = 1');
+    const stmt = prep('SELECT id, title, claudeSessionId, agentId, agentType, model FROM conversations WHERE isStreaming = 1');
     return stmt.all();
   },
 
   getResumableConversations() {
     const stmt = prep(
-      "SELECT id, title, claudeSessionId, agentType, workingDirectory FROM conversations WHERE isStreaming = 1 AND claudeSessionId IS NOT NULL AND claudeSessionId != ''"
+      "SELECT id, title, claudeSessionId, agentId, agentType, workingDirectory, model FROM conversations WHERE isStreaming = 1 AND claudeSessionId IS NOT NULL AND claudeSessionId != ''"
     );
     return stmt.all();
   },
@@ -1399,25 +1399,7 @@ export const queries = {
   },
 
   permanentlyDeleteConversation(id) {
-    const conv = this.getConversation(id);
-    if (!conv) return false;
-
-    // Delete associated Claude Code session file if it exists
-    if (conv.claudeSessionId) {
-      this.deleteClaudeSessionFile(conv.claudeSessionId);
-    }
-
-    const deleteStmt = db.transaction(() => {
-      prep('DELETE FROM stream_updates WHERE conversationId = ?').run(id);
-      prep('DELETE FROM chunks WHERE conversationId = ?').run(id);
-      prep('DELETE FROM events WHERE conversationId = ?').run(id);
-      prep('DELETE FROM sessions WHERE conversationId = ?').run(id);
-      prep('DELETE FROM messages WHERE conversationId = ?').run(id);
-      prep('DELETE FROM conversations WHERE id = ?').run(id);
-    });
-
-    deleteStmt();
-    return true;
+    return this.deleteConversation(id);
   },
 
   cleanupEmptyConversations() {

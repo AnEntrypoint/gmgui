@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentGUI - Multi-Agent AI Client</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/x-icon" href="https://github.com/AnEntrypoint/agentgui/raw/main/agentgui.ico">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="64" height="64" rx="12" fill="url(#gradient)"/>
+                    <path d="M32 16L44 32L32 48L20 32L32 16Z" stroke="white" stroke-width="3" fill="none"/>
+                    <circle cx="32" cy="32" r="8" fill="white"/>
+                    <defs>
+                        <linearGradient id="gradient" x1="0" y1="0" x2="64" y2="64">
+                            <stop offset="0%" stop-color="#6366f1"/>
+                            <stop offset="100%" stop-color="#8b5cf6"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <h1>AgentGUI</h1>
+            <p class="subtitle">Multi-agent ACP client with real-time communication</p>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="weekly-downloads">Loading...</span>
+                    <span class="stat-label">Weekly Downloads</span>
+                </div>
+            </div>
+            <div class="cta-buttons">
+                <a href="https://github.com/AnEntrypoint/agentgui" target="_blank" class="btn btn-primary" id="star-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                    Star on GitHub
+                </a>
+                <a href="https://github.com/AnEntrypoint/agentgui#readme" target="_blank" class="btn btn-secondary">
+                    View Documentation
+                </a>
+            </div>
+        </header>
+
+        <section class="features">
+            <h2>Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Real-Time Streaming</h3>
+                    <p>Live WebSocket sync with instant updates across multiple agents</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h3>Multi-Agent Support</h3>
+                    <p>Use Claude Code, Gemini CLI, OpenCode, Goose, and more</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">💾</div>
+                    <h3>SQLite Persistence</h3>
+                    <p>All conversations and events safely stored locally</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎤</div>
+                    <h3>Voice Integration</h3>
+                    <p>Speech-to-text and text-to-speech with HuggingFace</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔧</div>
+                    <h3>Portable Executable</h3>
+                    <p>Windows build with bundled models, no installation needed</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Web Interface</h3>
+                    <p>Modern browser-based UI accessible from any device</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="quick-start">
+            <h2>Quick Start</h2>
+            <div class="code-block">
+                <code>npm install -g agentgui</code>
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+            </div>
+            <p class="note">Then run <code>agentgui</code> and open <a href="http://localhost:3000/gm/">http://localhost:3000/gm/</a></p>
+        </section>
+
+        <footer>
+            <p>Built with ❤️ by the AgentGUI team</p>
+            <p class="footer-links">
+                <a href="https://github.com/AnEntrypoint/agentgui">GitHub</a> •
+                <a href="https://github.com/AnEntrypoint/agentgui/issues">Issues</a> •
+                <a href="https://github.com/AnEntrypoint/agentgui#readme">Docs</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -166,7 +166,6 @@ class AgentGUIClient {
 
     this.wsManager.on('error', (data) => {
       console.error('WebSocket error:', data);
-      this.showError('Connection error: ' + (data.error?.message || 'unknown'));
     });
 
     this.wsManager.on('latency_update', (data) => {

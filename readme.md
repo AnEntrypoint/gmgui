@@ -1,5 +1,8 @@
 # AgentGUI
 
+[![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-Enabled-blue?logo=github)](https://anentrypoint.github.io/agentgui/)
+[![Weekly Downloads](https://img.shields.io/npm/dw/agentgui?color=brightgreen)](https://www.npmjs.com/package/agentgui)
+
 A multi-agent GUI for AI coding assistants. Connects to CLI-based agents (Claude Code, Gemini CLI, OpenCode, Goose, and others) and provides a web interface with real-time streaming output.
 
 ## Quick Start
@@ -19,6 +22,17 @@ npm run dev
 ```
 
 Open `http://localhost:3000` in your browser.
+
+## 📊 Project Stats
+
+Check out our **[GitHub Pages site](https://anentrypoint.github.io/agentgui/)** for:
+
+- 📈 Live weekly download statistics
+- ⭐ Star the project button
+- ✨ Feature highlights
+- 🚀 Quick start guide
+
+The site automatically updates on every push to main with the latest npm download data.
 
 ## What It Does
 
