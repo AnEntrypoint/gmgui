@@ -363,6 +363,7 @@ class AgentGUIClient {
       this.ui.cliSelector.addEventListener('change', () => {
         if (!this._agentLocked) {
           this.loadSubAgentsForCli(this.ui.cliSelector.value);
+          this.loadModelsForAgent(this.ui.cliSelector.value);
           this.saveAgentAndModelToConversation();
         }
       });
@@ -1874,6 +1875,7 @@ class AgentGUIClient {
           .map(a => `<option value="${a.id}">${a.name}</option>`)
           .join('');
         this.ui.agentSelector.style.display = 'inline-block';
+        this.loadModelsForAgent(this.getEffectiveAgentId());
       }
     } catch (_) {
       // No sub-agents available for this CLI tool — keep hidden
