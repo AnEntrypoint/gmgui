@@ -437,56 +437,11 @@ initializeDescriptors(discoveredAgents);
 
 const modelCache = new Map();
 
-const AGENT_MODEL_COMMANDS = {
-  'gemini': 'gemini models',
-  'opencode': 'opencode models',
-  'kilo': 'kilo models',
-};
-
 function modelIdToLabel(id) {
   const base = id.replace(/^claude-/, '').replace(/-\d{8}$/, '');
   const m = base.match(/^(\w+)-(\d+)(?:-(\d+))?$/);
   if (m) return `${m[1].charAt(0).toUpperCase() + m[1].slice(1)} ${m[3] ? m[2] + '.' + m[3] : m[2]}`;
   return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-function extractModelsFromClaudeCLI() {
-  try {
-    const cliPath = path.resolve('./node_modules/@anthropic-ai/claude-code/cli.js');
-    if (!fs.existsSync(cliPath)) return null;
-    const src = fs.readFileSync(cliPath, 'utf8');
-    const re = /=\{firstParty:"(claude-[^"]+)",bedrock:"[^"]+",vertex:"[^"]+"/g;
-    const ids = new Set();
-    let m;
-    while ((m = re.exec(src)) !== null) ids.add(m[1]);
-    if (ids.size === 0) return null;
-    
-    const models = [{ id: '', label: 'Default' }];
-    const sorted = [...ids].sort((a, b) => {
-      const va = a.replace(/claude-/, '').replace(/-\d{8}$/, '');
-      const vb = b.replace(/claude-/, '').replace(/-\d{8}$/, '');
-      return vb.localeCompare(va);
-    });
-    
-    const latest = { haiku: null, sonnet: null, opus: null };
-    for (const id of sorted) {
-      if (id.startsWith('claude-3-')) continue;
-      if (id.includes('haiku') && !latest.haiku) latest.haiku = id;
-      if (id.includes('sonnet') && !latest.sonnet) latest.sonnet = id;
-      if (id.includes('opus') && !latest.opus) latest.opus = id;
-    }
-    
-    if (latest.opus) models.push({ id: latest.opus, label: 'Opus (Latest)' });
-    if (latest.sonnet) models.push({ id: latest.sonnet, label: 'Sonnet (Latest)' });
-    if (latest.haiku) models.push({ id: latest.haiku, label: 'Haiku (Latest)' });
-    
-    for (const id of sorted) {
-      if (id.startsWith('claude-3-')) continue;
-      models.push({ id, label: modelIdToLabel(id) });
-    }
-    
-    return models;
-  } catch { return null; }
 }
 
 async function fetchClaudeModelsFromAPI() {
@@ -573,56 +528,9 @@ async function getModelsForAgent(agentId) {
     models = await fetchGeminiModelsFromAPI();
   }
 
-  if (models) {
-    modelCache.set(agentId, { models, timestamp: Date.now() });
-    return models;
-  }
-
-  if (AGENT_MODEL_COMMANDS[agentId]) {
-    try {
-      const result = execSync(AGENT_MODEL_COMMANDS[agentId], { encoding: 'utf-8', timeout: 15000 });
-      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length > 0) {
-        models = [{ id: '', label: 'Default' }];
-        for (const line of lines) {
-          models.push({ id: line, label: line });
-        }
-        modelCache.set(agentId, { models, timestamp: Date.now() });
-        return models;
-      }
-    } catch (_) {}
-  }
-
-  const { getRegisteredAgents } = await import('./lib/claude-runner.js');
-  const agents = getRegisteredAgents();
-  const agent = agents.find(a => a.id === agentId);
-
-  if (agent && agent.command) {
-    const modelCmd = `${agent.command} models`;
-    try {
-      const result = execSync(modelCmd, { encoding: 'utf-8', timeout: 15000 });
-      const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length > 0) {
-        models = [{ id: '', label: 'Default' }];
-        for (const line of lines) {
-          models.push({ id: line, label: line });
-        }
-        modelCache.set(agentId, { models, timestamp: Date.now() });
-        return models;
-      }
-    } catch (_) {}
-  }
-
-  if (agentId === 'claude-code') {
-    const cliModels = extractModelsFromClaudeCLI();
-    if (cliModels) {
-      modelCache.set(agentId, { models: cliModels, timestamp: Date.now() });
-      return cliModels;
-    }
-  }
-
-  modelCache.set(agentId, { models: [], timestamp: Date.now() });
-  return [];
+  const result = models || [];
+  modelCache.set(agentId, { models: result, timestamp: Date.now() });
+  return result;
 }
 
 const GEMINI_SCOPES = [

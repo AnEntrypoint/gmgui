@@ -1911,8 +1911,8 @@ class AgentGUIClient {
     }
     try {
       const { models } = await window.wsClient.rpc('agent.models', { id: agentId });
-      this._modelCache.set(agentId, models || []);
-      this._populateModelSelector(models || []);
+      this._modelCache.set(agentId, models);
+      this._populateModelSelector(models);
     } catch (error) {
       console.error('Failed to load models:', error);
       this._populateModelSelector([]);
