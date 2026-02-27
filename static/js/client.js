@@ -354,34 +354,15 @@ class AgentGUIClient {
     this.ui.statusIndicator = document.querySelector('[data-status-indicator]');
     this.ui.messageInput = document.querySelector('[data-message-input]');
     this.ui.sendButton = document.querySelector('[data-send-button]');
-    this.ui.cliAgentSelector = document.querySelector('[data-cli-agent-selector]');
-    this.ui.acpAgentSelector = document.querySelector('[data-acp-agent-selector]');
+    this.ui.agentSelector = document.querySelector('[data-agent-selector]');
+    this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
 
-    if (this.ui.cliAgentSelector) {
-      this.ui.cliAgentSelector.addEventListener('change', () => {
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.addEventListener('change', () => {
         if (!this._agentLocked) {
-          this.loadModelsForAgent(this.ui.cliAgentSelector.value);
+          this.loadModelsForAgent(this.ui.agentSelector.value);
           this.saveAgentAndModelToConversation();
-          // Hide ACP selector when CLI is selected
-          if (this.ui.acpAgentSelector) {
-            this.ui.acpAgentSelector.value = '';
-            this.ui.acpAgentSelector.style.display = 'none';
-          }
-        }
-      });
-    }
-
-    if (this.ui.acpAgentSelector) {
-      this.ui.acpAgentSelector.addEventListener('change', () => {
-        if (!this._agentLocked) {
-          this.loadModelsForAgent(this.ui.acpAgentSelector.value);
-          this.saveAgentAndModelToConversation();
-          // Hide CLI selector when ACP is selected
-          if (this.ui.cliAgentSelector) {
-            this.ui.cliAgentSelector.value = '';
-            this.ui.cliAgentSelector.style.display = 'none';
-          }
         }
       });
     }
@@ -1847,28 +1828,28 @@ class AgentGUIClient {
         const acpAgents = agents.filter(agent => agent.protocol === 'acp');
 
         // Populate CLI agent selector
-        if (this.ui.cliAgentSelector) {
+        if (this.ui.agentSelector) {
           if (cliAgents.length > 0) {
-            this.ui.cliAgentSelector.innerHTML = cliAgents
+            this.ui.agentSelector.innerHTML = cliAgents
               .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
               .join('');
-            this.ui.cliAgentSelector.style.display = 'inline-block';
+            this.ui.agentSelector.style.display = 'inline-block';
           } else {
-            this.ui.cliAgentSelector.innerHTML = '';
-            this.ui.cliAgentSelector.style.display = 'none';
+            this.ui.agentSelector.innerHTML = '';
+            this.ui.agentSelector.style.display = 'none';
           }
         }
 
         // Populate ACP agent selector
-        if (this.ui.acpAgentSelector) {
+        if (this.ui.agentSelector) {
           if (acpAgents.length > 0) {
-            this.ui.acpAgentSelector.innerHTML = acpAgents
+            this.ui.agentSelector.innerHTML = acpAgents
               .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
               .join('');
-            this.ui.acpAgentSelector.style.display = 'inline-block';
+            this.ui.agentSelector.style.display = 'inline-block';
           } else {
-            this.ui.acpAgentSelector.innerHTML = '';
-            this.ui.acpAgentSelector.style.display = 'none';
+            this.ui.agentSelector.innerHTML = '';
+            this.ui.agentSelector.style.display = 'none';
           }
         }
 
@@ -1942,24 +1923,24 @@ class AgentGUIClient {
     
     if (agent) {
       if (agent.protocol === 'cli') {
-        if (this.ui.cliAgentSelector) {
-          this.ui.cliAgentSelector.value = agentId;
-          this.ui.cliAgentSelector.disabled = true;
+        if (this.ui.agentSelector) {
+          this.ui.agentSelector.value = agentId;
+          this.ui.agentSelector.disabled = true;
         }
-        if (this.ui.acpAgentSelector) {
-          this.ui.acpAgentSelector.value = '';
-          this.ui.acpAgentSelector.disabled = true;
-          this.ui.acpAgentSelector.style.display = 'none';
+        if (this.ui.agentSelector) {
+          this.ui.agentSelector.value = '';
+          this.ui.agentSelector.disabled = true;
+          this.ui.agentSelector.style.display = 'none';
         }
       } else {
-        if (this.ui.acpAgentSelector) {
-          this.ui.acpAgentSelector.value = agentId;
-          this.ui.acpAgentSelector.disabled = true;
+        if (this.ui.agentSelector) {
+          this.ui.agentSelector.value = agentId;
+          this.ui.agentSelector.disabled = true;
         }
-        if (this.ui.cliAgentSelector) {
-          this.ui.cliAgentSelector.value = '';
-          this.ui.cliAgentSelector.disabled = true;
-          this.ui.cliAgentSelector.style.display = 'none';
+        if (this.ui.agentSelector) {
+          this.ui.agentSelector.value = '';
+          this.ui.agentSelector.disabled = true;
+          this.ui.agentSelector.style.display = 'none';
         }
       }
     }
@@ -1973,19 +1954,19 @@ class AgentGUIClient {
 
   unlockAgentAndModel() {
     this._agentLocked = false;
-    if (this.ui.cliAgentSelector) {
-      this.ui.cliAgentSelector.disabled = false;
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.disabled = false;
     }
-    if (this.ui.acpAgentSelector) {
-      this.ui.acpAgentSelector.disabled = false;
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.disabled = false;
     }
     
     // Show both selectors again when unlocking
-    if (this.ui.cliAgentSelector && this.state.agents.some(a => a.protocol === 'cli')) {
-      this.ui.cliAgentSelector.style.display = 'inline-block';
+    if (this.ui.agentSelector && this.state.agents.some(a => a.protocol === 'cli')) {
+      this.ui.agentSelector.style.display = 'inline-block';
     }
-    if (this.ui.acpAgentSelector && this.state.agents.some(a => a.protocol === 'acp')) {
-      this.ui.acpAgentSelector.style.display = 'inline-block';
+    if (this.ui.agentSelector && this.state.agents.some(a => a.protocol === 'acp')) {
+      this.ui.agentSelector.style.display = 'inline-block';
     }
   }
 
@@ -2006,22 +1987,22 @@ class AgentGUIClient {
       
       if (agent) {
         if (agent.protocol === 'cli') {
-          if (this.ui.cliAgentSelector) {
-            this.ui.cliAgentSelector.value = agentId;
-            this.ui.cliAgentSelector.style.display = 'inline-block';
+          if (this.ui.agentSelector) {
+            this.ui.agentSelector.value = agentId;
+            this.ui.agentSelector.style.display = 'inline-block';
           }
-          if (this.ui.acpAgentSelector) {
-            this.ui.acpAgentSelector.value = '';
-            this.ui.acpAgentSelector.style.display = 'none';
+          if (this.ui.agentSelector) {
+            this.ui.agentSelector.value = '';
+            this.ui.agentSelector.style.display = 'none';
           }
         } else {
-          if (this.ui.acpAgentSelector) {
-            this.ui.acpAgentSelector.value = agentId;
-            this.ui.acpAgentSelector.style.display = 'inline-block';
+          if (this.ui.agentSelector) {
+            this.ui.agentSelector.value = agentId;
+            this.ui.agentSelector.style.display = 'inline-block';
           }
-          if (this.ui.cliAgentSelector) {
-            this.ui.cliAgentSelector.value = '';
-            this.ui.cliAgentSelector.style.display = 'none';
+          if (this.ui.agentSelector) {
+            this.ui.agentSelector.value = '';
+            this.ui.agentSelector.style.display = 'none';
           }
         }
       }
@@ -2598,11 +2579,11 @@ class AgentGUIClient {
    * Get current selected agent
    */
   getCurrentAgent() {
-    if (this.ui.cliAgentSelector?.value) {
-      return this.ui.cliAgentSelector.value;
+    if (this.ui.agentSelector?.value) {
+      return this.ui.agentSelector.value;
     }
-    if (this.ui.acpAgentSelector?.value) {
-      return this.ui.acpAgentSelector.value;
+    if (this.ui.agentSelector?.value) {
+      return this.ui.agentSelector.value;
     }
     return 'claude-code';
   }
