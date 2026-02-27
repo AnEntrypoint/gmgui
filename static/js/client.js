@@ -1008,26 +1008,25 @@ class AgentGUIClient {
         </div>
       `).join('');
 
-      queueEl.querySelectorAll('.queue-delete-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          const index = parseInt(e.target.dataset.index);
-          const msgId = queue[index].messageId;
-          if (await window.UIDialog.confirm('Delete this queued message?', 'Delete Message')) {
-            await window.wsClient.rpc('q.del', { id: conversationId, messageId: msgId });
+      if (!queueEl._listenersAttached) {
+        queueEl._listenersAttached = true;
+        queueEl.addEventListener('click', async (e) => {
+          if (e.target.classList.contains('queue-delete-btn')) {
+            const index = parseInt(e.target.dataset.index);
+            const msgId = queue[index].messageId;
+            if (await window.UIDialog.confirm('Delete this queued message?', 'Delete Message')) {
+              await window.wsClient.rpc('q.del', { id: conversationId, messageId: msgId });
+            }
+          } else if (e.target.classList.contains('queue-edit-btn')) {
+            const index = parseInt(e.target.dataset.index);
+            const q = queue[index];
+            const newContent = await window.UIDialog.prompt('Edit message:', q.content, 'Edit Queued Message');
+            if (newContent !== null && newContent !== q.content) {
+              window.wsClient.rpc('q.upd', { id: conversationId, messageId: q.messageId, content: newContent });
+            }
           }
         });
-      });
-
-      queueEl.querySelectorAll('.queue-edit-btn').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-          const index = parseInt(e.target.dataset.index);
-          const q = queue[index];
-          const newContent = await window.UIDialog.prompt('Edit message:', q.content, 'Edit Queued Message');
-          if (newContent !== null && newContent !== q.content) {
-            window.wsClient.rpc('q.upd', { id: conversationId, messageId: q.messageId, content: newContent });
-          }
-        });
-      });
+      }
     } catch (err) {
       console.error('Failed to fetch queue:', err);
     }
