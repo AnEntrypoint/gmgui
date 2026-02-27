@@ -1833,8 +1833,7 @@ class AgentGUIClient {
         const { agents } = await window.wsClient.rpc('agent.ls');
         this.state.agents = agents;
 
-        const cliAgents = agents.filter(a => a.protocol === 'cli');
-        const displayAgents = cliAgents.length > 0 ? cliAgents : agents;
+        const displayAgents = agents;
 
         if (this.ui.cliSelector) {
           if (displayAgents.length > 0) {
@@ -1985,11 +1984,11 @@ class AgentGUIClient {
   }
 
   _setCliSelectorToAgent(agentId) {
-    const allAgents = this.state.agents || [];
-    const agent = allAgents.find(a => a.id === agentId);
-    const cliId = (agent?.protocol === 'cli' || !agent) ? agentId : null;
-    if (cliId && this.ui.cliSelector) {
-      this.ui.cliSelector.value = cliId;
+    if (this.ui.cliSelector) {
+      this.ui.cliSelector.value = agentId;
+      if (!this.ui.cliSelector.value) {
+        this.ui.cliSelector.selectedIndex = 0;
+      }
     }
   }
 
