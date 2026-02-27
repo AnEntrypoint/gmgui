@@ -43,6 +43,7 @@ class AgentGUIClient {
       statusIndicator: null,
       messageInput: null,
       sendButton: null,
+      cliSelector: null,
       agentSelector: null,
       modelSelector: null
     };
@@ -354,13 +355,23 @@ class AgentGUIClient {
     this.ui.statusIndicator = document.querySelector('[data-status-indicator]');
     this.ui.messageInput = document.querySelector('[data-message-input]');
     this.ui.sendButton = document.querySelector('[data-send-button]');
+    this.ui.cliSelector = document.querySelector('[data-cli-selector]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
+
+    if (this.ui.cliSelector) {
+      this.ui.cliSelector.addEventListener('change', () => {
+        if (!this._agentLocked) {
+          this.loadSubAgentsForCli(this.ui.cliSelector.value);
+          this.saveAgentAndModelToConversation();
+        }
+      });
+    }
 
     if (this.ui.agentSelector) {
       this.ui.agentSelector.addEventListener('change', () => {
         if (!this._agentLocked) {
-          this.loadModelsForAgent(this.ui.agentSelector.value);
+          this.loadModelsForAgent(this.getEffectiveAgentId());
           this.saveAgentAndModelToConversation();
         }
       });
@@ -1822,22 +1833,27 @@ class AgentGUIClient {
         const { agents } = await window.wsClient.rpc('agent.ls');
         this.state.agents = agents;
 
-        // Populate unified agent selector with all agents (both CLI and ACP)
-        if (this.ui.agentSelector) {
-          if (agents.length > 0) {
-            this.ui.agentSelector.innerHTML = agents
-              .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
+        const cliAgents = agents.filter(a => a.protocol === 'cli');
+        const displayAgents = cliAgents.length > 0 ? cliAgents : agents;
+
+        if (this.ui.cliSelector) {
+          if (displayAgents.length > 0) {
+            this.ui.cliSelector.innerHTML = displayAgents
+              .map(a => `<option value="${a.id}">${a.name}</option>`)
               .join('');
-            this.ui.agentSelector.style.display = 'inline-block';
+            this.ui.cliSelector.style.display = 'inline-block';
           } else {
-            this.ui.agentSelector.innerHTML = '';
-            this.ui.agentSelector.style.display = 'none';
+            this.ui.cliSelector.innerHTML = '';
+            this.ui.cliSelector.style.display = 'none';
           }
         }
 
         window.dispatchEvent(new CustomEvent('agents-loaded', { detail: { agents } }));
-        if (agents.length > 0 && !this._agentLocked) {
-          this.loadModelsForAgent(agents[0].id);
+
+        if (displayAgents.length > 0 && !this._agentLocked) {
+          const firstId = displayAgents[0].id;
+          await this.loadSubAgentsForCli(firstId);
+          this.loadModelsForAgent(this.getEffectiveAgentId());
         }
         return agents;
       } catch (error) {
@@ -1845,6 +1861,24 @@ class AgentGUIClient {
         return [];
       }
     });
+  }
+
+  async loadSubAgentsForCli(cliAgentId) {
+    if (this.ui.agentSelector) {
+      this.ui.agentSelector.innerHTML = '';
+      this.ui.agentSelector.style.display = 'none';
+    }
+    try {
+      const { subAgents } = await window.wsClient.rpc('agent.subagents', { id: cliAgentId });
+      if (subAgents && subAgents.length > 0 && this.ui.agentSelector) {
+        this.ui.agentSelector.innerHTML = subAgents
+          .map(a => `<option value="${a.id}">${a.name}</option>`)
+          .join('');
+        this.ui.agentSelector.style.display = 'inline-block';
+      }
+    } catch (_) {
+      // No sub-agents available for this CLI tool — keep hidden
+    }
   }
 
   async checkSpeechStatus() {
@@ -1899,8 +1933,10 @@ class AgentGUIClient {
 
   lockAgentAndModel(agentId, model) {
     this._agentLocked = true;
+    if (this.ui.cliSelector) {
+      this.ui.cliSelector.disabled = true;
+    }
     if (this.ui.agentSelector) {
-      this.ui.agentSelector.value = agentId;
       this.ui.agentSelector.disabled = true;
     }
 
@@ -1914,9 +1950,11 @@ class AgentGUIClient {
 
   unlockAgentAndModel() {
     this._agentLocked = false;
+    if (this.ui.cliSelector) {
+      this.ui.cliSelector.disabled = false;
+    }
     if (this.ui.agentSelector) {
       this.ui.agentSelector.disabled = false;
-      this.ui.agentSelector.style.display = 'inline-block';
     }
     if (this.ui.modelSelector) {
       this.ui.modelSelector.disabled = false;
@@ -1932,18 +1970,26 @@ class AgentGUIClient {
     const model = conversation.model || null;
 
     if (hasActivity) {
+      this._setCliSelectorToAgent(agentId);
       this.lockAgentAndModel(agentId, model);
     } else {
       this.unlockAgentAndModel();
-      if (this.ui.agentSelector) {
-        this.ui.agentSelector.value = agentId;
-      }
+      this._setCliSelectorToAgent(agentId);
 
       this.loadModelsForAgent(agentId).then(() => {
         if (model && this.ui.modelSelector) {
           this.ui.modelSelector.value = model;
         }
       });
+    }
+  }
+
+  _setCliSelectorToAgent(agentId) {
+    const allAgents = this.state.agents || [];
+    const agent = allAgents.find(a => a.id === agentId);
+    const cliId = (agent?.protocol === 'cli' || !agent) ? agentId : null;
+    if (cliId && this.ui.cliSelector) {
+      this.ui.cliSelector.value = cliId;
     }
   }
 
@@ -2510,14 +2556,15 @@ class AgentGUIClient {
   /**
    * Get current selected agent
    */
+  getEffectiveAgentId() {
+    if (this.ui.agentSelector?.value && this.ui.agentSelector.style.display !== 'none') {
+      return this.ui.agentSelector.value;
+    }
+    return this.ui.cliSelector?.value || 'claude-code';
+  }
+
   getCurrentAgent() {
-    if (this.ui.agentSelector?.value) {
-      return this.ui.agentSelector.value;
-    }
-    if (this.ui.agentSelector?.value) {
-      return this.ui.agentSelector.value;
-    }
-    return 'claude-code';
+    return this.getEffectiveAgentId();
   }
 
   /**

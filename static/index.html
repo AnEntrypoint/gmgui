@@ -1077,7 +1077,8 @@
       .message { max-width: 95%; }
       .messages-wrapper { padding: 0.375rem 0.5rem; }
       .input-section { padding: 0.5rem; padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
-      .agent-selector { display: none; }
+      .cli-selector { display: none; }
+      .sub-agent-selector { display: none; }
       .model-selector { display: none; }
     }
 
@@ -3173,7 +3174,8 @@
       <!-- Input area: fixed at bottom -->
       <div class="input-section">
         <div class="input-wrapper">
-          <select class="agent-selector" data-agent-selector title="Select agent"></select>
+          <select class="agent-selector cli-selector" data-cli-selector title="Select CLI tool"></select>
+          <select class="agent-selector sub-agent-selector" data-agent-selector title="Select sub-agent" style="display:none"></select>
           <select class="model-selector" data-model-selector title="Select model" data-empty="true"></select>
           <textarea
             class="message-textarea"
