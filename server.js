@@ -3865,7 +3865,8 @@ const BROADCAST_TYPES = new Set([
   'conversations_updated', 'conversation_deleted', 'queue_status', 'queue_updated',
   'rate_limit_hit', 'rate_limit_clear',
   'script_started', 'script_stopped', 'script_output',
-  'model_download_progress', 'stt_progress', 'tts_setup_progress', 'voice_list'
+  'model_download_progress', 'stt_progress', 'tts_setup_progress', 'voice_list',
+  'streaming_start', 'streaming_progress', 'streaming_complete', 'streaming_error'
 ]);
 
 const wsOptimizer = new WSOptimizer();
