@@ -49,12 +49,20 @@
   }
 
   function connectAndStart() {
+    console.log('Terminal: Connecting to WebSocket');
     if (ws && ws.readyState === WebSocket.OPEN) {
+      console.log('Terminal: Sending terminal_start command');
       ws.send(JSON.stringify({ type: 'terminal_start', cwd: window.__STARTUP_CWD || undefined }));
       return;
     }
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+      console.log('Terminal: WebSocket already connecting');
+      return;
+    }
+    
     ws = new WebSocket(getWsUrl());
     ws.onopen = function() {
+      console.log('Terminal: WebSocket connected, starting terminal');
       ws.send(JSON.stringify({ type: 'terminal_start', cwd: window.__STARTUP_CWD || undefined }));
     };
     ws.onmessage = function(e) {
@@ -68,16 +76,25 @@
         } else if (msg.type === 'terminal_exit' && term) {
           term.write('\r\n[Process exited with code ' + msg.code + ']\r\n');
           if (termActive) setTimeout(connectAndStart, 2000);
+        } else if (msg.type === 'terminal_started') {
+          console.log('Terminal: Started successfully');
         }
       } catch(_) {}
     };
     ws.onclose = function() {
+      console.log('Terminal: WebSocket closed');
+      ws = null;
       if (termActive) setTimeout(connectAndStart, 2000);
+    };
+    ws.onerror = function(error) {
+      console.error('Terminal: WebSocket error:', error);
     };
   }
 
   function startTerminal() {
+    console.log('Terminal: Starting terminal module');
     if (!ensureTerm()) {
+      console.log('Terminal: Terminal not ready, retrying');
       setTimeout(startTerminal, 200);
       return;
     }
@@ -87,10 +104,22 @@
   }
 
   function stopTerminal() {
+    console.log('Terminal: Stopping terminal module');
     termActive = false;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'terminal_stop' }));
     }
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  }
+
+  // Check if terminal view is initially active
+  if (document.getElementById('terminalContainer') && 
+      window.getComputedStyle(document.getElementById('terminalContainer')).display !== 'none') {
+    console.log('Terminal: Terminal view initially visible, starting');
+    startTerminal();
   }
 
   window.addEventListener('view-switched', function(e) {
