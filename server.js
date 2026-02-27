@@ -3174,6 +3174,7 @@ function serveFile(filePath, res, req) {
     let content = data.toString();
     const baseTag = `<script>window.__BASE_URL='${BASE_URL}';</script>`;
     content = content.replace('<head>', '<head>\n  ' + baseTag);
+    content = content.replace(/(href|src)="vendor\//g, `$1="${BASE_URL}/vendor/`);
     if (watch) {
       content += `\n<script>(function(){const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'${BASE_URL}/hot-reload');ws.onmessage=e=>{if(JSON.parse(e.data).type==='reload')location.reload()};})();</script>`;
     }
