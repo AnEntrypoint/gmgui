@@ -342,6 +342,44 @@ function findCommand(cmd) {
   }
 }
 
+async function queryACPServerAgents(baseUrl) {
+  try {
+    // Ensure correct endpoint format (handle both /api and /api/ cases)
+    const endpoint = baseUrl.endsWith('/') ? `${baseUrl}agents/search` : `${baseUrl}/agents/search`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    
+    if (!response.ok) {
+      console.error(`Failed to query ACP agents from ${baseUrl}: ${response.status}`);
+      return [];
+    }
+    
+    const data = await response.json();
+    if (!data.agents || !Array.isArray(data.agents)) {
+      console.error(`Invalid agents response from ${baseUrl}`);
+      return [];
+    }
+    
+    // Convert ACP agent format to our internal format
+    return data.agents.map(agent => ({
+      id: agent.agent_id || agent.id,
+      name: agent.metadata?.ref?.name || agent.name || 'Unknown Agent',
+      icon: agent.metadata?.ref?.name?.charAt(0) || 'A',
+      path: baseUrl,
+      protocol: 'acp',
+      description: agent.metadata?.description || '',
+    }));
+  } catch (error) {
+    console.error(`Error querying ACP server ${baseUrl}:`, error.message);
+    return [];
+  }
+}
+
 function discoverAgents() {
   const agents = [];
   const binaries = [
@@ -371,6 +409,27 @@ function discoverAgents() {
     });
   }
   return agents;
+}
+
+// Function to discover agents from external ACP servers
+async function discoverExternalACPServers() {
+  // Default ACP servers to query (excluding local server to prevent recursion)
+  const acpServers = [
+    'http://localhost:8080',         // Common default ACP port
+  ];
+  
+  const externalAgents = [];
+  for (const serverUrl of acpServers) {
+    try {
+      console.log(`Querying ACP agents from: ${serverUrl}`);
+      const agents = await queryACPServerAgents(serverUrl);
+      externalAgents.push(...agents);
+    } catch (error) {
+      console.error(`Failed to query ${serverUrl}:`, error.message);
+    }
+  }
+  
+  return externalAgents;
 }
 
 const discoveredAgents = discoverAgents();
@@ -1953,8 +2012,31 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/agents/search' && req.method === 'POST') {
       const body = await parseBody(req);
-      const result = queries.searchAgents(discoveredAgents, body);
-      sendJSON(req, res, 200, result);
+      try {
+        // Get local agents
+        const localResult = queries.searchAgents(discoveredAgents, body);
+        
+        // Get external agents from ACP servers
+        const externalAgents = await discoverExternalACPServers();
+        const externalResult = queries.searchAgents(externalAgents, body);
+        
+        // Combine results
+        const combinedAgents = [...localResult.agents, ...externalResult.agents];
+        const total = localResult.total + externalResult.total;
+        const hasMore = localResult.hasMore || externalResult.hasMore;
+        
+        sendJSON(req, res, 200, {
+          agents: combinedAgents,
+          total,
+          limit: body.limit || 50,
+          offset: body.offset || 0,
+          hasMore,
+        });
+      } catch (error) {
+        console.error('Error searching agents:', error);
+        const result = queries.searchAgents(discoveredAgents, body);
+        sendJSON(req, res, 200, result);
+      }
       return;
     }
 
