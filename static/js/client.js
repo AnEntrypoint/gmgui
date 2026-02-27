@@ -1823,27 +1823,10 @@ class AgentGUIClient {
         const { agents } = await window.wsClient.rpc('agent.ls');
         this.state.agents = agents;
 
-        // Split agents by protocol
-        const cliAgents = agents.filter(agent => agent.protocol === 'cli');
-        const acpAgents = agents.filter(agent => agent.protocol === 'acp');
-
-        // Populate CLI agent selector
+        // Populate unified agent selector with all agents (both CLI and ACP)
         if (this.ui.agentSelector) {
-          if (cliAgents.length > 0) {
-            this.ui.agentSelector.innerHTML = cliAgents
-              .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
-              .join('');
-            this.ui.agentSelector.style.display = 'inline-block';
-          } else {
-            this.ui.agentSelector.innerHTML = '';
-            this.ui.agentSelector.style.display = 'none';
-          }
-        }
-
-        // Populate ACP agent selector
-        if (this.ui.agentSelector) {
-          if (acpAgents.length > 0) {
-            this.ui.agentSelector.innerHTML = acpAgents
+          if (agents.length > 0) {
+            this.ui.agentSelector.innerHTML = agents
               .map(agent => `<option value="${agent.id}">${agent.name}</option>`)
               .join('');
             this.ui.agentSelector.style.display = 'inline-block';
