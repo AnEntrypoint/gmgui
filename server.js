@@ -504,10 +504,9 @@ async function getModelsForAgent(agentId) {
 
   if (agentId === 'claude-code') {
     const hardcodedModels = [
-      { id: '', label: 'Default' },
+      { id: 'haiku', label: 'Haiku (Default)' },
       { id: 'sonnet', label: 'Sonnet' },
       { id: 'opus', label: 'Opus' },
-      { id: 'haiku', label: 'Haiku' },
     ];
 
     const apiModels = await fetchClaudeModelsFromAPI();
