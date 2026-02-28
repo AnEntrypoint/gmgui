@@ -22,7 +22,7 @@ import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
 import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
-import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels } from './lib/acp-manager.js';
+import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
 
 
 process.on('uncaughtException', (err, origin) => {
@@ -433,30 +433,14 @@ async function getModelsForAgent(agentId) {
   let models = [];
   if (agentId === 'claude-code') {
     models = [
-      { id: 'claude-haiku', label: 'Haiku' },
-      { id: 'claude-sonnet', label: 'Sonnet' },
-      { id: 'claude-opus', label: 'Opus' }
+      { id: 'haiku', label: 'Haiku' },
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'opus', label: 'Opus' }
     ];
   } else {
     const agent = discoveredAgents.find(a => a.id === agentId);
     if (agent?.protocol === 'acp') {
-      const acpPort = getACPPort(agentId) || agent.acpPort;
-      if (acpPort) {
-        try {
-          models = await queryACPModels(agentId);
-          if (!models.length) {
-            const res = await fetch(`http://localhost:${acpPort}/models`, {
-              headers: { 'Content-Type': 'application/json' },
-              signal: AbortSignal.timeout(3000)
-            });
-            if (res.ok) {
-              const data = await res.json();
-              const list = data?.data || data?.models || (Array.isArray(data) ? data : []);
-              models = list.map(m => ({ id: m.id || m.model_id, label: m.name || m.display_name || m.id || m.model_id })).filter(m => m.id);
-            }
-          }
-        } catch (_) {}
-      }
+      try { models = await queryACPModels(agentId); } catch (_) {}
     }
   }
   modelCache.set(agentId, { models, timestamp: Date.now() });
@@ -3166,6 +3150,7 @@ function createChunkBatcher() {
 
 async function processMessageWithStreaming(conversationId, messageId, sessionId, content, agentId, model) {
   const startTime = Date.now();
+  touchACP(agentId);
   
   const conv = queries.getConversation(conversationId);
   if (!conv) {
