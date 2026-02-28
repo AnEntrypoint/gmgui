@@ -411,22 +411,13 @@ function discoverAgents() {
 
 // Function to discover agents from external ACP servers
 async function discoverExternalACPServers() {
-  // Default ACP servers to query (excluding local server to prevent recursion)
-  const acpServers = [
-    'http://localhost:8080',         // Common default ACP port
-  ];
-  
   const externalAgents = [];
-  for (const serverUrl of acpServers) {
+  for (const agent of discoveredAgents.filter(a => a.protocol === 'acp' && a.acpPort)) {
     try {
-      console.log(`Querying ACP agents from: ${serverUrl}`);
-      const agents = await queryACPServerAgents(serverUrl);
+      const agents = await queryACPServerAgents(`http://localhost:${agent.acpPort}`);
       externalAgents.push(...agents);
-    } catch (error) {
-      console.error(`Failed to query ${serverUrl}:`, error.message);
-    }
+    } catch (_) {}
   }
-  
   return externalAgents;
 }
 
@@ -435,53 +426,34 @@ initializeDescriptors(discoveredAgents);
 
 const modelCache = new Map();
 
-function modelIdToLabel(id) {
-  const base = id.replace(/^claude-/, '').replace(/-\d{8}$/, '');
-  const m = base.match(/^(\w+)-(\d+)(?:-(\d+))?$/);
-  if (m) return `${m[1].charAt(0).toUpperCase() + m[1].slice(1)} ${m[3] ? m[2] + '.' + m[3] : m[2]}`;
-  return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
 async function getModelsForAgent(agentId) {
   const cached = modelCache.get(agentId);
-  if (cached && Date.now() - cached.timestamp < 3600000) return cached.models;
-  let models = null;
+  if (cached && Date.now() - cached.timestamp < 300000) return cached.models;
+  let models = [];
   if (agentId === 'claude-code') {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (apiKey) {
+    models = [
+      { id: 'claude-haiku', label: 'Haiku' },
+      { id: 'claude-sonnet', label: 'Sonnet' },
+      { id: 'claude-opus', label: 'Opus' }
+    ];
+  } else {
+    const agent = discoveredAgents.find(a => a.id === agentId);
+    if (agent?.protocol === 'acp' && agent.acpPort) {
       try {
-        const res = await fetch('https://api.anthropic.com/v1/models', {
-          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-          signal: AbortSignal.timeout(8000)
+        const res = await fetch(`http://localhost:${agent.acpPort}/models`, {
+          headers: { 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(3000)
         });
         if (res.ok) {
           const data = await res.json();
-          const items = (data.data || []).filter(m => m.id && m.id.startsWith('claude-'));
-          if (items.length > 0) models = items.map(m => ({ id: m.id, label: m.display_name || modelIdToLabel(m.id) }));
-        }
-      } catch (_) {}
-    }
-  } else if (agentId === 'gemini') {
-    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-    if (apiKey) {
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
-          signal: AbortSignal.timeout(8000)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const items = (data.models || []).filter(m => m.name && m.name.includes('gemini'));
-          if (items.length > 0) models = items.map(m => {
-            const id = m.name.replace(/^models\//, '');
-            return { id, label: id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
-          });
+          const list = data?.data || data?.models || (Array.isArray(data) ? data : []);
+          models = list.map(m => ({ id: m.id || m.model_id, label: m.name || m.display_name || m.id || m.model_id })).filter(m => m.id);
         }
       } catch (_) {}
     }
   }
-  const result = models || [];
-  modelCache.set(agentId, { models: result, timestamp: Date.now() });
-  return result;
+  modelCache.set(agentId, { models, timestamp: Date.now() });
+  return models;
 }
 
 const GEMINI_SCOPES = [
@@ -3851,7 +3823,7 @@ registerConvHandlers(wsRouter, {
 });
 
 registerSessionHandlers(wsRouter, {
-  db: queries, discoveredAgents, getModelsForAgent, modelCache,
+  db: queries, discoveredAgents, modelCache,
   getAgentDescriptor, activeScripts, broadcastSync,
   startGeminiOAuth, geminiOAuthState: () => geminiOAuthState
 });
