@@ -23,6 +23,7 @@ import { register as registerSessionHandlers } from './lib/ws-handlers-session.j
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
 import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
+import { installGMAgentConfigs } from './lib/gm-agent-configs.js';
 
 
 process.on('uncaughtException', (err, origin) => {
@@ -4172,6 +4173,8 @@ function onServerReady() {
   recoverStaleSessions();
 
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
+
+  installGMAgentConfigs().catch(err => console.error('[GM-CONFIG] Startup error:', err.message));
 
   startACPTools().then(() => {
     setTimeout(() => {
