@@ -442,8 +442,46 @@ function modelIdToLabel(id) {
   return base.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-async function getModelsForAgent() {
-  return [];
+async function getModelsForAgent(agentId) {
+  const cached = modelCache.get(agentId);
+  if (cached && Date.now() - cached.timestamp < 3600000) return cached.models;
+  let models = null;
+  if (agentId === 'claude-code') {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (apiKey) {
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/models', {
+          headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const items = (data.data || []).filter(m => m.id && m.id.startsWith('claude-'));
+          if (items.length > 0) models = items.map(m => ({ id: m.id, label: m.display_name || modelIdToLabel(m.id) }));
+        }
+      } catch (_) {}
+    }
+  } else if (agentId === 'gemini') {
+    const apiKey = process.env.GOOGLE_GENAI_API_KEY;
+    if (apiKey) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {
+          signal: AbortSignal.timeout(8000)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const items = (data.models || []).filter(m => m.name && m.name.includes('gemini'));
+          if (items.length > 0) models = items.map(m => {
+            const id = m.name.replace(/^models\//, '');
+            return { id, label: id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) };
+          });
+        }
+      } catch (_) {}
+    }
+  }
+  const result = models || [];
+  modelCache.set(agentId, { models: result, timestamp: Date.now() });
+  return result;
 }
 
 const GEMINI_SCOPES = [
