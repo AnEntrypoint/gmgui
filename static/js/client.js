@@ -1260,6 +1260,7 @@ class AgentGUIClient {
     const conv = this.state.currentConversation;
     const isNewConversation = conv && !conv.messageCount && !this.state.streamingConversations.has(conv.id);
     const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent();
+    const subAgent = this.getEffectiveSubAgent() || conv?.subAgent || null;
     const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
@@ -1280,11 +1281,12 @@ class AgentGUIClient {
     try {
       if (conv?.id) {
         this.lockAgentAndModel(agentId, model);
-        await this.streamToConversation(conv.id, savedPrompt, agentId, model);
+        await this.streamToConversation(conv.id, savedPrompt, agentId, model, subAgent);
         this._confirmOptimisticMessage(pendingId);
       } else {
         const body = { agentId, title: savedPrompt.substring(0, 50) };
         if (model) body.model = model;
+        if (subAgent) body.subAgent = subAgent;
         const { conversation } = await window.wsClient.rpc('conv.new', body);
         this.state.currentConversation = conversation;
         this.lockAgentAndModel(agentId, model);
@@ -1294,7 +1296,7 @@ class AgentGUIClient {
           window.conversationManager.select(conversation.id);
         }
 
-        await this.streamToConversation(conversation.id, savedPrompt, agentId, model);
+        await this.streamToConversation(conversation.id, savedPrompt, agentId, model, subAgent);
         this._confirmOptimisticMessage(pendingId);
       }
     } catch (error) {
@@ -1535,7 +1537,7 @@ class AgentGUIClient {
     `;
   }
 
-  async streamToConversation(conversationId, prompt, agentId, model) {
+  async streamToConversation(conversationId, prompt, agentId, model, subAgent) {
     try {
       if (this.wsManager.isConnected) {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
@@ -1543,6 +1545,7 @@ class AgentGUIClient {
 
       const streamBody = { id: conversationId, content: prompt, agentId };
       if (model) streamBody.model = model;
+      if (subAgent) streamBody.subAgent = subAgent;
       let result;
       try {
         result = await window.wsClient.rpc('msg.stream', streamBody);
@@ -1552,6 +1555,7 @@ class AgentGUIClient {
           const conv = this.state.currentConversation;
           const createBody = { agentId, title: conv?.title || prompt.substring(0, 50), workingDirectory: conv?.workingDirectory || null };
           if (model) createBody.model = model;
+          if (subAgent) createBody.subAgent = subAgent;
           const { conversation: newConv } = await window.wsClient.rpc('conv.new', createBody);
           this.state.currentConversation = newConv;
           if (window.conversationManager) {
@@ -1559,7 +1563,7 @@ class AgentGUIClient {
             window.conversationManager.select(newConv.id);
           }
           this.updateUrlForConversation(newConv.id);
-          return this.streamToConversation(newConv.id, prompt, agentId, model);
+          return this.streamToConversation(newConv.id, prompt, agentId, model, subAgent);
         }
         throw e;
       }
@@ -1971,6 +1975,7 @@ class AgentGUIClient {
   applyAgentAndModelSelection(conversation, hasActivity) {
     const agentId = conversation.agentId || conversation.agentType || null;
     const model = conversation.model || null;
+    const subAgent = conversation.subAgent || null;
 
     if (hasActivity) {
       this._setCliSelectorToAgent(agentId);
@@ -1980,6 +1985,11 @@ class AgentGUIClient {
       this._setCliSelectorToAgent(agentId);
 
       const effectiveAgentId = agentId || this.getEffectiveAgentId();
+      this.loadSubAgentsForCli(effectiveAgentId).then(() => {
+        if (subAgent && this.ui.agentSelector) {
+          this.ui.agentSelector.value = subAgent;
+        }
+      });
       this.loadModelsForAgent(effectiveAgentId).then(() => {
         if (model && this.ui.modelSelector) {
           this.ui.modelSelector.value = model;
@@ -2561,10 +2571,14 @@ class AgentGUIClient {
    * Get current selected agent
    */
   getEffectiveAgentId() {
+    return this.ui.cliSelector?.value || null;
+  }
+
+  getEffectiveSubAgent() {
     if (this.ui.agentSelector?.value && this.ui.agentSelector.style.display !== 'none') {
       return this.ui.agentSelector.value;
     }
-    return this.ui.cliSelector?.value || null;
+    return null;
   }
 
   getCurrentAgent() {
@@ -2575,8 +2589,9 @@ class AgentGUIClient {
     const convId = this.state.currentConversation;
     if (!convId || this._agentLocked) return;
     const agentId = this.getEffectiveAgentId();
+    const subAgent = this.getEffectiveSubAgent();
     const model = this.getCurrentModel();
-    window.wsClient.rpc('conv.upd', { id: convId, agentType: agentId, model: model || undefined }).catch(() => {});
+    window.wsClient.rpc('conv.upd', { id: convId, agentType: agentId, subAgent: subAgent || undefined, model: model || undefined }).catch(() => {});
   }
 
   /**

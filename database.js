@@ -341,7 +341,8 @@ try {
     workingDirectory: 'TEXT',
     claudeSessionId: 'TEXT',
     isStreaming: 'INTEGER DEFAULT 0',
-    model: 'TEXT'
+    model: 'TEXT',
+    subAgent: 'TEXT'
   };
 
   let addedColumns = false;
@@ -527,13 +528,13 @@ function generateId(prefix) {
 
 export const queries = {
   _db: db,
-  createConversation(agentType, title = null, workingDirectory = null, model = null) {
+  createConversation(agentType, title = null, workingDirectory = null, model = null, subAgent = null) {
     const id = generateId('conv');
     const now = Date.now();
     const stmt = prep(
-      `INSERT INTO conversations (id, agentId, agentType, title, created_at, updated_at, status, workingDirectory, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO conversations (id, agentId, agentType, title, created_at, updated_at, status, workingDirectory, model, subAgent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
-    stmt.run(id, agentType, agentType, title, now, now, 'active', workingDirectory, model);
+    stmt.run(id, agentType, agentType, title, now, now, 'active', workingDirectory, model, subAgent);
 
     return {
       id,
@@ -541,6 +542,7 @@ export const queries = {
       title,
       workingDirectory,
       model,
+      subAgent,
       created_at: now,
       updated_at: now,
       status: 'active'
@@ -559,7 +561,7 @@ export const queries = {
 
   getConversationsList() {
     const stmt = prep(
-      'SELECT id, agentId, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming, model FROM conversations WHERE status != ? ORDER BY updated_at DESC'
+      'SELECT id, agentId, title, agentType, created_at, updated_at, messageCount, workingDirectory, isStreaming, model, subAgent FROM conversations WHERE status != ? ORDER BY updated_at DESC'
     );
     return stmt.all('deleted');
   },
@@ -579,11 +581,12 @@ export const queries = {
     const agentId = data.agentId !== undefined ? data.agentId : conv.agentId;
     const agentType = data.agentType !== undefined ? data.agentType : conv.agentType;
     const model = data.model !== undefined ? data.model : conv.model;
+    const subAgent = data.subAgent !== undefined ? data.subAgent : conv.subAgent;
 
     const stmt = prep(
-      `UPDATE conversations SET title = ?, status = ?, agentId = ?, agentType = ?, model = ?, updated_at = ? WHERE id = ?`
+      `UPDATE conversations SET title = ?, status = ?, agentId = ?, agentType = ?, model = ?, subAgent = ?, updated_at = ? WHERE id = ?`
     );
-    stmt.run(title, status, agentId, agentType, model, now, id);
+    stmt.run(title, status, agentId, agentType, model, subAgent, now, id);
 
     return {
       ...conv,
@@ -592,6 +595,7 @@ export const queries = {
       agentId,
       agentType,
       model,
+      subAgent,
       updated_at: now
     };
   },
@@ -619,13 +623,13 @@ export const queries = {
   },
 
   getStreamingConversations() {
-    const stmt = prep('SELECT id, title, claudeSessionId, agentId, agentType, model FROM conversations WHERE isStreaming = 1');
+    const stmt = prep('SELECT id, title, claudeSessionId, agentId, agentType, model, subAgent FROM conversations WHERE isStreaming = 1');
     return stmt.all();
   },
 
   getResumableConversations() {
     const stmt = prep(
-      "SELECT id, title, claudeSessionId, agentId, agentType, workingDirectory, model FROM conversations WHERE isStreaming = 1 AND claudeSessionId IS NOT NULL AND claudeSessionId != ''"
+      "SELECT id, title, claudeSessionId, agentId, agentType, workingDirectory, model, subAgent FROM conversations WHERE isStreaming = 1 AND claudeSessionId IS NOT NULL AND claudeSessionId != ''"
     );
     return stmt.all();
   },
