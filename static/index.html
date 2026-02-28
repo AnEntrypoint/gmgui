@@ -9,14 +9,17 @@
 
   
   
-  <link href="vendor/rippleui.css" rel="stylesheet">
-  <link rel="preload" href="vendor/prism-dark.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link href="vendor/prism-dark.css" rel="stylesheet"></noscript>
-  <link rel="preload" href="vendor/highlight-js.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
-  <script defer src="vendor/highlight.min.js"></script>
-  <link rel="stylesheet" href="vendor/xterm.css">
-  <script defer src="vendor/xterm.min.js"></script>
-  <script defer src="vendor/xterm-addon-fit.min.js"></script>
+  <script>
+    (function(){
+      var b=(window.__BASE_URL||'');
+      ['vendor/rippleui.css','vendor/prism-dark.css','vendor/highlight-js.css','vendor/xterm.css'].forEach(function(h){
+        var l=document.createElement('link');l.rel='stylesheet';l.href=b+'/'+h;document.head.appendChild(l);
+      });
+      ['vendor/highlight.min.js','vendor/xterm.min.js','vendor/xterm-addon-fit.min.js'].forEach(function(s){
+        var e=document.createElement('script');e.defer=true;e.src=b+'/'+s;document.head.appendChild(e);
+      });
+    })();
+  </script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; }

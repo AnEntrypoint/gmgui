@@ -899,21 +899,24 @@ function acceptsEncoding(req, encoding) {
 
 function compressAndSend(req, res, statusCode, contentType, body) {
   const raw = typeof body === 'string' ? Buffer.from(body) : body;
+  const isHtml = contentType && contentType.includes('text/html');
+  const baseHeaders = { 'Content-Type': contentType };
+  if (isHtml) baseHeaders['Cache-Control'] = 'no-store';
   if (raw.length < 860) {
-    res.writeHead(statusCode, { 'Content-Type': contentType, 'Content-Length': raw.length });
+    res.writeHead(statusCode, { ...baseHeaders, 'Content-Length': raw.length });
     res.end(raw);
     return;
   }
   if (acceptsEncoding(req, 'br')) {
     const compressed = zlib.brotliCompressSync(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } });
-    res.writeHead(statusCode, { 'Content-Type': contentType, 'Content-Encoding': 'br', 'Content-Length': compressed.length });
+    res.writeHead(statusCode, { ...baseHeaders, 'Content-Encoding': 'br', 'Content-Length': compressed.length });
     res.end(compressed);
   } else if (acceptsEncoding(req, 'gzip')) {
     const compressed = zlib.gzipSync(raw, { level: 6 });
-    res.writeHead(statusCode, { 'Content-Type': contentType, 'Content-Encoding': 'gzip', 'Content-Length': compressed.length });
+    res.writeHead(statusCode, { ...baseHeaders, 'Content-Encoding': 'gzip', 'Content-Length': compressed.length });
     res.end(compressed);
   } else {
-    res.writeHead(statusCode, { 'Content-Type': contentType, 'Content-Length': raw.length });
+    res.writeHead(statusCode, { ...baseHeaders, 'Content-Length': raw.length });
     res.end(raw);
   }
 }
