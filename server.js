@@ -22,6 +22,7 @@ import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
 import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
+import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels } from './lib/acp-manager.js';
 
 
 process.on('uncaughtException', (err, origin) => {
@@ -438,18 +439,24 @@ async function getModelsForAgent(agentId) {
     ];
   } else {
     const agent = discoveredAgents.find(a => a.id === agentId);
-    if (agent?.protocol === 'acp' && agent.acpPort) {
-      try {
-        const res = await fetch(`http://localhost:${agent.acpPort}/models`, {
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(3000)
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const list = data?.data || data?.models || (Array.isArray(data) ? data : []);
-          models = list.map(m => ({ id: m.id || m.model_id, label: m.name || m.display_name || m.id || m.model_id })).filter(m => m.id);
-        }
-      } catch (_) {}
+    if (agent?.protocol === 'acp') {
+      const acpPort = getACPPort(agentId) || agent.acpPort;
+      if (acpPort) {
+        try {
+          models = await queryACPModels(agentId);
+          if (!models.length) {
+            const res = await fetch(`http://localhost:${acpPort}/models`, {
+              headers: { 'Content-Type': 'application/json' },
+              signal: AbortSignal.timeout(3000)
+            });
+            if (res.ok) {
+              const data = await res.json();
+              const list = data?.data || data?.models || (Array.isArray(data) ? data : []);
+              models = list.map(m => ({ id: m.id || m.model_id, label: m.name || m.display_name || m.id || m.model_id })).filter(m => m.id);
+            }
+          }
+        } catch (_) {}
+      }
     }
   }
   modelCache.set(agentId, { models, timestamp: Date.now() });
@@ -1744,6 +1751,11 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/agents' && req.method === 'GET') {
             sendJSON(req, res, 200, { agents: discoveredAgents });
+      return;
+    }
+
+    if (pathOnly === '/api/acp/status' && req.method === 'GET') {
+      sendJSON(req, res, 200, { tools: getACPStatus() });
       return;
     }
 
@@ -3965,7 +3977,11 @@ if (watch) {
 
 process.on('SIGTERM', () => {
   console.log('[SIGNAL] SIGTERM received - graceful shutdown');
-  wss.close(() => server.close(() => process.exit(0)));
+  stopACPTools().then(() => {
+    wss.close(() => server.close(() => process.exit(0)));
+  }).catch(() => {
+    wss.close(() => server.close(() => process.exit(0)));
+  });
 });
 
 server.on('error', (err) => {
@@ -4167,6 +4183,21 @@ function onServerReady() {
   recoverStaleSessions();
 
   resumeInterruptedStreams().catch(err => console.error('[RESUME] Startup error:', err.message));
+
+  startACPTools().then(() => {
+    setTimeout(() => {
+      const acpStatus = getACPStatus();
+      for (const s of acpStatus) {
+        if (s.healthy) {
+          const agent = discoveredAgents.find(a => a.id === s.id);
+          if (agent) { agent.acpPort = s.port; }
+        }
+      }
+      if (acpStatus.length > 0) {
+        console.log(`[ACP] Tools ready: ${acpStatus.filter(s => s.healthy).map(s => s.id + ':' + s.port).join(', ') || 'none healthy yet'}`);
+      }
+    }, 6000);
+  }).catch(err => console.error('[ACP] Startup error:', err.message));
 
   ensureModelsDownloaded().then(async ok => {
     if (ok) console.log('[MODELS] Speech models ready');

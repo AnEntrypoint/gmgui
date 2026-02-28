@@ -17,6 +17,7 @@ Server starts on `http://localhost:3000`, redirects to `/gm/`.
 server.js              HTTP server + WebSocket + all API routes (raw http.createServer)
 database.js            SQLite setup (WAL mode), schema, query functions
 lib/claude-runner.js   Agent framework - spawns CLI processes, parses stream-json output
+lib/acp-manager.js     ACP tool lifecycle - auto-starts opencode/kilo HTTP servers, restart on crash
 lib/speech.js          Speech-to-text and text-to-speech via @huggingface/transformers
 bin/gmgui.cjs          CLI entry point (npx agentgui / bunx agentgui)
 static/index.html      Main HTML shell
@@ -49,6 +50,14 @@ static/templates/                 31 HTML template fragments for event rendering
 - `STARTUP_CWD` - Working directory passed to agents
 - `HOT_RELOAD` - Set to "false" to disable watch mode
 
+## ACP Tool Lifecycle
+
+On startup, agentgui auto-launches bundled ACP tools (opencode, kilo) as HTTP servers:
+- OpenCode: port 18100 (`opencode acp --port 18100`)
+- Kilo: port 18101 (`kilo acp --port 18101`)
+
+Managed by `lib/acp-manager.js`. Features: crash restart with exponential backoff (max 10 in 5min), health checks every 30s via `GET /provider`, clean shutdown on SIGTERM. The `acpPort` field on discovered agents is set automatically once healthy. Models are queried from the running ACP HTTP servers via their `/provider` endpoint.
+
 ## REST API
 
 All routes are prefixed with `BASE_URL` (default `/gm`).
@@ -68,6 +77,7 @@ All routes are prefixed with `BASE_URL` (default `/gm`).
 - `GET /api/sessions/:id/chunks` - Get session chunks (query: since)
 - `GET /api/sessions/:id/execution` - Get execution events (query: limit, offset, filterType)
 - `GET /api/agents` - List discovered agents
+- `GET /api/acp/status` - ACP tool lifecycle status (ports, health, PIDs, restart counts)
 - `GET /api/home` - Get home directory
 - `POST /api/stt` - Speech-to-text (raw audio body)
 - `POST /api/tts` - Text-to-speech (body: text)

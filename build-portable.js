@@ -122,6 +122,32 @@ const audioDeps = new Set();
 collectDeps('audio-decode', audioDeps);
 for (const dep of audioDeps) copyPkg(dep);
 
+log('Copying ACP tools (opencode, kilo, gemini) for portable...');
+const acpNativeTools = [
+  { wrapper: 'opencode-ai', platformPrefix: 'opencode-windows-x64' },
+  { wrapper: '@kilocode/cli', platformPrefix: '@kilocode/cli-windows-x64' },
+];
+for (const tool of acpNativeTools) {
+  const wrapperSrc = path.join(nm, tool.wrapper);
+  if (fs.existsSync(wrapperSrc)) copyDir(wrapperSrc, path.join(destNm, tool.wrapper));
+  for (const suffix of ['', '-baseline']) {
+    const platPkg = tool.platformPrefix + suffix;
+    const platSrc = path.join(nm, platPkg);
+    if (fs.existsSync(platSrc)) {
+      copyDir(platSrc, path.join(destNm, platPkg));
+      log(`  ${platPkg} (${Math.round(sizeOf(platSrc) / 1024 / 1024)}MB)`);
+    }
+  }
+}
+const geminiSrc = path.join(nm, '@google', 'gemini-cli');
+if (fs.existsSync(geminiSrc)) {
+  copyDir(geminiSrc, path.join(destNm, '@google', 'gemini-cli'));
+  const geminiDeps = new Set();
+  collectDeps('@google/gemini-cli', geminiDeps);
+  for (const dep of geminiDeps) copyPkg(dep);
+  log(`  gemini-cli + ${geminiDeps.size} deps`);
+}
+
 log('Copying @anthropic-ai/claude-code ripgrep (win32)...');
 const claudeSrc = path.join(nm, '@anthropic-ai', 'claude-code');
 const claudeDest = path.join(destNm, '@anthropic-ai', 'claude-code');
@@ -157,17 +183,8 @@ if (process.env.NO_BUNDLE_MODELS === 'true') {
   }
 }
 
-fs.writeFileSync(path.join(out, 'README.txt'), [
-  '# AgentGUI Portable',
-  '',
-  'No installation required. Double-click agentgui.exe to start.',
-  '',
-  'Web interface: http://localhost:3000/gm/',
-  '',
-  'Data is stored in the data/ folder next to the executable.',
-  '',
-  'Requirements: None - fully self-contained.',
-].join('\n'));
+fs.writeFileSync(path.join(out, 'README.txt'),
+  '# AgentGUI Portable\n\nDouble-click agentgui.exe to start.\nWeb interface: http://localhost:3000/gm/\nData stored in data/ folder. Fully self-contained.\n');
 
 const totalMB = Math.round(sizeOf(out) / 1024 / 1024);
 log(`Build complete! Total: ${totalMB}MB  Output: ${out}`);
