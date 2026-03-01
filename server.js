@@ -42,6 +42,40 @@ process.on('beforeExit', (code) => { console.log('[PROCESS] beforeExit with code
 process.on('exit', (code) => { console.log('[PROCESS] exit with code:', code); });
 
 const ttsTextAccumulators = new Map();
+const voiceCacheManager = {
+  generating: new Map(),
+  maxCacheSize: 10 * 1024 * 1024,
+  async getOrGenerateCache(conversationId, text) {
+    const cacheKey = `${conversationId}:${text}`;
+    if (this.generating.has(cacheKey)) {
+      return new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          const cached = queries.getVoiceCache(conversationId, text);
+          if (cached) {
+            clearInterval(checkInterval);
+            resolve(cached);
+          }
+        }, 50);
+      });
+    }
+    const cached = queries.getVoiceCache(conversationId, text);
+    if (cached) return cached;
+    this.generating.set(cacheKey, true);
+    try {
+      const speech = await getSpeech();
+      const audioBlob = await speech.ttsSync(text, 'en-US');
+      const saved = queries.saveVoiceCache(conversationId, text, audioBlob);
+      const totalSize = queries.getVoiceCacheSize(conversationId);
+      if (totalSize > this.maxCacheSize) {
+        const needed = totalSize - this.maxCacheSize;
+        queries.deleteOldestVoiceCache(conversationId, needed);
+      }
+      return saved;
+    } finally {
+      this.generating.delete(cacheKey);
+    }
+  }
+};
 
 let speechModule = null;
 async function getSpeech() {
@@ -233,7 +267,7 @@ function pushTTSAudio(cacheKey, wav, conversationId, sessionId, voiceId) {
 }
 
 
-const SYSTEM_PROMPT = `Your output will be spoken aloud by a text-to-speech system. Write ONLY plain conversational sentences that sound natural when read aloud. Never use markdown, bold, italics, headers, bullet points, numbered lists, tables, or any formatting. Never use colons to introduce lists or options. Never use labels like "Option A" or "1." followed by a title. Instead of listing options, describe them conversationally in flowing sentences. For example, instead of "**Option 1**: Do X" say "One approach would be to do X." Keep sentences short and simple. Use transition words like "also", "another option", "or alternatively" to connect ideas. Avoid technical notations - describe concepts naturally without spelling out file extensions. Keep file mentions minimal or omit them entirely when possible. If you must mention a file, use natural phrasing like "the server file" or "the main script" rather than technical names. At the end, provide a VERY brief summary in 1-2 sentences maximum. Write as if you are speaking to someone in a casual conversation.`;
+const SYSTEM_PROMPT = `Plain text. Spoken aloud. Conversational. No markdown, formatting, bullets, or lists. Short sentences. Technical facts only.`;
 
 const activeExecutions = new Map();
 const activeScripts = new Map();
@@ -3842,7 +3876,7 @@ registerUtilHandlers(wsRouter, {
   broadcastSync, getSpeech, getProviderConfigs, saveProviderConfig,
   startGeminiOAuth, exchangeGeminiOAuthCode,
   geminiOAuthState: () => geminiOAuthState,
-  STARTUP_CWD, activeScripts
+  STARTUP_CWD, activeScripts, voiceCacheManager
 });
 
 wsRouter.onLegacy((data, ws) => {

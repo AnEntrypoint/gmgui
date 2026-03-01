@@ -151,6 +151,20 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_chunks_conv_created ON chunks(conversationId, created_at);
     CREATE INDEX IF NOT EXISTS idx_chunks_sess_created ON chunks(sessionId, created_at);
 
+    CREATE TABLE IF NOT EXISTS voice_cache (
+      id TEXT PRIMARY KEY,
+      conversationId TEXT NOT NULL,
+      text TEXT NOT NULL,
+      audioBlob BLOB,
+      byteSize INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      FOREIGN KEY (conversationId) REFERENCES conversations(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_voice_cache_conv ON voice_cache(conversationId);
+    CREATE INDEX IF NOT EXISTS idx_voice_cache_expires ON voice_cache(expires_at);
+
   `);
 }
 
@@ -1472,6 +1486,61 @@ export const queries = {
   markDownloadPaused(downloadId, errorMessage) {
     const stmt = prep('UPDATE  SET status = ?, error_message = ?, lastAttempt = ? WHERE id = ?');
     stmt.run('paused', errorMessage, Date.now(), downloadId);
+  },
+
+  saveVoiceCache(conversationId, text, audioBlob, ttlMs = 3600000) {
+    const id = generateId('vcache');
+    const now = Date.now();
+    const expiresAt = now + ttlMs;
+    const byteSize = audioBlob ? Buffer.byteLength(audioBlob) : 0;
+    const stmt = prep(`
+      INSERT INTO voice_cache (id, conversationId, text, audioBlob, byteSize, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(id, conversationId, text, audioBlob || null, byteSize, now, expiresAt);
+    return { id, conversationId, text, byteSize, created_at: now, expires_at: expiresAt };
+  },
+
+  getVoiceCache(conversationId, text) {
+    const now = Date.now();
+    const stmt = prep(`
+      SELECT id, conversationId, text, audioBlob, byteSize, created_at, expires_at
+      FROM voice_cache
+      WHERE conversationId = ? AND text = ? AND expires_at > ?
+      LIMIT 1
+    `);
+    return stmt.get(conversationId, text, now) || null;
+  },
+
+  cleanExpiredVoiceCache() {
+    const now = Date.now();
+    const stmt = prep('DELETE FROM voice_cache WHERE expires_at <= ?');
+    return stmt.run(now).changes;
+  },
+
+  getVoiceCacheSize(conversationId) {
+    const now = Date.now();
+    const stmt = prep(`
+      SELECT COALESCE(SUM(byteSize), 0) as totalSize
+      FROM voice_cache
+      WHERE conversationId = ? AND expires_at > ?
+    `);
+    return stmt.get(conversationId, now).totalSize || 0;
+  },
+
+  deleteOldestVoiceCache(conversationId, neededBytes) {
+    const stmt = prep(`
+      SELECT id FROM voice_cache
+      WHERE conversationId = ?
+      ORDER BY created_at ASC
+      LIMIT (SELECT COUNT(*) FROM voice_cache WHERE conversationId = ? AND byteSize > ?)
+    `);
+    const oldest = stmt.all(conversationId, conversationId, neededBytes);
+    const deleteStmt = prep('DELETE FROM voice_cache WHERE id = ?');
+    for (const row of oldest) {
+      deleteStmt.run(row.id);
+    }
+    return oldest.length;
   },
 
   // ============ ACP-COMPATIBLE QUERIES ============
