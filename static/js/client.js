@@ -49,6 +49,7 @@ class AgentGUIClient {
     };
 
     this._agentLocked = false;
+    this._isLoadingConversation = false;
     this._modelCache = new Map();
 
     this.chunkPollState = {
@@ -217,11 +218,13 @@ class AgentGUIClient {
         this.routerState.currentSessionId = sessionId;
       }
       console.log('Restoring conversation from URL:', conversationId);
-      this.state.currentConversation = conversationId;
+      this._isLoadingConversation = true;
       if (window.conversationManager) {
         window.conversationManager.select(conversationId);
       } else {
-        this.loadConversationMessages(conversationId);
+        this.loadConversationMessages(conversationId).finally(() => {
+          this._isLoadingConversation = false;
+        });
       }
     }
   }
@@ -451,19 +454,31 @@ class AgentGUIClient {
     });
 
     // Listen for conversation selection
-    window.addEventListener('conversation-selected', (event) => {
+    window.addEventListener('conversation-selected', async (event) => {
       const conversationId = event.detail.conversationId;
       this.updateUrlForConversation(conversationId);
-      this.loadConversationMessages(conversationId);
+      this._isLoadingConversation = true;
+      try {
+        await this.loadConversationMessages(conversationId);
+      } finally {
+        this._isLoadingConversation = false;
+      }
     });
 
     // Listen for active conversation deletion
     window.addEventListener('conversation-deselected', () => {
       this.state.currentConversation = null;
+      this.state.currentSession = null;
       this.updateUrlForConversation(null);
+      this.stopChunkPolling();
+      this.enableControls();
       const outputEl = document.getElementById('output');
       if (outputEl) outputEl.innerHTML = '';
-      if (this.ui.messageInput) this.ui.messageInput.value = '';
+      if (this.ui.messageInput) {
+        this.ui.messageInput.value = '';
+        this.ui.messageInput.disabled = false;
+        this.ui.messageInput.style.height = 'auto';
+      }
       this.unlockAgentAndModel();
     });
   }
@@ -1257,17 +1272,13 @@ class AgentGUIClient {
 
   async startExecution() {
     const prompt = this.ui.messageInput?.value || '';
-    const conv = this.state.currentConversation;
-    const isNewConversation = conv && !conv.messageCount && !this.state.streamingConversations.has(conv.id);
-    const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent();
-    const subAgent = this.getEffectiveSubAgent() || conv?.subAgent || null;
-    const model = this.ui.modelSelector?.value || null;
 
     if (!prompt.trim()) {
       this.showError('Please enter a prompt');
       return;
     }
 
+    this.disableControls();
     const savedPrompt = prompt;
     if (this.ui.messageInput) {
       this.ui.messageInput.value = '';
@@ -1276,14 +1287,36 @@ class AgentGUIClient {
 
     const pendingId = 'pending-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
     this._showOptimisticMessage(pendingId, savedPrompt);
-    this.disableControls();
 
     try {
+      let conv = this.state.currentConversation;
+
+      if (this._isLoadingConversation) {
+        this.showError('Conversation still loading. Please try again.');
+        this.enableControls();
+        return;
+      }
+
+      if (conv && typeof conv === 'string') {
+        this.showError('Conversation state invalid. Please reload.');
+        this.enableControls();
+        return;
+      }
+
       if (conv?.id) {
+        const isNewConversation = !conv.messageCount && !this.state.streamingConversations.has(conv.id);
+        const agentId = (isNewConversation ? this.getCurrentAgent() : null) || conv?.agentType || this.getCurrentAgent();
+        const subAgent = this.getEffectiveSubAgent() || conv?.subAgent || null;
+        const model = this.ui.modelSelector?.value || null;
+
         this.lockAgentAndModel(agentId, model);
         await this.streamToConversation(conv.id, savedPrompt, agentId, model, subAgent);
         this._confirmOptimisticMessage(pendingId);
       } else {
+        const agentId = this.getCurrentAgent();
+        const subAgent = this.getEffectiveSubAgent() || null;
+        const model = this.ui.modelSelector?.value || null;
+
         const body = { agentId, title: savedPrompt.substring(0, 50) };
         if (model) body.model = model;
         if (subAgent) body.subAgent = subAgent;
@@ -2174,12 +2207,32 @@ class AgentGUIClient {
    * Disable UI controls during streaming
    */
   disableControls() {
+    if (this.ui.messageInput) {
+      this.ui.messageInput.disabled = true;
+    }
+    if (this.ui.sendButton) {
+      this.ui.sendButton.disabled = true;
+    }
+    const injectBtn = document.getElementById('injectBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    if (injectBtn) injectBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
   }
 
   /**
    * Enable UI controls
    */
   enableControls() {
+    if (this.ui.messageInput) {
+      this.ui.messageInput.disabled = false;
+    }
+    if (this.ui.sendButton) {
+      this.ui.sendButton.disabled = false;
+    }
+    const injectBtn = document.getElementById('injectBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    if (injectBtn) injectBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
   }
 
   /**
@@ -2259,6 +2312,13 @@ class AgentGUIClient {
       if (this.renderer.resetScrollState) this.renderer.resetScrollState();
       this._userScrolledUp = false;
       this._removeNewContentPill();
+
+      if (this.ui.messageInput) {
+        this.ui.messageInput.value = '';
+        this.ui.messageInput.style.height = 'auto';
+        this.ui.messageInput.disabled = false;
+      }
+
       var prevId = this.state.currentConversation?.id;
       if (prevId && prevId !== conversationId) {
         if (this.wsManager.isConnected && !this.state.streamingConversations.has(prevId)) {
