@@ -1576,7 +1576,11 @@ class AgentGUIClient {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
       }
 
-      const streamBody = { id: conversationId, content: prompt, agentId };
+      let finalPrompt = prompt;
+      if (subAgent && agentId === 'claude-code') {
+        finalPrompt = `use ${subAgent} subagent to ${prompt}`;
+      }
+      const streamBody = { id: conversationId, content: finalPrompt, agentId };
       if (model) streamBody.model = model;
       if (subAgent) streamBody.subAgent = subAgent;
       let result;

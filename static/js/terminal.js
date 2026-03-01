@@ -26,7 +26,7 @@
         cursor: '#e6edf3',
         selectionBackground: '#3b4455'
       },
-      convertEol: false,
+      convertEol: true,
       scrollback: 5000
     });
     fitAddon = new FitAddon.FitAddon();
