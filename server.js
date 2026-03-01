@@ -2486,15 +2486,17 @@ const server = http.createServer(async (req, res) => {
         let errorMsg = err.message || 'STT failed';
         if (errorMsg.includes('VERS_1.21') || errorMsg.includes('onnxruntime')) {
           errorMsg = 'STT model load failed: onnxruntime version mismatch. Try: npm install or npm ci';
-        } else if (errorMsg.includes('not valid JSON') || errorMsg.includes('Unexpected token')) {
-          errorMsg = 'STT model load failed: corrupted cache. Clearing... try again.';
-          const modelsDir = path.join(os.homedir(), '.gmgui', 'models');
+        } else if (errorMsg.includes('not valid JSON') || errorMsg.includes('Unexpected token') || errorMsg.includes('corrupted files cleared')) {
           try {
-            const manifestPath = path.join(modelsDir, '.manifests.json');
-            if (fs.existsSync(manifestPath)) fs.unlinkSync(manifestPath);
-            console.log('[STT] Cleared corrupted manifest');
+            const speech = await getSpeech();
+            const cleared = speech.clearCorruptedSTTCache();
+            speech.resetSTTError();
+            console.log('[STT] Cleared', cleared, 'corrupted files and reset error state');
+            await ensureModelsDownloaded();
+            errorMsg = 'STT cache was corrupted, re-downloaded models. Please try again.';
           } catch (e) {
-            console.warn('[STT] Failed to clear manifest:', e.message);
+            console.warn('[STT] Recovery failed:', e.message);
+            errorMsg = 'STT model load failed: corrupted cache. Recovery attempted, try again.';
           }
         }
         broadcastSync({ type: 'stt_progress', status: 'failed', percentComplete: 0, error: errorMsg });
