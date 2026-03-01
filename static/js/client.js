@@ -2327,6 +2327,11 @@ class AgentGUIClient {
         this.state.currentSession = null;
       }
 
+      const cachedConv = this.state.conversations.find(c => c.id === conversationId);
+      if (cachedConv && this.state.currentConversation?.id !== conversationId) {
+        this.state.currentConversation = cachedConv;
+      }
+
       this.updateUrlForConversation(conversationId);
       if (this.wsManager.isConnected) {
         this.wsManager.sendMessage({ type: 'subscribe', conversationId });
