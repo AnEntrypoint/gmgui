@@ -165,6 +165,38 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_voice_cache_conv ON voice_cache(conversationId);
     CREATE INDEX IF NOT EXISTS idx_voice_cache_expires ON voice_cache(expires_at);
 
+    CREATE TABLE IF NOT EXISTS tool_installations (
+      id TEXT PRIMARY KEY,
+      tool_id TEXT NOT NULL UNIQUE,
+      version TEXT,
+      installed_at INTEGER,
+      status TEXT NOT NULL DEFAULT 'not_installed',
+      last_check_at INTEGER,
+      error_message TEXT,
+      update_available INTEGER DEFAULT 0,
+      latest_version TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tool_installations_status ON tool_installations(status);
+    CREATE INDEX IF NOT EXISTS idx_tool_installations_last_check ON tool_installations(last_check_at);
+
+    CREATE TABLE IF NOT EXISTS tool_install_history (
+      id TEXT PRIMARY KEY,
+      tool_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      completed_at INTEGER,
+      status TEXT NOT NULL,
+      error_message TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (tool_id) REFERENCES tool_installations(tool_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tool_install_history_tool ON tool_install_history(tool_id);
+    CREATE INDEX IF NOT EXISTS idx_tool_install_history_completed ON tool_install_history(completed_at);
+
   `);
 }
 
@@ -1541,6 +1573,93 @@ export const queries = {
       deleteStmt.run(row.id);
     }
     return oldest.length;
+  },
+
+  initializeToolInstallations(tools) {
+    const now = Date.now();
+    for (const tool of tools) {
+      const stmt = prep(`
+        INSERT OR IGNORE INTO tool_installations
+        (id, tool_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      stmt.run(generateId('tinst'), tool.id, 'not_installed', now, now);
+    }
+  },
+
+  getToolStatus(toolId) {
+    const stmt = prep(`
+      SELECT id, tool_id, version, installed_at, status, last_check_at,
+             error_message, update_available, latest_version, created_at, updated_at
+      FROM tool_installations
+      WHERE tool_id = ?
+    `);
+    return stmt.get(toolId) || null;
+  },
+
+  getAllToolStatuses() {
+    const stmt = prep(`
+      SELECT id, tool_id, version, installed_at, status, last_check_at,
+             error_message, update_available, latest_version, created_at, updated_at
+      FROM tool_installations
+      ORDER BY tool_id
+    `);
+    return stmt.all();
+  },
+
+  updateToolStatus(toolId, data) {
+    const now = Date.now();
+    const stmt = prep(`
+      UPDATE tool_installations
+      SET version = ?, installed_at = ?, status = ?, last_check_at = ?,
+          error_message = ?, update_available = ?, latest_version = ?, updated_at = ?
+      WHERE tool_id = ?
+    `);
+    stmt.run(
+      data.version || null,
+      data.installed_at || null,
+      data.status || 'not_installed',
+      data.last_check_at || now,
+      data.error_message || null,
+      data.update_available ? 1 : 0,
+      data.latest_version || null,
+      now,
+      toolId
+    );
+  },
+
+  addToolInstallHistory(toolId, action, status, error) {
+    const now = Date.now();
+    const stmt = prep(`
+      INSERT INTO tool_install_history
+      (id, tool_id, action, started_at, completed_at, status, error_message, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(generateId('thist'), toolId, action, now, now, status, error || null, now);
+  },
+
+  getToolInstallHistory(toolId, limit = 20, offset = 0) {
+    const stmt = prep(`
+      SELECT id, tool_id, action, started_at, completed_at, status, error_message, created_at
+      FROM tool_install_history
+      WHERE tool_id = ?
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `);
+    return stmt.all(toolId, limit, offset);
+  },
+
+  pruneToolInstallHistory(toolId, keepCount = 100) {
+    const stmt = prep(`
+      DELETE FROM tool_install_history
+      WHERE tool_id = ? AND id NOT IN (
+        SELECT id FROM tool_install_history
+        WHERE tool_id = ?
+        ORDER BY created_at DESC
+        LIMIT ?
+      )
+    `);
+    return stmt.run(toolId, toolId, keepCount).changes;
   },
 
   // ============ ACP-COMPATIBLE QUERIES ============

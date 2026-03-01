@@ -1238,6 +1238,16 @@
       100% { border-color: var(--color-border); }
     }
 
+    /* ===== TOOLS VIEW ===== */
+    .tools-container {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 1.5rem 2rem;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .voice-mic-btn.recording {
       background: var(--color-error);
       border-color: var(--color-error);
@@ -3111,6 +3121,7 @@
         <button class="view-toggle-btn" data-view="files">Files</button>
         <button class="view-toggle-btn" data-view="voice" id="voiceTabBtn" style="display:none;">Voice</button>
         <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn">Terminal</button>
+        <button class="view-toggle-btn" data-view="tools">Tools</button>
       </div>
 
       <!-- Messages scroll area -->
@@ -3172,6 +3183,11 @@
             <button class="voice-stop-btn" id="voiceStopSpeaking" title="Stop speaking">Stop</button>
           </div>
         </div>
+      </div>
+
+      <!-- Tools management view -->
+      <div id="toolsContainer" class="tools-container" style="display:none;">
+        <div id="tool-status-container"></div>
       </div>
 
       <!-- Input area: fixed at bottom -->
@@ -3243,6 +3259,7 @@
   <script defer src="/gm/js/conversations.js"></script>
   <script defer src="/gm/js/terminal.js"></script>
   <script defer src="/gm/js/script-runner.js"></script>
+  <script defer src="/gm/js/tool-status.js"></script>
   <script defer src="/gm/js/client.js"></script>
   <script type="module" src="/gm/js/voice.js"></script>
   <script defer src="/gm/js/features.js"></script>

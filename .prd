@@ -1,0 +1,428 @@
+# Tool Installation Status Management System - PRD
+
+## OVERVIEW
+Replace automatic ACP startup with visual status display and one-click install/update system for gm-oc, gm-gc, gm-kilo, and gm-cc tools.
+
+## PHASE 1: DATABASE SCHEMA CHANGES
+**BLOCKING**: Required before any API or UI work
+**DEPENDENCIES**: None
+**EDGE CASES**: Duplicate tool entries, concurrent install tracking, migration from existing state
+
+**1.1 Add tool_installations table**
+- Track each tool's installation status and metadata
+- Columns: id (PK), tool_id, version, installed_at, status (installed|installing|failed|not_installed), last_check_at, error_message, update_available, latest_version
+- Create indices on tool_id, status, last_check_at
+- EDGE CASE: Handle concurrent install attempts (locked row during install)
+- EDGE CASE: Partial failures (tool binary exists but config not found)
+- BOUNDARY: Support null values for tools not yet discovered
+
+**1.2 Add tool_install_history table**
+- Track install/update attempts for debugging
+- Columns: id (PK), tool_id, action (install|update|uninstall), started_at, completed_at, status (success|failed|timeout), error_message
+- Create index on tool_id, completed_at
+- EDGE CASE: Long-running installs timeout after 5 minutes
+- BOUNDARY: Keep last 100 records per tool
+
+## PHASE 2: TOOL MANAGER SERVICE
+**BLOCKING**: Required before API endpoints work
+**DEPENDENCIES**: Phase 1 (schema)
+**LOCATION**: lib/tool-manager.js
+**EDGE CASES**: Network failures, npm registry timeouts, concurrent install race conditions, Windows vs Unix paths
+
+**2.1 Tool Registry**
+- Tracks gm-oc (opencode), gm-gc (gemini), gm-kilo (kilo), gm-cc (claude-code)
+- For each tool: npm package name, binary name, marker path (config dir), install command
+- Methods: getToolConfig(toolId), getAllTools()
+
+**2.2 Installation Status Detection**
+- checkToolStatus(toolId): Runs synchronously, returns {installed, version, hasConfig}
+- Uses fs.existsSync for binary and marker path
+- Fallback: Try which <binary> command to detect in PATH
+- EDGE CASE: Binary exists but config missing = partial install
+- EDGE CASE: Config exists but binary missing = orphaned config
+- Returns: {toolId, installed: bool, version: string|null, hasConfig: bool, timestamp}
+
+**2.3 Version Detection**
+- detectVersion(toolId): Runs <binary> --version or <binary> -v with 3s timeout
+- Parses semantic version from output (regex: \d+\.\d+\.\d+)
+- EDGE CASE: Tool responds slowly, timeout returns null
+- BOUNDARY: Caches version for 1 hour
+
+**2.4 Update Availability Check**
+- checkForUpdates(toolId, currentVersion): Uses npm API
+- Hits https://registry.npmjs.org/<pkg-name> to get latest version
+- EDGE CASE: Registry unreachable, network timeout (5s), returns false
+- EDGE CASE: Tool not published, edge releases, pre-releases skipped
+- Returns: {hasUpdate: bool, latestVersion: string, changelog: string|null}
+
+**2.5 Installation Execution**
+- install(toolId, onProgress): Executes npx --yes <pkg-name> with timeout 300s
+- Streams stdout/stderr to onProgress callback
+- Validates installation after completion:
+  * Binary exists and is executable
+  * Marker path (config) created
+  * Version detectable
+- EDGE CASE: Partial success (binary installed but config missing) = FAILED
+- EDGE CASE: Process killed by timeout, cleanup child process
+- EDGE CASE: Concurrent install attempt on same tool, queue/lock, reject second
+- Returns: {success: bool, error: string|null, version: string|null}
+
+**2.6 Update Execution**
+- update(toolId, targetVersion, onProgress): Same as install but targets version
+- Validates that newer version is available before attempting
+- EDGE CASE: Downgrade attempts rejected
+- EDGE CASE: Partial downtime acceptable (old binary available during update)
+- Returns: {success: bool, error: string|null, version: string|null}
+
+**2.7 Database Integration**
+- After every status check: update tool_installations row
+- After every install/update: insert tool_install_history row
+- Clean up history to keep only 100 records per tool
+- EDGE CASE: Database locked (multiple processes), retry with backoff (3 tries, 100ms each)
+- BOUNDARY: Transaction isolation prevents dirty reads during install
+
+## PHASE 3: API ENDPOINTS
+**BLOCKING**: Required before UI can function
+**DEPENDENCIES**: Phase 2 (tool manager)
+**EDGE CASES**: Race conditions on concurrent requests, timeout handling, partial failures
+
+**3.1 GET /api/tools**
+- Returns list of all managed tools with current status
+- Response: [{toolId, name, installed, version, hasConfig, hasUpdate, latestVersion, lastCheck, installing}]
+- No input parameters
+- Calls checkToolStatus() for each tool (cached, max age 5 min)
+- EDGE CASE: One tool check fails, return partial data with error flag for that tool
+- BOUNDARY: Response cached for 1 min, server-side cache
+
+**3.2 GET /api/tools/:toolId/status**
+- Get detailed status for single tool
+- Performs fresh check (no cache)
+- Response: {toolId, installed, version, hasConfig, hasUpdate, latestVersion, lastCheck, error}
+- EDGE CASE: Tool not recognized, return 404
+- BOUNDARY: Max 1 fresh check per tool per 5 seconds (rate limit)
+
+**3.3 POST /api/tools/:toolId/install**
+- Initiate tool installation
+- Body: {} (no input needed)
+- Validates: tool recognized, not already installing
+- Transitions tool to "installing" status in DB
+- Spawns install process (backgrounded, returns immediately)
+- Returns: {success: true, installing: true, estimatedTime: 60000}
+- WebSocket broadcasts: tool_install_started, then periodic tool_install_progress, then tool_install_complete/tool_install_failed
+- EDGE CASE: Tool already installing, return 409 Conflict
+- EDGE CASE: Previous install failed, allow retry
+- EDGE CASE: Installation fails, broadcast error, do NOT retry automatically
+
+**3.4 POST /api/tools/:toolId/update**
+- Initiate tool update
+- Body: {targetVersion: "1.2.3"} (optional, defaults to latest)
+- Validates: tool installed, not already installing, update available or overrideable
+- Transitions to "updating" status
+- Same background execution as install
+- Returns: {success: true, updating: true}
+- WebSocket broadcasts: tool_update_started, periodic progress, then complete/failed
+- EDGE CASE: Target version not available, return 400 Bad Request
+- BOUNDARY: Prevent concurrent update/install on same tool
+
+**3.5 POST /api/tools/refresh-all**
+- Force refresh status for all tools (skip cache)
+- Body: {}
+- Returns immediately, refreshes happen in background
+- WebSocket broadcasts: tools_refresh_started, then tools_refresh_complete with results
+- Response: {refreshing: true, toolCount: 4}
+- EDGE CASE: Multiple refresh requests collapse into single refresh batch
+
+**3.6 GET /api/tools/:toolId/history**
+- Get install/update history for tool
+- Query params: limit (default 20, max 100), offset (default 0)
+- Returns: [{action, status, startedAt, completedAt, error}]
+- EDGE CASE: Tool has no history, return empty array
+
+## PHASE 4: UI COMPONENTS
+**BLOCKING**: Required before visual display works
+**DEPENDENCIES**: Phase 3 (API endpoints)
+**LOCATION**: static/js/tool-status.js
+**EDGE CASES**: Network failures during install, tool status state transitions, concurrent tool installs
+
+**4.1 Tool Status Component Structure**
+- Render per-tool block: icon + status text + action buttons
+- Icon: tool-specific (Claude Code, OpenCode, Gemini, Kilo logo)
+- Status text: "Installed v1.2.3" | "Update available v1.3.0" | "Not installed" | "Installing..." | "Failed"
+- Action buttons: based on state
+  * Not installed: [Install] button
+  * Installed, no update: [Check Updates] button
+  * Update available: [Update] button
+  * Installing/Updating: [Cancel] button (grayed out) + progress bar
+  * Failed: [Retry] + [Details] buttons
+
+**4.2 Tool Status Display**
+- Location: Agent selector panel or dedicated "Tools" tab
+- Grid layout: 2x2 or 1x4 depending on viewport
+- Each tool card: 120x120px, icon center, status below, clickable for details
+- Color coding: green (installed), yellow (update available), red (failed), gray (not installed), blue (installing)
+- EDGE CASE: Tool list changes, reflect immediately
+- BOUNDARY: Responsive design, stack on mobile
+
+**4.3 Tool Status Modal/Dropdown**
+- Click tool card to expand details
+- Shows: current version, latest version, last check time, install history (last 3)
+- Changelog preview (if available from NPM)
+- Action buttons based on state
+- EDGE CASE: Modal closes when install completes
+- BOUNDARY: Auto-refresh status every 5 sec while modal open
+
+**4.4 Progress Indicator**
+- During install/update: progress bar + percentage + estimated time
+- Updates every 500ms via WebSocket
+- Shows: bytes downloaded, install speed, ETA
+- EDGE CASE: Slow network, ETA adjusts as data comes in
+- EDGE CASE: Network interrupted, show "Connection lost, retrying..."
+
+**4.5 Error Display**
+- Failed install shows error message (last 200 chars)
+- Link to full error log (tool_install_history)
+- "Report to plugforge" button opens GitHub issue template
+- EDGE CASE: Very long error, truncate with "Show full"
+
+**4.6 WebSocket Integration**
+- Subscribe to tool_install_started, tool_install_progress, tool_install_complete, tool_install_failed
+- Update component state in real-time
+- Broadcast messages: {type, toolId, data: {progress, status, error}}
+- EDGE CASE: WebSocket disconnects during install, UI shows "Offline", re-checks on reconnect
+
+## PHASE 5: STARTUP & INITIALIZATION
+**BLOCKING**: Required before server starts
+**DEPENDENCIES**: Phase 1 (schema), Phase 2 (tool manager)
+**EDGE CASES**: First startup, corrupted DB, missing tools
+
+**5.1 Database Migration**
+- On server startup, run initializeToolInstallations()
+- Creates tool_installations table if not exists
+- For each tool (oc, gc, kilo, cc): insert or update row with current status
+- Sets initial last_check_at to now
+- EDGE CASE: Database locked, retry with backoff
+- BOUNDARY: No blocking waits, async init
+
+**5.2 Initial Status Check**
+- After DB migration, check status of all tools
+- Populates installed, version, hasConfig for each
+- Updates DB rows
+- This happens on server startup, doesn't block listener
+- EDGE CASE: One tool check fails, continue with others
+
+**5.3 Disable Auto-Startup**
+- Modify acp-manager.js: comment out or remove call to startAll()
+- acp-manager.js still loads, still provides ensureRunning() for on-demand
+- ACP tools start only when user creates conversation with that agent
+- EDGE CASE: User never installs ACP tool, ensureRunning() returns null gracefully
+
+**5.4 Agent Discovery (unchanged)**
+- Continues to scan agents as before (claude-code, gemini, opencode, kilo, custom)
+- Agent icons/names display even if not installed
+- On-demand startup via claude-runner still works
+- BOUNDARY: Fallback graceful if tool not installed
+
+## PHASE 6: PLUGFORGE INTEGRATION
+**BLOCKING**: Only needed if install fails
+**DEPENDENCIES**: Phase 4 (error display)
+**EDGE CASES**: Network offline, GitHub API rate limited, issue template rendering
+
+**6.1 Issue Template Generation**
+- On install failure, "Report to plugforge" button opens issue
+- Template includes:
+  * Tool name (gm-oc, gm-gc, etc.)
+  * AgentGUI version (from package.json)
+  * System info (OS, Node version)
+  * Error message (full text)
+  * Install attempt timestamp
+  * Steps to reproduce (npm install <pkg>)
+- Opens: https://github.com/Anthropic-Engineering/plugforge/issues/new?title=...&body=...
+
+**6.2 GH Actions Monitoring (Future)**
+- Not implemented in Phase 1
+- Placeholder for future: monitor plugforge + affected repos for CI/CD status
+- Notify user when fix deployed
+
+## PHASE 7: DISABLE CURRENT AUTO-STARTUP
+**BLOCKING**: Required to avoid conflicts
+**DEPENDENCIES**: Phase 3 (API endpoints work)
+
+**7.1 Modify server.js**
+- Remove or comment out: await startACPTools()
+- Keep: ACP_TOOL_CONFIGS export, getACPStatus(), queryACPModels() (used by on-demand start)
+- ACP managers can still be started on-demand via ensureRunning()
+
+**7.2 Modify acp-manager.js startAll()**
+- Currently starts health check timer
+- Change to just set up timer without starting processes
+- Processes start only when ensureRunning() called
+- Processes auto-stop after 2 min idle (existing behavior)
+
+## EDGE CASES & ERROR CONDITIONS
+
+**Network Failures**
+- Install timeout (5 min): kill process, mark as FAILED, show "timeout" error
+- Registry unreachable: mark update check as failed, retry next day
+- Mid-install network loss: show "lost connection", allow retry
+
+**Concurrent Operations**
+- Two install requests same tool: queue second, reject with 409
+- Install + update simultaneously: prevent, return 409
+- Install + agent startup: allow, both run independently
+
+**Partial Failures**
+- Binary installed but config missing: FAILED (must have both)
+- Config installed but binary missing: FAILED
+- Version check fails but binary exists: mark as INSTALLED with version=null
+
+**System Limits**
+- Disk full during install: capture error, cleanup, mark FAILED
+- Process limit exceeded: mark FAILED, suggest restart
+- Permission denied: mark FAILED, suggest sudo/admin
+
+**Recovery Paths**
+- Failed install: user can click Retry immediately
+- Failed update: user can click Retry, falls back to previous version if timeout
+- Orphaned config: fresh install overwrites or removes
+- Tool uninstalled externally: next status check catches, UI updates
+
+**Race Conditions**
+- Tool deleted while "Installing": install completes but binary gone, next check catches mismatch
+- Database locked during install: retry with exponential backoff
+- Concurrent status checks: served from cache, skip if check in progress
+
+## VERIFICATION & TESTING
+
+**Success Paths (to verify with real execution)**
+- [ ] Tool not installed initially
+  * Call GET /api/tools, see installed=false
+  * Click Install button
+  * See progress 0%
+  * Wait for completion
+  * See installed=true, version detected
+  * Verify binary exists in PATH
+  * Verify config marker created
+
+- [ ] Tool update available
+  * Have old version installed (or mock it)
+  * Call GET /api/tools/:toolId/status
+  * See hasUpdate=true, latestVersion > version
+  * Click Update button
+  * See progress tracking
+  * Completion, verify new version
+  * Verify old binary replaced
+
+- [ ] Multiple tools install concurrently
+  * Initiate install of 4 tools simultaneously
+  * See all show "Installing"
+  * See all complete (in any order)
+  * Verify all installed correctly
+
+**Failure Scenarios (to verify)**
+- [ ] Install timeout
+  * Mock slow install (delay response)
+  * Wait 5 min
+  * See status: FAILED with "timeout"
+  * Click Retry, succeeds
+
+- [ ] Install fails (NPM error)
+  * Install non-existent package (npm --yes @fake/package)
+  * See FAILED status with error message
+  * Error message shows "not found" or NPM error
+
+- [ ] Concurrent install same tool
+  * Send POST /api/tools/gm-oc/install twice rapidly
+  * First returns 200
+  * Second returns 409 Conflict
+  * Only one process runs, not two
+
+- [ ] Network offline during install
+  * Start install
+  * Kill network
+  * See connection error in progress
+  * Retry, succeeds (if network restored)
+
+**Edge Cases**
+- [ ] Binary exists, config missing (partial install)
+  * Manually create binary in PATH, delete config
+  * Refresh status
+  * See installed=false (because hasConfig=false)
+  * Install again, succeeds
+
+- [ ] Very long error message
+  * Trigger error with 1000+ char message
+  * UI truncates to 200 chars
+  * "Show full" link available
+  * Click shows complete error
+
+- [ ] Installation interrupted (user closes app)
+  * Start install
+  * Restart server while installing
+  * Server recovers, shows FAILED or resume state
+
+## BOUNDARY CONDITIONS
+
+- Max file size for tool_install_history: keep 100 records per tool, auto-prune oldest
+- Max time for install: 300 seconds, timeout and mark FAILED
+- Max time for version check: 3 seconds, timeout returns null
+- Max time for update check (registry): 5 seconds, timeout returns {hasUpdate: false}
+- Cache validity: status 5 min, version 1 hour, updates 1 day
+- Concurrent installs per tool: 1 (serialize others)
+- History retention: 100 per tool, then prune oldest
+- Error message max length: 1000 chars (truncate in DB)
+
+## INTEGRATION POINTS
+
+- server.js: Register 5 new API endpoints, disable startACPTools()
+- database.js: Add schema migrations for 2 new tables
+- acp-manager.js: Lazy-load ACP tools, keep on-demand support
+- static/js/client.js: Initialize tool-status component, listen to WebSocket events
+- static/index.html: Add Tools tab or panel
+- lib/tool-manager.js: NEW, handles all tool logic
+
+## SUCCESS CRITERIA
+
+1. All 5 endpoints working, tested with real installations
+2. UI displays all 4 tools with correct status
+3. Install button works, validates completion with version check
+4. Update detection works (at least one tool has update available to test)
+5. Error handling shows meaningful messages
+6. WebSocket broadcasts progress in real-time
+7. No auto-startup of ACP tools on server start
+8. ACP tools start on-demand when user creates conversation
+9. All edge cases tested: timeouts, failures, concurrent ops
+10. Database schema migrations run on first startup
+11. All code under 200 lines per file
+12. No mocks, no test files, all real execution testing
+
+## DEPENDENCIES & BLOCKING
+
+- Phase 1 blocks everything else (schema must exist)
+- Phase 2 blocks phases 3, 5 (tool manager must work)
+- Phase 3 blocks phase 4 (API must be ready before UI)
+- Phase 5 must complete before server starts accepting traffic
+- Phase 6 is independent, can be last
+- Phase 7 must happen after Phase 3 (ensure API works before disabling auto-start)
+
+## TIMELINE ESTIMATE
+
+- Phase 1 (schema): 5-10 min
+- Phase 2 (tool manager): 20-30 min
+- Phase 3 (API): 15-20 min
+- Phase 4 (UI): 20-30 min
+- Phase 5 (startup): 10-15 min
+- Phase 6 (plugforge): 5-10 min
+- Phase 7 (disable auto-startup): 5 min
+- Testing & validation: 20-30 min
+- Total: ~100-150 min
+
+## DELIVERABLES
+
+1. lib/tool-manager.js - Tool status, install, update logic
+2. Modified database.js - New schema migrations
+3. Modified server.js - New API endpoints, disabled auto-startup
+4. Modified acp-manager.js - Lazy-load support
+5. Modified static/index.html - Tools tab/panel added
+6. static/js/tool-status.js - UI component
+7. Modified static/js/client.js - Integration
+8. All tested with real execution, witnessed working

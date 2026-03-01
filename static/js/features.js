@@ -149,6 +149,7 @@
     var fileIframe = document.getElementById('fileBrowserIframe');
     var voiceContainer = document.getElementById('voiceContainer');
     var terminalContainer = document.getElementById('terminalContainer');
+    var toolsContainer = document.getElementById('toolsContainer');
     if (!bar) return;
     bar.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
       btn.classList.toggle('active', btn.dataset.view === view);
@@ -158,6 +159,7 @@
     if (fileBrowser) fileBrowser.style.display = view === 'files' ? 'flex' : 'none';
     if (voiceContainer) voiceContainer.style.display = view === 'voice' ? 'flex' : 'none';
     if (terminalContainer) terminalContainer.style.display = view === 'terminal' ? 'flex' : 'none';
+    if (toolsContainer) toolsContainer.style.display = view === 'tools' ? 'flex' : 'none';
     if (view === 'files' && fileIframe && currentConversation) {
       var src = BASE + '/files/' + currentConversation + '/';
       if (fileIframe.src !== location.origin + src) fileIframe.src = src;

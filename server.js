@@ -24,6 +24,7 @@ import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
 import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
 import { installGMAgentConfigs } from './lib/gm-agent-configs.js';
+import * as toolManager from './lib/tool-manager.js';
 
 
 process.on('uncaughtException', (err, origin) => {
@@ -1777,6 +1778,141 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/acp/status' && req.method === 'GET') {
       sendJSON(req, res, 200, { tools: getACPStatus() });
+      return;
+    }
+
+    if (pathOnly === '/api/tools' && req.method === 'GET') {
+      console.log('[TOOLS-API] Handling GET /api/tools');
+      const tools = toolManager.getAllTools();
+      const toolsWithUpdates = await Promise.all(tools.map(async (t) => {
+        if (t.installed) {
+          const updates = await toolManager.checkForUpdates(t.id, t.version);
+          return { ...t, hasUpdate: updates.hasUpdate, latestVersion: updates.latestVersion };
+        }
+        return { ...t, hasUpdate: false, latestVersion: null };
+      }));
+      sendJSON(req, res, 200, { tools: toolsWithUpdates });
+      return;
+    }
+
+    if (pathOnly.match(/^\/api\/tools\/([^/]+)\/status$/)) {
+      const toolId = pathOnly.match(/^\/api\/tools\/([^/]+)\/status$/)[1];
+      const status = toolManager.checkToolStatus(toolId);
+      if (!status) {
+        sendJSON(req, res, 404, { error: 'Tool not found' });
+        return;
+      }
+      if (status.installed) {
+        const updates = await toolManager.checkForUpdates(toolId, status.version);
+        status.hasUpdate = updates.hasUpdate;
+        status.latestVersion = updates.latestVersion;
+      }
+      sendJSON(req, res, 200, status);
+      return;
+    }
+
+    if (pathOnly.match(/^\/api\/tools\/([^/]+)\/install$/) && req.method === 'POST') {
+      const toolId = pathOnly.match(/^\/api\/tools\/([^/]+)\/install$/)[1];
+      const tool = toolManager.getToolConfig(toolId);
+      if (!tool) {
+        sendJSON(req, res, 404, { error: 'Tool not found' });
+        return;
+      }
+      queries.updateToolStatus(toolId, { status: 'installing' });
+      sendJSON(req, res, 200, { success: true, installing: true, estimatedTime: 60000 });
+      toolManager.install(toolId, (msg) => {
+        if (wsOptimizer && wsOptimizer.broadcast) {
+          wsOptimizer.broadcast({ type: 'tool_install_progress', toolId, data: msg });
+        }
+      }).then((result) => {
+        if (result.success) {
+          queries.updateToolStatus(toolId, { status: 'installed', version: result.version, installed_at: Date.now() });
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: result });
+          }
+          queries.addToolInstallHistory(toolId, 'install', 'success', null);
+        } else {
+          queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_install_failed', toolId, data: result });
+          }
+          queries.addToolInstallHistory(toolId, 'install', 'failed', result.error);
+        }
+      });
+      return;
+    }
+
+    if (pathOnly.match(/^\/api\/tools\/([^/]+)\/update$/) && req.method === 'POST') {
+      const toolId = pathOnly.match(/^\/api\/tools\/([^/]+)\/update$/)[1];
+      const body = await parseBody(req);
+      const tool = toolManager.getToolConfig(toolId);
+      if (!tool) {
+        sendJSON(req, res, 404, { error: 'Tool not found' });
+        return;
+      }
+      const current = toolManager.checkToolStatus(toolId);
+      if (!current || !current.installed) {
+        sendJSON(req, res, 400, { error: 'Tool not installed' });
+        return;
+      }
+      queries.updateToolStatus(toolId, { status: 'updating' });
+      sendJSON(req, res, 200, { success: true, updating: true });
+      toolManager.update(toolId, body.targetVersion, (msg) => {
+        if (wsOptimizer && wsOptimizer.broadcast) {
+          wsOptimizer.broadcast({ type: 'tool_update_progress', toolId, data: msg });
+        }
+      }).then((result) => {
+        if (result.success) {
+          queries.updateToolStatus(toolId, { status: 'installed', version: result.version, installed_at: Date.now() });
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: result });
+          }
+          queries.addToolInstallHistory(toolId, 'update', 'success', null);
+        } else {
+          queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: result });
+          }
+          queries.addToolInstallHistory(toolId, 'update', 'failed', result.error);
+        }
+      });
+      return;
+    }
+
+    if (pathOnly.match(/^\/api\/tools\/([^/]+)\/history$/) && req.method === 'GET') {
+      const toolId = pathOnly.match(/^\/api\/tools\/([^/]+)\/history$/)[1];
+      const url = new URL(req.url, 'http://localhost');
+      const limit = Math.min(parseInt(url.searchParams.get('limit')) || 20, 100);
+      const offset = parseInt(url.searchParams.get('offset')) || 0;
+      const history = queries.getToolInstallHistory(toolId, limit, offset);
+      sendJSON(req, res, 200, { history });
+      return;
+    }
+
+    if (pathOnly === '/api/tools/refresh-all' && req.method === 'POST') {
+      sendJSON(req, res, 200, { refreshing: true, toolCount: 4 });
+      if (wsOptimizer && wsOptimizer.broadcast) {
+        wsOptimizer.broadcast({ type: 'tools_refresh_started' });
+      }
+      setImmediate(async () => {
+        const tools = toolManager.getAllTools();
+        for (const tool of tools) {
+          queries.updateToolStatus(tool.id, {
+            status: tool.installed ? 'installed' : 'not_installed',
+            version: tool.version,
+            last_check_at: Date.now()
+          });
+          if (tool.installed) {
+            const updates = await toolManager.checkForUpdates(tool.id, tool.version);
+            if (updates.hasUpdate) {
+              queries.updateToolStatus(tool.id, { update_available: 1, latest_version: updates.latestVersion });
+            }
+          }
+        }
+        if (wsOptimizer && wsOptimizer.broadcast) {
+          wsOptimizer.broadcast({ type: 'tools_refresh_complete', data: tools });
+        }
+      });
       return;
     }
 
@@ -4213,6 +4349,7 @@ function onServerReady() {
   installGMAgentConfigs().catch(err => console.error('[GM-CONFIG] Startup error:', err.message));
 
   startACPTools().then(() => {
+    console.log('[ACP] On-demand startup enabled (ACP tools start when first used)');
     setTimeout(() => {
       const acpStatus = getACPStatus();
       for (const s of acpStatus) {
@@ -4226,6 +4363,20 @@ function onServerReady() {
       }
     }, 6000);
   }).catch(err => console.error('[ACP] Startup error:', err.message));
+
+  const toolIds = ['gm-oc', 'gm-gc', 'gm-kilo', 'gm-cc'];
+  queries.initializeToolInstallations(toolIds.map(id => ({ id })));
+  for (const toolId of toolIds) {
+    const status = toolManager.checkToolStatus(toolId);
+    if (status) {
+      queries.updateToolStatus(toolId, {
+        status: status.installed ? 'installed' : 'not_installed',
+        version: status.version,
+        last_check_at: Date.now()
+      });
+    }
+  }
+  console.log('[TOOLS] Initialization complete');
 
   ensureModelsDownloaded().then(async ok => {
     if (ok) console.log('[MODELS] Speech models ready');
