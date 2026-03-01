@@ -3098,19 +3098,19 @@
           </button>
           <button class="header-icon-btn tools-manager-btn" id="toolsManagerBtn" title="Tools & extensions" aria-label="Tools & extensions" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6V2M12 22v-4M6 12H2M22 12h-4M7.07 7.07L4.22 4.22M19.78 19.78L16.93 16.93M7.07 16.93L4.22 19.78M19.78 4.22L16.93 7.07"/></svg>
-            <div class="tools-popup" id="toolsPopup">
-              <div class="tools-popup-content" onclick="event.stopPropagation()">
-                <div class="tools-popup-header">
-                  <h2>Tools & Extensions</h2>
-                  <button class="tools-popup-close" onclick="document.getElementById('toolsPopup').classList.remove('open')">×</button>
-                </div>
-                <div class="tools-popup-scroll"></div>
-                <div class="tools-popup-footer">
-                  <button class="tools-popup-refresh-btn" onclick="window.toolsManager.refresh()">Refresh All</button>
-                </div>
+          </button>
+          <div class="tools-popup" id="toolsPopup">
+            <div class="tools-popup-content" onclick="event.stopPropagation()">
+              <div class="tools-popup-header">
+                <h2>Tools & Extensions</h2>
+                <button class="tools-popup-close" onclick="document.getElementById('toolsPopup').classList.remove('open')">×</button>
+              </div>
+              <div class="tools-popup-scroll"></div>
+              <div class="tools-popup-footer">
+                <button class="tools-popup-refresh-btn" onclick="window.toolsManager.refresh()">Refresh All</button>
               </div>
             </div>
-          </button>
+          </div>
           <div class="status-badge">
             <div class="status-indicator" data-status="disconnected"></div>
             <span id="connectionStatus" data-status-indicator>Disconnected</span>
