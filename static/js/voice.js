@@ -125,6 +125,22 @@
     if (mainSelector.value) voiceSelector.value = mainSelector.value;
   }
 
+  function syncVoiceCliSelector() {
+    var voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
+    var mainCliSelector = document.querySelector('[data-cli-selector]');
+    if (!voiceCliSelector || !mainCliSelector) return;
+    voiceCliSelector.innerHTML = mainCliSelector.innerHTML;
+    if (mainCliSelector.value) voiceCliSelector.value = mainCliSelector.value;
+  }
+
+  function syncVoiceModelSelector() {
+    var voiceModelSelector = document.querySelector('[data-voice-model-selector]');
+    var mainModelSelector = document.querySelector('[data-model-selector]');
+    if (!voiceModelSelector || !mainModelSelector) return;
+    voiceModelSelector.innerHTML = mainModelSelector.innerHTML;
+    if (mainModelSelector.value) voiceModelSelector.value = mainModelSelector.value;
+  }
+
   function setupAgentSelector() {
     var voiceSelector = document.querySelector('[data-voice-agent-selector]');
     if (!voiceSelector) return;
@@ -139,6 +155,36 @@
       });
     }
     window.addEventListener('agents-loaded', syncVoiceSelector);
+
+    var mainCliSelector = document.querySelector('[data-cli-selector]');
+    if (mainCliSelector) {
+      syncVoiceCliSelector();
+      mainCliSelector.addEventListener('change', function() {
+        var voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
+        if (voiceCliSelector) voiceCliSelector.value = mainCliSelector.value;
+      });
+      var voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
+      if (voiceCliSelector) {
+        voiceCliSelector.addEventListener('change', function() {
+          mainCliSelector.value = voiceCliSelector.value;
+        });
+      }
+    }
+
+    var mainModelSelector = document.querySelector('[data-model-selector]');
+    if (mainModelSelector) {
+      syncVoiceModelSelector();
+      mainModelSelector.addEventListener('change', function() {
+        var voiceModelSelector = document.querySelector('[data-voice-model-selector]');
+        if (voiceModelSelector) voiceModelSelector.value = mainModelSelector.value;
+      });
+      var voiceModelSelector = document.querySelector('[data-voice-model-selector]');
+      if (voiceModelSelector) {
+        voiceModelSelector.addEventListener('change', function() {
+          mainModelSelector.value = voiceModelSelector.value;
+        });
+      }
+    }
   }
 
   function setupTTSToggle() {

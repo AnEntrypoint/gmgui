@@ -361,6 +361,8 @@ class AgentGUIClient {
     this.ui.cliSelector = document.querySelector('[data-cli-selector]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
+    this.ui.voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
+    this.ui.voiceModelSelector = document.querySelector('[data-voice-model-selector]');
 
     if (this.ui.cliSelector) {
       this.ui.cliSelector.addEventListener('change', () => {
@@ -1984,7 +1986,6 @@ class AgentGUIClient {
     this.loadModelsForAgent(agentId).then(() => {
       if (this.ui.modelSelector && model) {
         this.ui.modelSelector.value = model;
-        this.ui.modelSelector.disabled = true;
       }
     });
   }
