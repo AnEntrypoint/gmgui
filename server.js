@@ -4019,7 +4019,7 @@ registerUtilHandlers(wsRouter, {
   broadcastSync, getSpeech, getProviderConfigs, saveProviderConfig,
   startGeminiOAuth, exchangeGeminiOAuthCode,
   geminiOAuthState: () => geminiOAuthState,
-  STARTUP_CWD, activeScripts, voiceCacheManager
+  STARTUP_CWD, activeScripts, voiceCacheManager, toolManager
 });
 
 wsRouter.onLegacy((data, ws) => {
