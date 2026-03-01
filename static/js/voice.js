@@ -742,8 +742,6 @@
       }
     } else if (block.type === 'result') {
       _voiceBreakNext = true;
-    } else {
-      _voiceBreakNext = true;
     }
   }
 
@@ -779,8 +777,6 @@
               addVoiceBlock(block.text, false);
               hasContent = true;
             } else if (block.type === 'result') {
-              _voiceBreakNext = true;
-            } else {
               _voiceBreakNext = true;
             }
           });
