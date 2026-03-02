@@ -83,6 +83,17 @@ All routes are prefixed with `BASE_URL` (default `/gm`).
 - `POST /api/tts` - Text-to-speech (body: text)
 - `GET /api/speech-status` - Speech model loading status
 - `POST /api/folders` - Create folder
+- `GET /api/tools` - List detected tools with installation status (via WebSocket tools.list handler)
+
+## Tool Detection System
+
+The system auto-detects installed AI coding tools via `bunx` package resolution:
+- **OpenCode**: `opencode-ai` package (id: gm-oc)
+- **Gemini CLI**: `@google/gemini-cli` package (id: gm-gc)
+- **Kilo**: `@kilocode/cli` package (id: gm-kilo)
+- **Claude Code**: `@anthropic-ai/claude-code` package (id: gm-cc)
+
+Tool package names are configured in `lib/tool-manager.js` TOOLS array (lines 6-11). Detection happens by spawning `bunx <package> --version` to check if tools are installed. Response from `/api/tools` includes: id, name, pkg, installed, status (one of: installed|needs_update|not_installed), isUpToDate, upgradeNeeded, hasUpdate. Frontend displays tools in UI and updates based on installation status.
 
 ## WebSocket Protocol
 
