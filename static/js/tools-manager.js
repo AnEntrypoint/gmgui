@@ -162,6 +162,17 @@
       var statusClass = getStatusClass(tool);
       var isInstalling = tool.status === 'installing' || tool.status === 'updating';
       var hasAction = !tool.installed || tool.hasUpdate || tool.status === 'failed';
+      var versionInfo = '';
+      if (tool.installedVersion || tool.publishedVersion) {
+        versionInfo = '<div class="tool-versions">';
+        if (tool.installedVersion) {
+          versionInfo += '<span class="tool-version-item">Installed: <strong>' + esc(tool.installedVersion) + '</strong></span>';
+        }
+        if (tool.publishedVersion) {
+          versionInfo += '<span class="tool-version-item">Published: <strong>' + esc(tool.publishedVersion) + '</strong></span>';
+        }
+        versionInfo += '</div>';
+      }
 
       return '<div class="tool-item">' +
         '<div class="tool-header">' +
@@ -171,6 +182,7 @@
         '<span>' + getStatusText(tool) + '</span>' +
         '</span>' +
         '</div>' +
+        versionInfo +
         (tool.description ? '<div class="tool-details">' + esc(tool.description) + '</div>' : '') +
         (isInstalling && tool.progress !== undefined ?
           '<div class="tool-progress-container">' +

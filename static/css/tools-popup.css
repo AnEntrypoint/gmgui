@@ -314,3 +314,25 @@
   font-size: 0.875rem;
   margin-bottom: 0.5rem;
 }
+
+.tool-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.tool-version-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tool-version-item strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}

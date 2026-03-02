@@ -1792,7 +1792,9 @@ const server = http.createServer(async (req, res) => {
         status: t.installed ? (t.isUpToDate ? 'installed' : 'needs_update') : 'not_installed',
         isUpToDate: t.isUpToDate,
         upgradeNeeded: t.upgradeNeeded,
-        hasUpdate: t.upgradeNeeded && t.installed
+        hasUpdate: t.upgradeNeeded && t.installed,
+        installedVersion: t.installedVersion,
+        publishedVersion: t.publishedVersion
       }));
       sendJSON(req, res, 200, { tools: result });
       return;
