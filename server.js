@@ -3382,6 +3382,11 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       if (parsed.type === 'system') {
         if (parsed.subtype === 'task_notification') return;
 
+        if (parsed.session_id) {
+          queries.setClaudeSessionId(conversationId, parsed.session_id);
+          debugLog(`[stream] Eagerly persisted claudeSessionId=${parsed.session_id} for conv=${conversationId}`);
+        }
+
         const systemBlock = {
           type: 'system',
           subtype: parsed.subtype,
