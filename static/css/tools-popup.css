@@ -336,3 +336,25 @@
   color: var(--color-text-primary);
   font-weight: 600;
 }
+
+.tools-popup-update-btn {
+  padding: 0.625rem 1rem;
+  background: var(--color-success);
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.tools-popup-update-btn:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-0.0625rem);
+}
+
+.tools-popup-update-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

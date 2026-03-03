@@ -117,7 +117,17 @@
     var data = e.detail;
     if (!data) return;
 
-    if (data.type === 'tool_install_started' || data.type === 'tool_update_progress') {
+    if (data.type === 'tools_update_started') {
+      var updateTools = data.tools || [];
+      updateTools.forEach(function(toolId) {
+        var tool = tools.find(t => t.id === toolId);
+        if (tool) {
+          tool.status = 'updating';
+          tool.progress = 5;
+        }
+      });
+      render();
+    } else if (data.type === 'tool_install_started' || data.type === 'tool_update_progress') {
       var tool = tools.find(t => t.id === data.toolId);
       if (tool) {
         tool.status = data.type === 'tool_install_started' ? 'installing' : 'updating';
@@ -132,6 +142,7 @@
         tool.version = data.data?.version || tool.version;
         tool.hasUpdate = false;
         tool.progress = 100;
+        operationInProgress.delete(data.toolId);
         setTimeout(fetchTools, 1000);
       }
     } else if (data.type === 'tool_install_failed' || data.type === 'tool_update_failed') {
@@ -143,6 +154,8 @@
         operationInProgress.delete(data.toolId);
         render();
       }
+    } else if (data.type === 'tools_update_complete') {
+      fetchTools();
     } else if (data.type === 'tools_refresh_complete') {
       isRefreshing = false;
       fetchTools();
@@ -213,6 +226,38 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
+  function updateAll() {
+    var toolsWithUpdates = tools.filter(function(t) {
+      return t.hasUpdate || t.status === 'needs_update' || t.status === 'failed';
+    });
+
+    if (toolsWithUpdates.length === 0) {
+      alert('All tools are up-to-date');
+      return;
+    }
+
+    for (var i = 0; i < toolsWithUpdates.length; i++) {
+      operationInProgress.add(toolsWithUpdates[i].id);
+    }
+
+    fetch('/gm/api/tools/update', { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d.updating) {
+          alert('Update started, but response unexpected');
+          for (var i = 0; i < toolsWithUpdates.length; i++) {
+            operationInProgress.delete(toolsWithUpdates[i].id);
+          }
+        }
+      })
+      .catch(function(e) {
+        alert('Update failed: ' + e.message);
+        for (var i = 0; i < toolsWithUpdates.length; i++) {
+          operationInProgress.delete(toolsWithUpdates[i].id);
+        }
+      });
+  }
+
   window.toolsManager = {
     refresh: function() {
       isRefreshing = true;
@@ -221,6 +266,7 @@
         .catch(function(e) { console.error('[TOOLS-MGR]', e.message); });
     },
     install: function(toolId) { install(toolId); },
-    update: function(toolId) { update(toolId); }
+    update: function(toolId) { update(toolId); },
+    updateAll: function() { updateAll(); }
   };
 })();

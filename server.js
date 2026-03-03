@@ -1898,6 +1898,52 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathOnly === '/api/tools/update' && req.method === 'POST') {
+      sendJSON(req, res, 200, { updating: true, toolCount: 4 });
+      if (wsOptimizer && wsOptimizer.broadcast) {
+        wsOptimizer.broadcast({ type: 'tools_update_started', tools: ['gm-cc', 'gm-oc', 'gm-gc', 'gm-kilo'] });
+      }
+      setImmediate(async () => {
+        const toolIds = ['gm-cc', 'gm-oc', 'gm-gc', 'gm-kilo'];
+        const results = {};
+        for (const toolId of toolIds) {
+          try {
+            const result = await toolManager.update(toolId, (msg) => {
+              if (wsOptimizer && wsOptimizer.broadcast) {
+                wsOptimizer.broadcast({ type: 'tool_update_progress', toolId, data: msg });
+              }
+            });
+            results[toolId] = result;
+            if (result.success) {
+              queries.updateToolStatus(toolId, { status: 'installed', installed_at: Date.now() });
+              queries.addToolInstallHistory(toolId, 'update', 'success', null);
+              if (wsOptimizer && wsOptimizer.broadcast) {
+                wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: result });
+              }
+            } else {
+              queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
+              queries.addToolInstallHistory(toolId, 'update', 'failed', result.error);
+              if (wsOptimizer && wsOptimizer.broadcast) {
+                wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: result });
+              }
+            }
+          } catch (err) {
+            const error = err.message || 'Unknown error';
+            results[toolId] = { success: false, error };
+            queries.updateToolStatus(toolId, { status: 'failed', error_message: error });
+            queries.addToolInstallHistory(toolId, 'update', 'failed', error);
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: { error } });
+            }
+          }
+        }
+        if (wsOptimizer && wsOptimizer.broadcast) {
+          wsOptimizer.broadcast({ type: 'tools_update_complete', data: results });
+        }
+      });
+      return;
+    }
+
     if (pathOnly === '/api/tools/refresh-all' && req.method === 'POST') {
       sendJSON(req, res, 200, { refreshing: true, toolCount: 4 });
       if (wsOptimizer && wsOptimizer.broadcast) {
