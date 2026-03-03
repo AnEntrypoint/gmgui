@@ -1581,7 +1581,7 @@ class AgentGUIClient {
       let finalPrompt = prompt;
       if (subAgent && agentId === 'claude-code') {
         const displaySubAgent = subAgent.split('-·-')[0];
-        finalPrompt = `use ${displaySubAgent} subagent to ${prompt} optimize for speech keep it short optimize for clarity`;
+        finalPrompt = `use ${displaySubAgent} subagent to ${prompt}`;
       }
       const streamBody = { id: conversationId, content: finalPrompt, agentId };
       if (model) streamBody.model = model;
