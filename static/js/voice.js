@@ -655,7 +655,7 @@
     var emptyMsg = container.querySelector('.voice-empty');
     if (emptyMsg) emptyMsg.remove();
     var lastChild = container.lastElementChild;
-    if (!isUser && !_voiceBreakNext && lastChild && lastChild.classList.contains('voice-block') && !lastChild.classList.contains('voice-block-user')) {
+    if (!isUser && !_voiceBreakNext && !isLoadingHistory && lastChild && lastChild.classList.contains('voice-block') && !lastChild.classList.contains('voice-block-user')) {
       var contentSpan = lastChild.querySelector('.voice-block-content');
       if (contentSpan) {
         contentSpan.textContent += '\n' + stripHtml(text);
@@ -830,8 +830,8 @@
     if (window.wsClient) {
       window.wsClient.rpc('conv.chunks', { id: conversationId })
         .then(function(data) {
-          isLoadingHistory = false;
           if (!data.ok || !Array.isArray(data.chunks) || data.chunks.length === 0) {
+            isLoadingHistory = false;
             showVoiceEmpty(container);
             return;
           }
@@ -850,6 +850,7 @@
             }
           });
           if (!hasContent) showVoiceEmpty(container);
+          isLoadingHistory = false;
         })
         .catch(function() {
           isLoadingHistory = false;
