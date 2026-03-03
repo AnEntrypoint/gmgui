@@ -508,6 +508,11 @@
   var streamingSupported = true;
   var streamingFailedAt = 0;
 
+  function optimizePromptForSpeech(text) {
+    var optimizationInstructions = ' [Optimize for speech: Keep it short. Use simple words. Use short sentences. Focus on clarity.]';
+    return text + optimizationInstructions;
+  }
+
   function playNextChunk() {
     if (audioChunkQueue.length === 0) {
       isPlayingChunk = false;
@@ -582,6 +587,7 @@
     }
 
     var remainingText = uncachedText.join(' ');
+    var optimizedText = optimizePromptForSpeech(remainingText);
 
     function onTtsSuccess() {
       ttsConsecutiveFailures = 0;
@@ -602,11 +608,11 @@
     }
 
     function tryStreaming() {
-      if (!streamingSupported) { tryNonStreaming(remainingText); return; }
+      if (!streamingSupported) { tryNonStreaming(optimizedText); return; }
       fetch(BASE + '/api/tts-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: remainingText, voiceId: selectedVoiceId })
+        body: JSON.stringify({ text: optimizedText, voiceId: selectedVoiceId })
       }).then(function(resp) {
         if (!resp.ok) {
           streamingSupported = false;
