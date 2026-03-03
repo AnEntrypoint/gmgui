@@ -117,26 +117,41 @@
     });
   }
 
-  function syncVoiceSelector() {
+  function syncVoiceSelectorWithRetry(maxRetries) {
+    maxRetries = maxRetries || 20;
     var voiceSelector = document.querySelector('[data-voice-agent-selector]');
     var mainSelector = document.querySelector('[data-agent-selector]');
     if (!voiceSelector || !mainSelector) return;
+    if (mainSelector.innerHTML.trim() === '' && maxRetries > 0) {
+      setTimeout(function() { syncVoiceSelectorWithRetry(maxRetries - 1); }, 250);
+      return;
+    }
     voiceSelector.innerHTML = mainSelector.innerHTML;
     if (mainSelector.value) voiceSelector.value = mainSelector.value;
   }
 
-  function syncVoiceCliSelector() {
+  function syncVoiceCliSelectorWithRetry(maxRetries) {
+    maxRetries = maxRetries || 20;
     var voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
     var mainCliSelector = document.querySelector('[data-cli-selector]');
     if (!voiceCliSelector || !mainCliSelector) return;
+    if (mainCliSelector.innerHTML.trim() === '' && maxRetries > 0) {
+      setTimeout(function() { syncVoiceCliSelectorWithRetry(maxRetries - 1); }, 250);
+      return;
+    }
     voiceCliSelector.innerHTML = mainCliSelector.innerHTML;
     if (mainCliSelector.value) voiceCliSelector.value = mainCliSelector.value;
   }
 
-  function syncVoiceModelSelector() {
+  function syncVoiceModelSelectorWithRetry(maxRetries) {
+    maxRetries = maxRetries || 20;
     var voiceModelSelector = document.querySelector('[data-voice-model-selector]');
     var mainModelSelector = document.querySelector('[data-model-selector]');
     if (!voiceModelSelector || !mainModelSelector) return;
+    if (mainModelSelector.innerHTML.trim() === '' && maxRetries > 0) {
+      setTimeout(function() { syncVoiceModelSelectorWithRetry(maxRetries - 1); }, 250);
+      return;
+    }
     voiceModelSelector.innerHTML = mainModelSelector.innerHTML;
     if (mainModelSelector.value) voiceModelSelector.value = mainModelSelector.value;
   }
@@ -146,7 +161,9 @@
     if (!voiceSelector) return;
     var mainSelector = document.querySelector('[data-agent-selector]');
     if (mainSelector) {
-      syncVoiceSelector();
+      syncVoiceSelectorWithRetry();
+      var observer = new MutationObserver(syncVoiceSelectorWithRetry);
+      observer.observe(mainSelector, { childList: true, subtree: true });
       mainSelector.addEventListener('change', function() {
         voiceSelector.value = mainSelector.value;
       });
@@ -154,11 +171,13 @@
         mainSelector.value = voiceSelector.value;
       });
     }
-    window.addEventListener('agents-loaded', syncVoiceSelector);
+    window.addEventListener('agents-loaded', syncVoiceSelectorWithRetry);
 
     var mainCliSelector = document.querySelector('[data-cli-selector]');
     if (mainCliSelector) {
-      syncVoiceCliSelector();
+      syncVoiceCliSelectorWithRetry();
+      var cliObserver = new MutationObserver(syncVoiceCliSelectorWithRetry);
+      cliObserver.observe(mainCliSelector, { childList: true, subtree: true });
       mainCliSelector.addEventListener('change', function() {
         var voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
         if (voiceCliSelector) voiceCliSelector.value = mainCliSelector.value;
@@ -173,7 +192,9 @@
 
     var mainModelSelector = document.querySelector('[data-model-selector]');
     if (mainModelSelector) {
-      syncVoiceModelSelector();
+      syncVoiceModelSelectorWithRetry();
+      var modelObserver = new MutationObserver(syncVoiceModelSelectorWithRetry);
+      modelObserver.observe(mainModelSelector, { childList: true, subtree: true });
       mainModelSelector.addEventListener('change', function() {
         var voiceModelSelector = document.querySelector('[data-voice-model-selector]');
         if (voiceModelSelector) voiceModelSelector.value = mainModelSelector.value;
@@ -746,7 +767,7 @@
         if (data.conversationId && data.conversationId !== currentConversationId) return;
         if (data.seq !== undefined && renderedSeqs.has(data.seq)) return;
         if (data.seq !== undefined) renderedSeqs.add(data.seq);
-        handleVoiceBlock(data.block, true);
+        handleVoiceBlock(data.block, true, data.blockRole);
       }
       if (data.type === 'streaming_start') {
         if (data.conversationId && data.conversationId !== currentConversationId) return;
@@ -770,7 +791,7 @@
     });
   }
 
-  function handleVoiceBlock(block, isNew) {
+  function handleVoiceBlock(block, isNew, blockRole) {
     if (!block || !block.type) return;
     if (block.type === 'text' && block.text) {
       var now = Date.now();
@@ -780,8 +801,9 @@
       _lastVoiceBlockText = block.text;
       _lastVoiceBlockTime = now;
 
-      var div = addVoiceBlock(block.text, false);
-      if (div && isNew && ttsEnabled) {
+      var isUser = blockRole === 'user' || blockRole === 'tool_result';
+      var div = addVoiceBlock(block.text, isUser);
+      if (div && isNew && ttsEnabled && blockRole === 'assistant') {
         div.classList.add('speaking');
         speak(block.text);
         setTimeout(function() { div.classList.remove('speaking'); }, 2000);
@@ -820,7 +842,8 @@
             var block = typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data;
             if (!block) return;
             if (block.type === 'text' && block.text) {
-              addVoiceBlock(block.text, false);
+              var isUser = chunk.type === 'user';
+              addVoiceBlock(block.text, isUser);
               hasContent = true;
             } else if (block.type === 'result') {
               _voiceBreakNext = true;
