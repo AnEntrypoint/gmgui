@@ -87,19 +87,41 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+
           for i in 1 2 3; do
-            git pull --rebase origin main && git push origin main && break
-            echo "Push attempt $i failed, retrying..."
-            sleep 2
+            git fetch origin main
+            if git diff --quiet origin/main..HEAD; then
+              echo "Commits already pushed, skipping push"
+              break
+            fi
+            if git push origin HEAD:main; then
+              echo "Successfully pushed version bump"
+              break
+            else
+              echo "Push attempt $i failed, retrying..."
+              sleep 2
+            fi
           done
 
       - name: Publish to npm
         id: publish
         run: |
           set -e
-          npm publish
-          echo "published=true" >> $GITHUB_OUTPUT
-          echo "Successfully published v${{ steps.version.outputs.version }} to npm"
+          PKG_NAME=$(jq -r '.name' package.json)
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Check if version is already published
+          PUBLISHED_VERSION=$(npm view "$PKG_NAME@$VERSION" version 2>/dev/null || echo "")
+
+          if [ "$PUBLISHED_VERSION" = "$VERSION" ]; then
+            echo "Version $VERSION already published to npm, skipping publish"
+            echo "published=true" >> $GITHUB_OUTPUT
+          else
+            echo "Publishing $VERSION to npm..."
+            npm publish
+            echo "published=true" >> $GITHUB_OUTPUT
+            echo "Successfully published v$VERSION to npm"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
