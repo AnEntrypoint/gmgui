@@ -524,6 +524,13 @@
     .view-toggle-btn:hover { color: var(--color-text-primary); }
     .view-toggle-btn.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
 
+    .view-toggle-btn svg {
+      width: 1.2rem;
+      height: 1.2rem;
+      display: block;
+      margin: 0 auto;
+    }
+
     /* --- Messages scroll area --- */
     #output-scroll {
       flex: 1;
@@ -3141,10 +3148,10 @@
 
       <!-- View toggle bar (hidden by default) -->
       <div class="view-toggle-bar" id="viewToggleBar">
-        <button class="view-toggle-btn active" data-view="chat">Chat</button>
-        <button class="view-toggle-btn" data-view="files">Files</button>
-        <button class="view-toggle-btn" data-view="voice" id="voiceTabBtn" style="display:none;">Voice</button>
-        <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn">Terminal</button>
+        <button class="view-toggle-btn active" data-view="chat" title="Chat"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
+        <button class="view-toggle-btn" data-view="files" title="Files"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg></button>
+        <button class="view-toggle-btn" data-view="voice" id="voiceTabBtn" style="display:none;" title="Voice"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
+        <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn" title="Terminal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></button>
       </div>
 
       <!-- Messages scroll area -->
