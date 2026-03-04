@@ -1861,14 +1861,15 @@ const server = http.createServer(async (req, res) => {
         if (wsOptimizer && wsOptimizer.broadcast) {
           wsOptimizer.broadcast({ type: 'tool_install_progress', toolId, data: msg });
         }
-      }).then((result) => {
+      }).then(async (result) => {
         clearTimeout(installTimeout);
         if (installCompleted) return;
         installCompleted = true;
         if (result.success) {
-          queries.updateToolStatus(toolId, { status: 'installed', version: result.version, installed_at: Date.now() });
+          const version = result.version || null;
+          queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
           if (wsOptimizer && wsOptimizer.broadcast) {
-            wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: result });
+            wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: { success: true } });
           }
           queries.addToolInstallHistory(toolId, 'install', 'success', null);
         } else {
@@ -1924,14 +1925,15 @@ const server = http.createServer(async (req, res) => {
         if (wsOptimizer && wsOptimizer.broadcast) {
           wsOptimizer.broadcast({ type: 'tool_update_progress', toolId, data: msg });
         }
-      }).then((result) => {
+      }).then(async (result) => {
         clearTimeout(updateTimeout);
         if (updateCompleted) return;
         updateCompleted = true;
         if (result.success) {
-          queries.updateToolStatus(toolId, { status: 'installed', version: result.version, installed_at: Date.now() });
+          const version = result.version || null;
+          queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
           if (wsOptimizer && wsOptimizer.broadcast) {
-            wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: result });
+            wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: { success: true } });
           }
           queries.addToolInstallHistory(toolId, 'update', 'success', null);
         } else {
