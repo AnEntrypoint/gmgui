@@ -69,34 +69,62 @@
   function install(toolId) {
     if (operationInProgress.has(toolId)) return;
     operationInProgress.add(toolId);
+    var tool = tools.find(t => t.id === toolId);
+    if (tool) {
+      tool.status = 'installing';
+      tool.progress = 0;
+      render();
+    }
     fetch(`/gm/api/tools/${toolId}/install`, { method: 'POST' })
       .then(r => r.json())
       .then(d => {
         if (!d.success) {
           alert(`Install failed: ${d.error || 'Unknown error'}`);
           operationInProgress.delete(toolId);
+          if (tool) {
+            tool.status = 'failed';
+            render();
+          }
         }
       })
       .catch(e => {
         alert(`Install failed: ${e.message}`);
         operationInProgress.delete(toolId);
+        if (tool) {
+          tool.status = 'failed';
+          render();
+        }
       });
   }
 
   function update(toolId) {
     if (operationInProgress.has(toolId)) return;
     operationInProgress.add(toolId);
+    var tool = tools.find(t => t.id === toolId);
+    if (tool) {
+      tool.status = 'updating';
+      tool.progress = 0;
+      render();
+    }
     fetch(`/gm/api/tools/${toolId}/update`, { method: 'POST' })
       .then(r => r.json())
       .then(d => {
         if (!d.success) {
           alert(`Update failed: ${d.error || 'Unknown error'}`);
           operationInProgress.delete(toolId);
+          if (tool) {
+            tool.status = 'failed';
+            render();
+          }
         }
       })
       .catch(e => {
         alert(`Update failed: ${e.message}`);
         operationInProgress.delete(toolId);
+        if (tool) {
+          tool.status = 'failed';
+          render();
+        }
       });
   }
 
