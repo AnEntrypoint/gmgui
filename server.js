@@ -268,7 +268,22 @@ function pushTTSAudio(cacheKey, wav, conversationId, sessionId, voiceId) {
 }
 
 
-const SYSTEM_PROMPT = `Plain text. Spoken aloud. Conversational. No markdown, formatting, bullets, or lists. Short sentences. Technical facts only.`;
+const VOICE_INSTRUCTIONS = `Plain text. Spoken aloud. Conversational. No markdown, formatting, bullets, or lists. Short sentences. Technical facts only.`;
+
+function buildSystemPrompt(agentId, model, subAgent) {
+  const parts = [VOICE_INSTRUCTIONS];
+  if (agentId && agentId !== 'claude-code') {
+    const displayAgentId = agentId.split('-·-')[0];
+    parts.push(`Use ${displayAgentId} subagent for all tasks.`);
+  }
+  if (model) {
+    parts.push(`Model: ${model}.`);
+  }
+  if (subAgent) {
+    parts.push(`Subagent: ${subAgent}.`);
+  }
+  return parts.join(' ');
+}
 
 const activeExecutions = new Map();
 const activeScripts = new Map();
@@ -3728,13 +3743,14 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
 
     const resolvedModel = model || conv?.model || null;
     const resolvedSubAgent = subAgent || conv?.subAgent || null;
+    const unifiedSystemPrompt = buildSystemPrompt(agentId, resolvedModel, resolvedSubAgent);
     const config = {
       verbose: true,
       outputFormat: 'stream-json',
       timeout: 1800000,
       print: true,
       resumeSessionId,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: unifiedSystemPrompt,
       model: resolvedModel || undefined,
       subAgent: resolvedSubAgent || undefined,
       onEvent,
