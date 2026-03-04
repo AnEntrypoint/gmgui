@@ -1868,8 +1868,9 @@ const server = http.createServer(async (req, res) => {
         if (result.success) {
           const version = result.version || null;
           queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
+          const freshStatus = await toolManager.checkToolStatusAsync(toolId);
           if (wsOptimizer && wsOptimizer.broadcast) {
-            wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: { success: true } });
+            wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: { success: true, ...freshStatus } });
           }
           queries.addToolInstallHistory(toolId, 'install', 'success', null);
         } else {
@@ -1901,7 +1902,7 @@ const server = http.createServer(async (req, res) => {
         sendJSON(req, res, 404, { error: 'Tool not found' });
         return;
       }
-      const current = toolManager.checkToolStatus(toolId);
+      const current = await toolManager.checkToolStatusAsync(toolId);
       if (!current || !current.installed) {
         sendJSON(req, res, 400, { error: 'Tool not installed' });
         return;
@@ -1932,8 +1933,9 @@ const server = http.createServer(async (req, res) => {
         if (result.success) {
           const version = result.version || null;
           queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
+          const freshStatus = await toolManager.checkToolStatusAsync(toolId);
           if (wsOptimizer && wsOptimizer.broadcast) {
-            wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: { success: true } });
+            wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: { success: true, ...freshStatus } });
           }
           queries.addToolInstallHistory(toolId, 'update', 'success', null);
         } else {
@@ -1964,6 +1966,81 @@ const server = http.createServer(async (req, res) => {
       const offset = parseInt(url.searchParams.get('offset')) || 0;
       const history = queries.getToolInstallHistory(toolId, limit, offset);
       sendJSON(req, res, 200, { history });
+      return;
+    }
+
+
+    // Handle POST /api/tools/{toolId}/install - individual tool install
+    const installMatch = pathOnly.match(/^\/api\/tools\/([^\/]+)\/install$/);
+    if (installMatch && req.method === 'POST') {
+      const toolId = installMatch[1];
+      sendJSON(req, res, 200, { installing: true, toolId });
+      setImmediate(async () => {
+        try {
+          const result = await toolManager.install(toolId, (msg) => {
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_install_progress', toolId, data: msg });
+            }
+          });
+          if (result.success) {
+            queries.updateToolStatus(toolId, { status: 'installed', installed_at: Date.now() });
+            queries.addToolInstallHistory(toolId, 'install', 'success', null);
+            const freshStatus = await toolManager.checkToolStatusAsync(toolId);
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: { ...result, ...freshStatus } });
+            }
+          } else {
+            queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
+            queries.addToolInstallHistory(toolId, 'install', 'failed', result.error);
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_install_failed', toolId, data: result });
+            }
+          }
+        } catch (err) {
+          queries.updateToolStatus(toolId, { status: 'failed', error_message: err.message });
+          queries.addToolInstallHistory(toolId, 'install', 'failed', err.message);
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_install_failed', toolId, data: { success: false, error: err.message } });
+          }
+        }
+      });
+      return;
+    }
+
+    // Handle POST /api/tools/{toolId}/update - individual tool update
+    const updateMatch = pathOnly.match(/^\/api\/tools\/([^\/]+)\/update$/);
+    if (updateMatch && req.method === 'POST') {
+      const toolId = updateMatch[1];
+      sendJSON(req, res, 200, { updating: true, toolId });
+      setImmediate(async () => {
+        try {
+          const result = await toolManager.update(toolId, (msg) => {
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_update_progress', toolId, data: msg });
+            }
+          });
+          if (result.success) {
+            queries.updateToolStatus(toolId, { status: 'installed', installed_at: Date.now() });
+            queries.addToolInstallHistory(toolId, 'update', 'success', null);
+            const freshStatus = await toolManager.checkToolStatusAsync(toolId);
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: { ...result, ...freshStatus } });
+            }
+          } else {
+            queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
+            queries.addToolInstallHistory(toolId, 'update', 'failed', result.error);
+            if (wsOptimizer && wsOptimizer.broadcast) {
+              wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: result });
+            }
+          }
+        } catch (err) {
+          queries.updateToolStatus(toolId, { status: 'failed', error_message: err.message });
+          queries.addToolInstallHistory(toolId, 'update', 'failed', err.message);
+          if (wsOptimizer && wsOptimizer.broadcast) {
+            wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: { success: false, error: err.message } });
+          }
+        }
+      });
       return;
     }
 
