@@ -1817,15 +1817,28 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly.match(/^\/api\/tools\/([^/]+)\/status$/)) {
       const toolId = pathOnly.match(/^\/api\/tools\/([^/]+)\/status$/)[1];
-      const status = toolManager.checkToolStatus(toolId);
-      if (!status) {
+      const dbStatus = queries.getToolStatus(toolId);
+      const tmStatus = toolManager.checkToolStatus(toolId);
+      if (!tmStatus && !dbStatus) {
         sendJSON(req, res, 404, { error: 'Tool not found' });
         return;
       }
+
+      // Merge database status with tool manager status
+      const status = {
+        toolId,
+        installed: tmStatus?.installed || (dbStatus?.status === 'installed'),
+        isUpToDate: tmStatus?.isUpToDate || false,
+        upgradeNeeded: tmStatus?.upgradeNeeded || false,
+        status: dbStatus?.status || (tmStatus?.installed ? 'installed' : 'not_installed'),
+        installedVersion: dbStatus?.version || tmStatus?.installedVersion || null,
+        timestamp: Date.now(),
+        error_message: dbStatus?.error_message || null
+      };
+
       if (status.installed) {
-        const updates = await toolManager.checkForUpdates(toolId, status.version);
-        status.hasUpdate = updates.hasUpdate;
-        status.latestVersion = updates.latestVersion;
+        const updates = await toolManager.checkForUpdates(toolId);
+        status.hasUpdate = updates.needsUpdate || false;
       }
       sendJSON(req, res, 200, status);
       return;
