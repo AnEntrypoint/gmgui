@@ -453,6 +453,43 @@
     });
   }
 
+  function preGenerateTTS(text) {
+    if (!ttsEnabled) return;
+    var clean = text.replace(/<[^>]*>/g, '').trim();
+    if (!clean) return;
+    var parts = [];
+    if (typeof agentGUIClient !== 'undefined' && agentGUIClient && typeof agentGUIClient.parseMarkdownCodeBlocks === 'function') {
+      parts = agentGUIClient.parseMarkdownCodeBlocks(clean);
+    } else {
+      parts = [{ type: 'text', content: clean }];
+    }
+    parts.forEach(function(part) {
+      if (part.type === 'code') return;
+      var segment = part.content.trim();
+      if (!segment) return;
+      var cacheKey = selectedVoiceId + ':' + segment;
+      if (ttsAudioCache.has(cacheKey)) return;
+      var optimizedText = optimizePromptForSpeech(segment);
+      fetch(BASE + '/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: optimizedText, voiceId: selectedVoiceId })
+      }).then(function(resp) {
+        if (!resp.ok) throw new Error('TTS pre-generation failed: ' + resp.status);
+        return resp.arrayBuffer();
+      }).then(function(buf) {
+        var blob = new Blob([buf], { type: 'audio/wav' });
+        if (ttsAudioCache.size >= TTS_CLIENT_CACHE_MAX) {
+          var oldest = ttsAudioCache.keys().next().value;
+          ttsAudioCache.delete(oldest);
+        }
+        ttsAudioCache.set(cacheKey, blob);
+      }).catch(function(err) {
+        console.warn('[Voice] TTS pre-generation failed:', err);
+      });
+    });
+  }
+
   function processQueue() {
     if (isSpeaking || speechQueue.length === 0) return;
     if (ttsDisabledUntilReset) {
@@ -783,6 +820,7 @@
       var div = addVoiceBlock(block.text, isUser);
       if (div && isNew && ttsEnabled && blockRole === 'assistant') {
         div.classList.add('speaking');
+        preGenerateTTS(block.text);
         speak(block.text);
         setTimeout(function() { div.classList.remove('speaking'); }, 2000);
       }
