@@ -84,6 +84,12 @@ All routes are prefixed with `BASE_URL` (default `/gm`).
 - `GET /api/speech-status` - Speech model loading status
 - `POST /api/folders` - Create folder
 - `GET /api/tools` - List detected tools with installation status (via WebSocket tools.list handler)
+- `GET /api/tools/:id/status` - Get tool installation status (version, installed_at, error_message)
+- `POST /api/tools/:id/install` - Start tool installation (returns `{ success: true }` with background async install)
+- `POST /api/tools/:id/update` - Start tool update (body: targetVersion)
+- `GET /api/tools/:id/history` - Get tool install/update history (query: limit, offset)
+- `POST /api/tools/update` - Batch update all tools with available updates
+- `POST /api/tools/refresh-all` - Refresh all tool statuses from package manager
 
 ## Tool Detection System
 
@@ -94,6 +100,29 @@ The system auto-detects installed AI coding tools via `bunx` package resolution:
 - **Claude Code**: `@anthropic-ai/claude-code` package (id: gm-cc)
 
 Tool package names are configured in `lib/tool-manager.js` TOOLS array (lines 6-11). Detection happens by spawning `bunx <package> --version` to check if tools are installed. Response from `/api/tools` includes: id, name, pkg, installed, status (one of: installed|needs_update|not_installed), isUpToDate, upgradeNeeded, hasUpdate. Frontend displays tools in UI and updates based on installation status.
+
+### Tool Installation and Update UI Flow
+
+When user clicks Install/Update button on a tool:
+
+1. **Frontend** (`static/js/tools-manager.js`):
+   - Immediately updates tool status to 'installing'/'updating' and re-renders UI
+   - Sends POST request to `/api/tools/{id}/install` or `/api/tools/{id}/update`
+   - Adds toolId to `operationInProgress` to prevent duplicate requests
+   - Button becomes disabled showing progress indicator while install runs
+
+2. **Backend** (`server.js` lines 1819-1851):
+   - Receives POST request, updates database status to 'installing'/'updating'
+   - Sends immediate response `{ success: true }`
+   - Asynchronously calls `toolManager.install/update()` in background
+   - Upon completion, broadcasts WebSocket event `tool_install_complete` or `tool_install_failed`
+
+3. **Frontend WebSocket Handler** (`static/js/tools-manager.js` lines 138-151):
+   - Listens for `tool_install_complete` or `tool_install_failed` events
+   - Updates tool status and re-renders final state
+   - Removes toolId from `operationInProgress`, enabling button again
+
+The UI shows progress in three phases: immediate "Installing" status, progress bar animation during install, and final "Installed"/"Failed" status when complete.
 
 ## WebSocket Protocol
 
