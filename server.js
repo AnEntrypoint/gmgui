@@ -1867,13 +1867,16 @@ const server = http.createServer(async (req, res) => {
         installCompleted = true;
         if (result.success) {
           const version = result.version || null;
+          console.log(`[TOOLS-API] Install succeeded for ${toolId}, version: ${version}`);
           queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
           const freshStatus = await toolManager.checkToolStatusAsync(toolId);
+          console.log(`[TOOLS-API] Fresh status after install for ${toolId}:`, JSON.stringify(freshStatus));
           if (wsOptimizer && wsOptimizer.broadcast) {
             wsOptimizer.broadcast({ type: 'tool_install_complete', toolId, data: { success: true, ...freshStatus } });
           }
           queries.addToolInstallHistory(toolId, 'install', 'success', null);
         } else {
+          console.error(`[TOOLS-API] Install failed for ${toolId}:`, result.error);
           queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
           if (wsOptimizer && wsOptimizer.broadcast) {
             wsOptimizer.broadcast({ type: 'tool_install_failed', toolId, data: result });
@@ -1885,6 +1888,7 @@ const server = http.createServer(async (req, res) => {
         if (installCompleted) return;
         installCompleted = true;
         const error = err?.message || 'Unknown error';
+        console.error(`[TOOLS-API] Install error for ${toolId}:`, error);
         queries.updateToolStatus(toolId, { status: 'failed', error_message: error });
         if (wsOptimizer && wsOptimizer.broadcast) {
           wsOptimizer.broadcast({ type: 'tool_install_failed', toolId, data: { success: false, error } });
@@ -1932,13 +1936,16 @@ const server = http.createServer(async (req, res) => {
         updateCompleted = true;
         if (result.success) {
           const version = result.version || null;
+          console.log(`[TOOLS-API] Update succeeded for ${toolId}, version: ${version}`);
           queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
           const freshStatus = await toolManager.checkToolStatusAsync(toolId);
+          console.log(`[TOOLS-API] Fresh status after update for ${toolId}:`, JSON.stringify(freshStatus));
           if (wsOptimizer && wsOptimizer.broadcast) {
             wsOptimizer.broadcast({ type: 'tool_update_complete', toolId, data: { success: true, ...freshStatus } });
           }
           queries.addToolInstallHistory(toolId, 'update', 'success', null);
         } else {
+          console.error(`[TOOLS-API] Update failed for ${toolId}:`, result.error);
           queries.updateToolStatus(toolId, { status: 'failed', error_message: result.error });
           if (wsOptimizer && wsOptimizer.broadcast) {
             wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: result });
@@ -1950,6 +1957,7 @@ const server = http.createServer(async (req, res) => {
         if (updateCompleted) return;
         updateCompleted = true;
         const error = err?.message || 'Unknown error';
+        console.error(`[TOOLS-API] Update error for ${toolId}:`, error);
         queries.updateToolStatus(toolId, { status: 'failed', error_message: error });
         if (wsOptimizer && wsOptimizer.broadcast) {
           wsOptimizer.broadcast({ type: 'tool_update_failed', toolId, data: { success: false, error } });
@@ -4164,7 +4172,10 @@ const BROADCAST_TYPES = new Set([
   'rate_limit_hit', 'rate_limit_clear',
   'script_started', 'script_stopped', 'script_output',
   'model_download_progress', 'stt_progress', 'tts_setup_progress', 'voice_list',
-  'streaming_start', 'streaming_progress', 'streaming_complete', 'streaming_error'
+  'streaming_start', 'streaming_progress', 'streaming_complete', 'streaming_error',
+  'tool_install_started', 'tool_install_progress', 'tool_install_complete', 'tool_install_failed',
+  'tool_update_progress', 'tool_update_complete', 'tool_update_failed',
+  'tools_update_started', 'tools_update_complete', 'tools_refresh_complete'
 ]);
 
 const wsOptimizer = new WSOptimizer();

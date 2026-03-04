@@ -175,6 +175,7 @@
         tool.hasUpdate = (data.data?.upgradeNeeded && data.data?.installed) ?? false;
         tool.progress = 100;
         operationInProgress.delete(data.toolId);
+        render();
         setTimeout(fetchTools, 1000);
       }
     } else if (data.type === 'tool_install_failed' || data.type === 'tool_update_failed') {
