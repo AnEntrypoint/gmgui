@@ -25,28 +25,39 @@
 
     if (!autoSpeakToggle || !voiceSelector) return;
 
-    // Load saved preferences
     var savedAutoSpeak = localStorage.getItem('toolsAutoSpeak') === 'true';
-    var savedVoice = localStorage.getItem('toolsVoice') || 'default';
-
     autoSpeakToggle.checked = savedAutoSpeak;
-    voiceSelector.value = savedVoice;
 
-    // Listen for voice list updates
     window.addEventListener('ws-message', function(e) {
       var data = e.detail;
-      if (data && data.type === 'voice_list') {
-        updateVoiceSelector(data.voices);
-      }
+      if (data && data.type === 'voice_list') updateVoiceSelector(data.voices);
     });
 
-    // Save preferences on change
+    function trySubscribeVsManager() {
+      if (window.wsManager && window.wsManager.subscribeToVoiceList) {
+        window.wsManager.subscribeToVoiceList(updateVoiceSelector);
+      } else {
+        var BASE = window.__BASE_URL || '';
+        fetch(BASE + '/api/voices').then(function(r) { return r.json(); }).then(function(d) {
+          if (d.ok && Array.isArray(d.voices)) updateVoiceSelector(d.voices);
+        }).catch(function() {});
+        setTimeout(function() {
+          if (window.wsManager && window.wsManager.subscribeToVoiceList) {
+            window.wsManager.subscribeToVoiceList(updateVoiceSelector);
+          }
+        }, 2000);
+      }
+    }
+    trySubscribeVsManager();
+
     autoSpeakToggle.addEventListener('change', function() {
       localStorage.setItem('toolsAutoSpeak', this.checked);
+      if (window.voiceModule) window.voiceModule.setAutoSpeak(this.checked);
     });
 
     voiceSelector.addEventListener('change', function() {
       localStorage.setItem('toolsVoice', this.value);
+      if (window.voiceModule) window.voiceModule.setVoice(this.value);
     });
   }
 
@@ -54,17 +65,40 @@
     var voiceSelector = document.getElementById('toolsVoiceSelector');
     if (!voiceSelector || !voices || !Array.isArray(voices)) return;
 
-    var currentValue = voiceSelector.value;
-    voiceSelector.innerHTML = '<option value="default">Voice</option>';
+    var currentValue = voiceSelector.value || localStorage.getItem('toolsVoice') || 'default';
+    voiceSelector.innerHTML = '';
 
-    voices.forEach(function(voice) {
-      var option = document.createElement('option');
-      option.value = voice;
-      option.textContent = voice;
-      voiceSelector.appendChild(option);
-    });
+    var builtIn = voices.filter(function(v) { return !v.isCustom; });
+    var custom = voices.filter(function(v) { return v.isCustom; });
 
-    if (voices.includes(currentValue)) {
+    if (builtIn.length) {
+      var grp1 = document.createElement('optgroup');
+      grp1.label = 'Built-in Voices';
+      builtIn.forEach(function(voice) {
+        var opt = document.createElement('option');
+        opt.value = voice.id;
+        var parts = [];
+        if (voice.gender && voice.gender !== 'custom') parts.push(voice.gender);
+        if (voice.accent && voice.accent !== 'custom') parts.push(voice.accent);
+        opt.textContent = voice.name + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+        grp1.appendChild(opt);
+      });
+      voiceSelector.appendChild(grp1);
+    }
+
+    if (custom.length) {
+      var grp2 = document.createElement('optgroup');
+      grp2.label = 'Custom Voices';
+      custom.forEach(function(voice) {
+        var opt = document.createElement('option');
+        opt.value = voice.id;
+        opt.textContent = voice.name;
+        grp2.appendChild(opt);
+      });
+      voiceSelector.appendChild(grp2);
+    }
+
+    if (voiceSelector.querySelector('option[value="' + currentValue + '"]')) {
       voiceSelector.value = currentValue;
     }
   }
@@ -194,9 +228,22 @@
     popup.classList.remove('open');
   }
 
+  function isAutoSpeakOn() {
+    var toggle = document.getElementById('toolsAutoSpeakToggle');
+    return toggle ? toggle.checked : false;
+  }
+
   function onWsMessage(e) {
     var data = e.detail;
     if (!data) return;
+
+    if (data.type === 'streaming_progress' && data.block && data.block.type === 'text' && data.block.text) {
+      if (isAutoSpeakOn() && (!data.blockRole || data.blockRole === 'assistant')) {
+        if (window.voiceModule && typeof window.voiceModule.speakText === 'function') {
+          window.voiceModule.speakText(data.block.text);
+        }
+      }
+    }
 
     if (data.type === 'tools_update_started') {
       var updateTools = data.tools || [];

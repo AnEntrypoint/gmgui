@@ -18,7 +18,7 @@
   var _lastVoiceBlockText = null;
   var _lastVoiceBlockTime = 0;
   var _voiceBreakNext = false;
-  var selectedVoiceId = localStorage.getItem('voice-selected-id') || 'default';
+  var selectedVoiceId = localStorage.getItem('gmgui-voice-selection') || 'default';
   var ttsAudioCache = new Map();
   var TTS_CLIENT_CACHE_MAX = 50;
 
@@ -33,7 +33,7 @@
   function setupVoiceSelector() {
     var selector = document.getElementById('voiceSelector');
     if (!selector) return;
-    var saved = localStorage.getItem('voice-selected-id');
+    var saved = localStorage.getItem('gmgui-voice-selection');
     if (saved) selectedVoiceId = saved;
     if (window.wsManager) {
       window.wsManager.subscribeToVoiceList(function(voices) {
@@ -66,8 +66,8 @@
           });
           selector.appendChild(grp2);
         }
-        if (saved && selector.querySelector('option[value="' + saved + '"]')) {
-          selector.value = saved;
+        if (selectedVoiceId && selector.querySelector('option[value="' + selectedVoiceId + '"]')) {
+          selector.value = selectedVoiceId;
         }
       });
       return;
@@ -104,15 +104,15 @@
             });
             selector.appendChild(grp2);
           }
-          if (saved && selector.querySelector('option[value="' + saved + '"]')) {
-            selector.value = saved;
+          if (selectedVoiceId && selector.querySelector('option[value="' + selectedVoiceId + '"]')) {
+            selector.value = selectedVoiceId;
           }
         })
         .catch(function(err) { console.error('[Voice] Failed to load voices:', err); });
     }
     selector.addEventListener('change', function() {
       selectedVoiceId = selector.value;
-      localStorage.setItem('voice-selected-id', selectedVoiceId);
+      localStorage.setItem('gmgui-voice-selection', selectedVoiceId);
       sendVoiceToServer();
     });
   }
@@ -211,14 +211,14 @@
   function setupTTSToggle() {
     var toggle = document.getElementById('voiceTTSToggle');
     if (toggle) {
-      var saved = localStorage.getItem('voice-tts-enabled');
+      var saved = localStorage.getItem('gmgui-auto-speak');
       if (saved !== null) {
         ttsEnabled = saved === 'true';
         toggle.checked = ttsEnabled;
       }
       toggle.addEventListener('change', function() {
         ttsEnabled = toggle.checked;
-        localStorage.setItem('voice-tts-enabled', ttsEnabled);
+        localStorage.setItem('gmgui-auto-speak', ttsEnabled);
         if (!ttsEnabled) stopSpeaking();
       });
     }
@@ -352,6 +352,10 @@
 
   function speak(text) {
     if (!ttsEnabled) return;
+    speakDirect(text);
+  }
+
+  function speakDirect(text) {
     var clean = text.replace(/<[^>]*>/g, '').trim();
     if (!clean) return;
     var parts = [];
@@ -946,10 +950,39 @@
     return text.replace(/[&<>"']/g, function(c) { return map[c]; });
   }
 
+  function getAutoSpeak() {
+    return ttsEnabled;
+  }
+
+  function setAutoSpeak(value) {
+    ttsEnabled = Boolean(value);
+    localStorage.setItem('gmgui-auto-speak', ttsEnabled);
+    var toggle = document.getElementById('voiceTTSToggle');
+    if (toggle) toggle.checked = ttsEnabled;
+    if (!ttsEnabled) stopSpeaking();
+  }
+
+  function getVoice() {
+    return selectedVoiceId;
+  }
+
+  function setVoice(voiceId) {
+    selectedVoiceId = String(voiceId);
+    localStorage.setItem('gmgui-voice-selection', selectedVoiceId);
+    var selector = document.getElementById('voiceSelector');
+    if (selector) selector.value = selectedVoiceId;
+    sendVoiceToServer();
+  }
+
   window.voiceModule = {
     activate: activate,
     deactivate: deactivate,
-    handleBlock: handleVoiceBlock
+    handleBlock: handleVoiceBlock,
+    getAutoSpeak: getAutoSpeak,
+    setAutoSpeak: setAutoSpeak,
+    getVoice: getVoice,
+    setVoice: setVoice,
+    speakText: speakDirect
   };
 
   if (document.readyState === 'loading') {

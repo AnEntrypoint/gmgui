@@ -64,7 +64,7 @@ const voiceCacheManager = {
     this.generating.set(cacheKey, true);
     try {
       const speech = await getSpeech();
-      const audioBlob = await speech.ttsSync(text, 'en-US');
+      const audioBlob = await speech.synthesize(text, 'default');
       const saved = queries.saveVoiceCache(conversationId, text, audioBlob);
       const totalSize = queries.getVoiceCacheSize(conversationId);
       if (totalSize > this.maxCacheSize) {
@@ -240,14 +240,15 @@ function flushTTSaccumulator(key, conversationId, sessionId) {
       }
     }
     if (voices.size === 0) return;
-    const cacheKey = speech.ttsCacheKey(text, vid);
     for (const vid of voices) {
+      const cacheKey = speech.ttsCacheKey(text, vid);
       const cached = speech.ttsCacheGet(cacheKey);
       if (cached) {
         pushTTSAudio(cacheKey, cached, conversationId, sessionId, vid);
         continue;
       }
       speech.synthesize(text, vid).then(wav => {
+        if (speech.ttsCacheSet) speech.ttsCacheSet(cacheKey, wav);
         pushTTSAudio(cacheKey, wav, conversationId, sessionId, vid);
       }).catch(() => {});
     }
@@ -2876,6 +2877,23 @@ const server = http.createServer(async (req, res) => {
         const statusCode = isModelError ? 503 : 500;
         if (!res.headersSent) sendJSON(req, res, statusCode, { error: err.message || 'TTS stream failed', retryable: !isModelError });
         else res.end();
+      }
+      return;
+    }
+
+    if (pathOnly.startsWith('/api/tts-cache/') && req.method === 'GET') {
+      const cacheKey = decodeURIComponent(pathOnly.slice('/api/tts-cache/'.length));
+      try {
+        const speech = await getSpeech();
+        const cached = speech.ttsCacheGet(cacheKey);
+        if (cached) {
+          res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': cached.length, 'Cache-Control': 'public, max-age=3600' });
+          res.end(cached);
+        } else {
+          sendJSON(req, res, 404, { error: 'not cached' });
+        }
+      } catch (err) {
+        sendJSON(req, res, 500, { error: err.message });
       }
       return;
     }
