@@ -362,8 +362,6 @@ class AgentGUIClient {
     this.ui.cliSelector = document.querySelector('[data-cli-selector]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
-    this.ui.voiceCliSelector = document.querySelector('[data-voice-cli-selector]');
-    this.ui.voiceModelSelector = document.querySelector('[data-voice-model-selector]');
 
     if (this.ui.cliSelector) {
       this.ui.cliSelector.addEventListener('change', () => {
@@ -605,9 +603,6 @@ class AgentGUIClient {
           break;
         case 'model_download_progress':
           this._handleModelDownloadProgress(data.progress || data);
-          break;
-        case 'stt_progress':
-          this._handleSTTProgress(data);
           break;
         case 'tts_setup_progress':
           this._handleTTSSetupProgress(data);
@@ -2215,23 +2210,6 @@ class AgentGUIClient {
     }
   }
 
-  _handleSTTProgress(data) {
-    const el = document.getElementById('voiceTranscript');
-    if (!el) return;
-
-    if (data.status === 'transcribing') {
-      el.textContent = 'Transcribing...';
-      el.classList.add('transcribing');
-    } else if (data.status === 'completed') {
-      el.textContent = data.transcript || '';
-      el.setAttribute('data-final', data.transcript || '');
-      el.classList.remove('transcribing');
-    } else if (data.status === 'failed') {
-      el.textContent = 'Transcription failed: ' + (data.error || 'unknown error');
-      el.classList.remove('transcribing');
-    }
-  }
-
   _handleTTSSetupProgress(data) {
     if (data.step && data.status) {
       console.log('[TTS Setup]', data.step, ':', data.status, data.message || '');
@@ -2751,22 +2729,6 @@ class AgentGUIClient {
       eventProcessor: this.eventProcessor.getStats(),
       state: this.state
     };
-  }
-
-  _handleSTTProgress(data) {
-    if (!data) return;
-    const transcriptEl = document.getElementById('voiceTranscript');
-    if (!transcriptEl) return;
-    if (data.status === 'transcribing') {
-      transcriptEl.textContent = 'Transcribing...';
-      transcriptEl.style.color = 'var(--color-text-secondary)';
-    } else if (data.status === 'completed' && data.transcript) {
-      transcriptEl.textContent = data.transcript;
-      transcriptEl.style.color = 'var(--color-text-primary)';
-    } else if (data.status === 'failed') {
-      transcriptEl.textContent = 'Transcription failed: ' + (data.error || 'Unknown error');
-      transcriptEl.style.color = 'var(--color-error)';
-    }
   }
 
   /**

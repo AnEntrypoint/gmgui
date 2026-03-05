@@ -1143,92 +1143,6 @@
       scrollbar-color: #475569 transparent;
     }
 
-    /* ===== VOICE VIEW ===== */
-    .voice-container {
-      flex: 1;
-      min-height: 0;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .voice-scroll {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 1.5rem 2rem;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .voice-messages {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .voice-block {
-      padding: 1rem 1.25rem;
-      border-radius: 0.75rem;
-      background: var(--color-bg-secondary);
-      line-height: 1.7;
-      font-size: 1rem;
-      max-width: 85%;
-      margin-right: auto;
-      position: relative;
-    }
-
-    .voice-block.speaking {
-      box-shadow: 0 0 0 2px var(--color-primary);
-    }
-
-    .voice-block-user {
-      background: var(--color-primary);
-      color: white;
-      margin-left: auto;
-      margin-right: 0;
-    }
-
-    .voice-input-section {
-      flex-shrink: 0;
-      background: var(--color-bg-primary);
-      padding: 0.75rem 1rem;
-      border-top: 1px solid var(--color-border);
-    }
-
-    .voice-input-wrapper {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .voice-transcript {
-      flex: 1;
-      min-height: 40px;
-      max-height: 100px;
-      padding: 0.5rem 0.875rem;
-      border-radius: 0.75rem;
-      background: var(--color-bg-secondary);
-      color: var(--color-text-primary);
-      font-size: 0.9375rem;
-      line-height: 1.5;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-family: inherit;
-      border: 1px solid var(--color-border);
-      resize: none;
-    }
-
-    .voice-transcript::placeholder {
-      color: var(--color-text-secondary);
-    }
-
-    .voice-transcript:focus {
-      outline: none;
-      border-color: var(--color-primary);
-      background: var(--color-bg-primary);
-    }
-
     .voice-mic-btn {
       display: flex;
       align-items: center;
@@ -1283,120 +1197,10 @@
       height: 20px;
     }
 
-    .voice-send-btn {
-      flex-shrink: 0;
-    }
-
-    .voice-tts-controls {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: 0.5rem;
-      font-size: 0.8rem;
-      color: var(--color-text-secondary);
-    }
-
-    .voice-toggle-label {
-      display: flex;
-      align-items: center;
-      gap: 0.375rem;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .voice-toggle-label input[type="checkbox"] {
-      accent-color: var(--color-primary);
-    }
-
-    .voice-stop-btn {
-      padding: 0.25rem 0.75rem;
-      background: var(--color-bg-secondary);
-      border: 1px solid var(--color-border);
-      border-radius: 0.375rem;
-      cursor: pointer;
-      font-size: 0.75rem;
-      color: var(--color-text-secondary);
-      transition: all 0.15s;
-    }
-
-    .voice-stop-btn:hover {
-      background: var(--color-error);
-      color: white;
-      border-color: var(--color-error);
-    }
-
-    .voice-selector-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-    }
-
-    .voice-selector {
-      padding: 0.2rem 0.5rem;
-      border: 1px solid var(--color-border);
-      border-radius: 0.375rem;
-      background: var(--color-bg-secondary);
-      color: var(--color-text-primary);
-      font-size: 0.75rem;
-      cursor: pointer;
-      max-width: 160px;
-    }
-
-    .voice-selector:focus {
-      outline: none;
-      border-color: var(--color-primary);
-    }
-
-    .voice-empty {
-      text-align: center;
-      color: var(--color-text-secondary);
-      padding: 4rem 2rem;
-      font-size: 1rem;
-    }
-
-    .voice-empty-icon {
-      font-size: 3rem;
-      margin-bottom: 1rem;
-      opacity: 0.3;
-    }
-
     .conversation-messages { contain: content; }
     .streaming-blocks { contain: content; }
     .sidebar-list { contain: strict; content-visibility: auto; }
     .message { contain: layout style; content-visibility: auto; contain-intrinsic-size: auto 80px; }
-
-     .voice-block .voice-result-stats {
-       font-size: 0.8rem;
-       color: var(--color-text-secondary);
-       margin-top: 0.5rem;
-       padding-top: 0.5rem;
-       border-top: 1px solid var(--color-border);
-     }
-
-     .voice-block-content {
-       white-space: pre-wrap;
-       display: block;
-     }
-
-     .voice-reread-btn {
-      position: absolute;
-      top: 0.5rem;
-      right: 0.5rem;
-      background: none;
-      border: 1px solid var(--color-border);
-      border-radius: 0.25rem;
-      cursor: pointer;
-      padding: 0.25rem;
-      color: var(--color-text-secondary);
-      opacity: 0;
-      transition: opacity 0.15s, background-color 0.15s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .voice-block:hover .voice-reread-btn { opacity: 1; }
-    .voice-reread-btn:hover { background: var(--color-bg-primary); color: var(--color-primary); }
 
     /* ===== RESPONSIVE: TABLET ===== */
     @media (min-width: 769px) and (max-width: 1024px) {
@@ -3170,7 +2974,6 @@
       <div class="view-toggle-bar" id="viewToggleBar">
         <button class="view-toggle-btn active" data-view="chat" title="Chat"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></button>
         <button class="view-toggle-btn" data-view="files" title="Files"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg></button>
-        <button class="view-toggle-btn" data-view="voice" id="voiceTabBtn" style="display:none;" title="Voice"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg></button>
         <button class="view-toggle-btn" data-view="terminal" id="terminalTabBtn" title="Terminal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg></button>
       </div>
 
@@ -3197,45 +3000,6 @@
         <div id="terminalOutput" class="terminal-output"></div>
       </div>
 
-      <!-- Voice STT/TTS view -->
-      <div id="voiceContainer" class="voice-container" style="display:none;">
-        <div id="voiceScroll" class="voice-scroll">
-          <div class="voice-messages" id="voiceMessages"></div>
-        </div>
-        <div class="voice-input-section">
-          <div class="voice-input-wrapper">
-            <select class="agent-selector voice-agent-selector" data-voice-agent-selector title="Select agent"></select>
-            <select class="agent-selector voice-cli-selector" data-voice-cli-selector title="Select CLI tool"></select>
-            <select class="agent-selector voice-model-selector" data-voice-model-selector title="Select model"></select>
-            <textarea class="voice-transcript" id="voiceTranscript" placeholder="Type or tap mic and speak..." spellcheck="true"></textarea>
-            <button class="voice-mic-btn" id="voiceMicBtn" title="Toggle recording" aria-label="Voice input">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="23"/>
-                <line x1="8" y1="23" x2="16" y2="23"/>
-              </svg>
-            </button>
-            <button class="send-btn voice-send-btn" id="voiceSendBtn" title="Send message" aria-label="Send message">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
-            </button>
-          </div>
-          <div class="voice-tts-controls">
-            <label class="voice-toggle-label">
-              <input type="checkbox" id="voiceTTSToggle" checked>
-              <span>Auto-speak responses</span>
-            </label>
-            <div class="voice-selector-wrapper">
-              <select class="voice-selector" id="voiceSelector" title="Select voice">
-                <option value="default">Default</option>
-              </select>
-            </div>
-            <button class="voice-stop-btn" id="voiceStopSpeaking" title="Stop speaking">Stop</button>
-          </div>
-        </div>
-      </div>
 
       <!-- Input area: fixed at bottom -->
       <div class="input-section">
@@ -3316,8 +3080,8 @@
   <script defer src="/gm/js/script-runner.js"></script>
   <script defer src="/gm/js/tools-manager.js"></script>
   <script defer src="/gm/js/stt-handler.js"></script>
+  <script defer src="/gm/js/voice.js"></script>
   <script defer src="/gm/js/client.js"></script>
-  <script type="module" src="/gm/js/voice.js"></script>
   <script defer src="/gm/js/features.js"></script>
   <script defer src="/gm/js/agent-auth.js"></script>
 

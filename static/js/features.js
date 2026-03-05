@@ -93,7 +93,6 @@
   function setupModelProgressIndicator() {
     var indicator = document.getElementById('modelDlIndicator');
     var tooltip = document.getElementById('modelDlTooltip');
-    var voiceBtn = document.getElementById('voiceTabBtn');
     var progressCircle = indicator ? indicator.querySelector('.progress') : null;
     var circumference = 62.83;
 
@@ -103,7 +102,6 @@
       var progress = data.progress || data;
       if (progress.done && progress.complete) {
         if (indicator) indicator.classList.remove('active');
-        if (voiceBtn) voiceBtn.style.display = '';
         return;
       }
       if (progress.error || progress.status === 'failed') {
@@ -130,7 +128,6 @@
       window.wsClient.rpc('speech.status')
         .then(function(status) {
           if (status.modelsComplete) {
-            if (voiceBtn) voiceBtn.style.display = '';
             if (indicator) indicator.classList.remove('active');
           } else if (status.modelsDownloading) {
             if (indicator) indicator.classList.add('active');
@@ -147,7 +144,6 @@
     var execPanel = document.querySelector('.input-section');
     var fileBrowser = document.getElementById('fileBrowserContainer');
     var fileIframe = document.getElementById('fileBrowserIframe');
-    var voiceContainer = document.getElementById('voiceContainer');
     var terminalContainer = document.getElementById('terminalContainer');
     if (!bar) return;
     bar.querySelectorAll('.view-toggle-btn').forEach(function(btn) {
@@ -156,14 +152,11 @@
     if (chatArea) chatArea.style.display = view === 'chat' ? '' : 'none';
     if (execPanel) execPanel.style.display = view === 'chat' ? '' : 'none';
     if (fileBrowser) fileBrowser.style.display = view === 'files' ? 'flex' : 'none';
-    if (voiceContainer) voiceContainer.style.display = view === 'voice' ? 'flex' : 'none';
     if (terminalContainer) terminalContainer.style.display = view === 'terminal' ? 'flex' : 'none';
     if (view === 'files' && fileIframe && currentConversation) {
       var src = BASE + '/files/' + currentConversation + '/';
       if (fileIframe.src !== location.origin + src) fileIframe.src = src;
     }
-    if (view === 'voice' && window.voiceModule) window.voiceModule.activate();
-    else if (view !== 'voice' && window.voiceModule) window.voiceModule.deactivate();
     window.dispatchEvent(new CustomEvent('view-switched', { detail: { view: view } }));
   }
 
@@ -178,7 +171,6 @@
       currentConversation = e.detail.conversationId;
       updateViewToggleVisibility();
       if (currentView === 'files') switchView('files');
-      else if (currentView === 'voice') switchView('chat');
     });
     window.addEventListener('conversation-deselected', function() {
       currentConversation = null;
