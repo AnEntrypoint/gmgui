@@ -1389,7 +1389,7 @@ export const queries = {
     });
   },
 
-  getRecentConversationChunks(conversationId, limit) {
+  getRecentConversationChunks(conversationId, limit = 500) {
     const stmt = prep(
       `SELECT id, sessionId, conversationId, sequence, type, data, created_at
        FROM chunks WHERE conversationId = ?
@@ -1407,6 +1407,31 @@ export const queries = {
         return row;
       }
     });
+  },
+
+  getRecentMessages(conversationId, limit = 20) {
+    const countStmt = prep('SELECT COUNT(*) as count FROM messages WHERE conversationId = ?');
+    const total = countStmt.get(conversationId).count;
+
+    const stmt = prep(
+      'SELECT * FROM messages WHERE conversationId = ? ORDER BY created_at DESC LIMIT ? '
+    );
+    const messages = stmt.all(conversationId, limit).reverse();
+
+    return {
+      messages: messages.map(msg => {
+        if (typeof msg.content === 'string') {
+          try {
+            msg.content = JSON.parse(msg.content);
+          } catch (_) {}
+        }
+        return msg;
+      }),
+      total,
+      limit,
+      offset: Math.max(0, total - limit),
+      hasMore: total > limit
+    };
   },
 
   getChunksSince(sessionId, timestamp) {
