@@ -1627,6 +1627,26 @@ class StreamingRenderer {
   }
 
   /**
+   * Detect if content is a base64-encoded image
+   */
+  detectBase64Image(content) {
+    if (!content || typeof content !== 'string') return null;
+    const trimmed = content.trim();
+    const signatures = {
+      'png': /^iVBORw0KGgo/,
+      'jpeg': /^\/9j\/4AAQ/,
+      'webp': /^UklGRi/,
+      'gif': /^R0lGODlh/
+    };
+    for (const [type, pattern] of Object.entries(signatures)) {
+      if (pattern.test(trimmed)) {
+        return { type, isBase64: true, data: trimmed };
+      }
+    }
+    return null;
+  }
+
+  /**
    * Render file read event
    */
   renderFileRead(event) {
@@ -1651,7 +1671,13 @@ class StreamingRenderer {
       let html = '';
       if (event.path) html += this.renderFilePath(event.path);
       if (event.content) {
-        html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(event.content, 2000))}</code></pre>`;
+        const imageInfo = this.detectBase64Image(event.content);
+        if (imageInfo) {
+          const mimeType = imageInfo.type === 'jpeg' ? 'image/jpeg' : `image/${imageInfo.type}`;
+          html += `<div style="padding:0.5rem;display:flex;flex-direction:column;gap:0.5rem"><img src="data:${mimeType};base64,${this.escapeHtml(imageInfo.data)}" style="max-width:100%;max-height:600px;border-radius:0.375rem;border:1px solid #334155" loading="lazy"><div style="font-size:0.7rem;color:#64748b;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;word-break:break-all">${this.escapeHtml(event.path)}</div></div>`;
+        } else {
+          html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(event.content, 2000))}</code></pre>`;
+        }
       }
       body.innerHTML = html;
       details.appendChild(body);
