@@ -397,41 +397,27 @@ function findCommand(cmd) {
 }
 
 async function queryACPServerAgents(baseUrl) {
-  try {
-    // Ensure correct endpoint format (handle both /api and /api/ cases)
-    const endpoint = baseUrl.endsWith('/') ? `${baseUrl}agents/search` : `${baseUrl}/agents/search`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
-    
-    if (!response.ok) {
-      console.error(`Failed to query ACP agents from ${baseUrl}: ${response.status}`);
-      return [];
-    }
-    
-    const data = await response.json();
-    if (!data.agents || !Array.isArray(data.agents)) {
-      console.error(`Invalid agents response from ${baseUrl}`);
-      return [];
-    }
-    
-    // Convert ACP agent format to our internal format
-    return data.agents.map(agent => ({
-      id: agent.agent_id || agent.id,
-      name: agent.metadata?.ref?.name || agent.name || 'Unknown Agent',
-      icon: agent.metadata?.ref?.name?.charAt(0) || 'A',
-      path: baseUrl,
-      protocol: 'acp',
-      description: agent.metadata?.description || '',
-    }));
-  } catch (error) {
-    console.error(`Error querying ACP server ${baseUrl}:`, error.message);
+  const { fetchACPAgents, extractCompleteAgentData } = await import('./lib/acp-http-client.js');
+
+  const result = await fetchACPAgents(baseUrl);
+
+  if (!result.ok) {
+    console.error(`Failed to query ACP agents from ${baseUrl}: ${result.status} ${result.error || ''}`);
     return [];
   }
+
+  if (!result.data?.agents || !Array.isArray(result.data.agents)) {
+    console.error(`Invalid agents response from ${baseUrl}`);
+    return [];
+  }
+
+  return result.data.agents.map(agent => {
+    const complete = extractCompleteAgentData(agent);
+    return {
+      ...complete,
+      path: baseUrl
+    };
+  });
 }
 
 function discoverAgents() {
