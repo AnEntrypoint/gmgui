@@ -87,8 +87,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json
-            git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]"
-           branch_name="${GITHUB_REF#refs/heads/}"
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]"
+          branch_name="${GITHUB_REF#refs/heads/}"
 
           for i in 1 2 3; do
             git fetch origin "$branch_name"
@@ -281,13 +281,13 @@ jobs:
           echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-       - name: Create GitHub Release
-         uses: softprops/action-gh-release@v2
-         with:
-           tag_name: v${{ needs.publish.outputs.version }}
-           target_commitish: ${{ needs.publish.outputs.final-sha }}
-           name: AgentGUI v${{ needs.publish.outputs.version }}
-           body: |
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.publish.outputs.version }}
+          target_commitish: ${{ needs.publish.outputs.final-sha }}
+          name: AgentGUI v${{ needs.publish.outputs.version }}
+          body: |
              ## AgentGUI v${{ needs.publish.outputs.version }}
 
              **Latest commit**: ${{ steps.commit.outputs.hash }}
@@ -311,7 +311,7 @@ jobs:
              **Notes**:
              - Data stored in `~/.gmgui/` folder
              - Requirements: Node.js 18+ (for npm/bun installs), or standalone exe (no requirements)
-           draft: false
-           prerelease: false
-           files: |
+          draft: false
+          prerelease: false
+          files: |
              release-artifacts/**/*.zip
