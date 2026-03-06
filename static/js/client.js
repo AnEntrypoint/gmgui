@@ -2557,6 +2557,13 @@ class AgentGUIClient {
       const shouldResumeStreaming = latestSession &&
         (latestSession.status === 'active' || latestSession.status === 'pending');
 
+      // IMMUTABLE: Update streaming state and disable prompt atomically
+      if (shouldResumeStreaming) {
+        this.state.streamingConversations.set(conversationId, true);
+      } else {
+        this.state.streamingConversations.delete(conversationId);
+      }
+
       if (this.ui.messageInput) {
         this.ui.messageInput.disabled = shouldResumeStreaming;
       }

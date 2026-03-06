@@ -4462,8 +4462,19 @@ function recoverStaleSessions() {
 
 async function resumeInterruptedStreams() {
   try {
-    const resumableConvs = queries.getResumableConversations ? queries.getResumableConversations() : [];
-    const toResume = resumableConvs;
+    // Get conversations marked as streaming in database (isStreaming=1)
+    // Fall back to getResumableConversations if isStreaming is not being used
+    let toResume = [];
+
+    // Primary: Check database isStreaming flag for conversations still marked as active
+    const streamingConvs = queries.getConversations().filter(c => c.isStreaming === 1);
+
+    if (streamingConvs.length > 0) {
+      toResume = streamingConvs;
+    } else {
+      // Fallback: Use session-based resumable conversations
+      toResume = queries.getResumableConversations ? queries.getResumableConversations() : [];
+    }
 
     if (toResume.length === 0) return;
 
