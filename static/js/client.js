@@ -865,7 +865,7 @@ class AgentGUIClient {
     // Show queue/steer UI when streaming starts (for busy prompt)
     this.fetchAndRenderQueue(data.conversationId);
 
-    this.disableControls();
+    // IMMUTABLE: Prompt area remains enabled - user can queue/steer messages
     this.emit('streaming:start', data);
   }
 
@@ -2747,7 +2747,7 @@ class AgentGUIClient {
 
           this.chunkPollState.lastFetchTimestamp = lastChunkTime;
           this.startChunkPolling(conversationId);
-          this.disableControls();
+          // IMMUTABLE: Prompt remains enabled - syncPromptState will set correct state
           this.syncPromptState(conversationId);
         } else {
           this.syncPromptState(conversationId);
