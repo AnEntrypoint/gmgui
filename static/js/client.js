@@ -2474,7 +2474,8 @@ class AgentGUIClient {
       if (this.ui.messageInput) {
         this.ui.messageInput.value = '';
         this.ui.messageInput.style.height = 'auto';
-        this.ui.messageInput.disabled = false;
+        // Note: prompt disabled state will be set immutably based on shouldResumeStreaming
+        // after conversation data loads, don't set here
       }
 
       if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
@@ -2725,6 +2726,13 @@ class AgentGUIClient {
           this.chunkPollState.lastFetchTimestamp = lastChunkTime;
           this.startChunkPolling(conversationId);
           this.disableControls();
+          // IMMUTABLE STATE: Prompt is disabled during active streaming, do NOT enable
+          if (this.ui.messageInput) this.ui.messageInput.disabled = true;
+        } else {
+          // IMMUTABLE STATE: Prompt is enabled when NOT streaming (only disabled on WebSocket disconnect)
+          if (this.ui.messageInput && this.wsManager.isConnected) {
+            this.ui.messageInput.disabled = false;
+          }
         }
 
         this.restoreScrollPosition(conversationId);
