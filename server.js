@@ -292,6 +292,7 @@ const activeScripts = new Map();
 const messageQueues = new Map();
 const rateLimitState = new Map();
 const activeProcessesByRunId = new Map();
+const activeProcessesByConvId = new Map(); // Store process handles by conversationId for steering
 const acpQueries = queries;
 const STUCK_AGENT_THRESHOLD_MS = 600000;
 const NO_PID_GRACE_PERIOD_MS = 60000;
@@ -3806,18 +3807,24 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       onPid: (pid) => {
         const entry = activeExecutions.get(conversationId);
         if (entry) entry.pid = pid;
+      },
+      onProcess: (proc) => {
+        // Store process handle for steering
+        activeProcessesByConvId.set(conversationId, proc);
       }
     };
 
     const { outputs, sessionId: claudeSessionId } = await runClaudeWithStreaming(content, cwd, agentId || 'claude-code', config);
-    
+
     // Check if rate limit was already handled in stream detection
     if (rateLimitState.get(conversationId)?.isStreamDetected) {
       debugLog(`[rate-limit] Rate limit already handled in stream for conv ${conversationId}, skipping success handler`);
+      activeProcessesByConvId.delete(conversationId);
       return;
     }
-    
+
     activeExecutions.delete(conversationId);
+    activeProcessesByConvId.delete(conversationId);
     batcher.drain();
     debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
 
@@ -4134,7 +4141,7 @@ const wsRouter = new WsRouter();
 
 registerConvHandlers(wsRouter, {
   queries, activeExecutions, messageQueues, rateLimitState,
-  broadcastSync, processMessageWithStreaming
+  broadcastSync, processMessageWithStreaming, activeProcessesByConvId
 });
 
 registerSessionHandlers(wsRouter, {

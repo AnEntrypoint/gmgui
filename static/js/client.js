@@ -458,6 +458,7 @@ class AgentGUIClient {
 
     this.ui.stopButton = document.getElementById('stopBtn');
     this.ui.injectButton = document.getElementById('injectBtn');
+    this.ui.steerButton = document.getElementById('steerBtn');
 
     if (this.ui.stopButton) {
       this.ui.stopButton.addEventListener('click', async () => {
@@ -481,6 +482,28 @@ class AgentGUIClient {
           console.log('Inject response:', data);
         } catch (err) {
           console.error('Failed to inject:', err);
+        }
+      });
+    }
+
+    if (this.ui.steerButton) {
+      this.ui.steerButton.addEventListener('click', async () => {
+        if (!this.state.currentConversation) return;
+        const message = this.ui.messageInput?.value || '';
+        if (!message.trim()) {
+          this.showError('Please enter a message to steer');
+          return;
+        }
+        try {
+          const data = await window.wsClient.rpc('conv.steer', { id: this.state.currentConversation.id, content: message });
+          console.log('Steer response:', data);
+          if (this.ui.messageInput) {
+            this.ui.messageInput.value = '';
+            this.ui.messageInput.style.height = 'auto';
+          }
+        } catch (err) {
+          console.error('Failed to steer:', err);
+          this.showError('Failed to steer: ' + err.message);
         }
       });
     }
@@ -708,9 +731,10 @@ class AgentGUIClient {
       return;
     }
 
-    // Show stop and inject buttons when streaming starts for current conversation
+    // Show stop, steer, and inject buttons when streaming starts for current conversation
     if (this.ui.stopButton) this.ui.stopButton.classList.add('visible');
     if (this.ui.injectButton) this.ui.injectButton.classList.add('visible');
+    if (this.ui.steerButton) this.ui.steerButton.classList.add('visible');
     if (this.ui.sendButton) this.ui.sendButton.style.display = 'none';
 
     this.state.streamingConversations.set(data.conversationId, true);
@@ -937,9 +961,10 @@ class AgentGUIClient {
     console.error('Streaming error:', data);
     this._clearThinkingCountdown();
 
-    // Hide stop and inject buttons on error
+    // Hide stop, steer, and inject buttons on error
     if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
     if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
+    if (this.ui.steerButton) this.ui.steerButton.classList.remove('visible');
     if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
@@ -988,9 +1013,10 @@ class AgentGUIClient {
     console.log('Streaming completed:', data);
     this._clearThinkingCountdown();
 
-    // Hide stop and inject buttons when streaming completes
+    // Hide stop, steer, and inject buttons when streaming completes
     if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
     if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
+    if (this.ui.steerButton) this.ui.steerButton.classList.remove('visible');
     if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
@@ -2437,6 +2463,7 @@ class AgentGUIClient {
 
       if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
       if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
+      if (this.ui.steerButton) this.ui.steerButton.classList.remove('visible');
       if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
       var prevId = this.state.currentConversation?.id;
