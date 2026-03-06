@@ -3360,7 +3360,7 @@ function serveFile(filePath, res, req) {
         'Content-Type': contentType,
         'Content-Length': stats.size,
         'ETag': etag,
-        'Cache-Control': 'public, max-age=3600, must-revalidate'
+        'Cache-Control': ['.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600, must-revalidate'
       };
       if (acceptsEncoding(req, 'br') && stats.size > 860) {
         const stream = fs.createReadStream(filePath);

@@ -873,6 +873,17 @@ class StreamingRenderer {
           }
         }
 
+        // Handle Claude image content block arrays: [{type:"image", source:{type:"base64", data:"...", media_type:"..."}}]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const imgParts = parsed.filter(b => b.type === 'image' && b.source && b.source.type === 'base64' && b.source.data);
+          if (imgParts.length > 0) {
+            return imgParts.map(b => {
+              const mime = b.source.media_type || 'image/png';
+              return `<div style="padding:0.5rem"><img src="data:${esc(mime)};base64,${b.source.data}" style="max-width:100%;max-height:24rem;border-radius:0.375rem"></div>`;
+            }).join('');
+          }
+        }
+
         // For other JSON, render as itemized key-value structure
         return `<div style="padding:0.5rem 0.75rem">${StreamingRenderer.renderParamsHTML(parsed, 0, esc)}</div>`;
       } catch (e) {
