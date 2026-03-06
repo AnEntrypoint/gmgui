@@ -22,7 +22,7 @@ import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
 import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
-import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
+import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, ensureRunning, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
 import { installGMAgentConfigs } from './lib/gm-agent-configs.js';
 import * as toolManager from './lib/tool-manager.js';
 import { pm2Manager } from './lib/pm2-manager.js';
@@ -480,6 +480,7 @@ async function getModelsForAgent(agentId) {
   } else {
     const agent = discoveredAgents.find(a => a.id === agentId);
     if (agent?.protocol === 'acp') {
+      await ensureRunning(agentId);
       try { models = await queryACPModels(agentId); } catch (_) {}
     }
   }
@@ -3862,6 +3863,9 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       return;
     }
 
+    const isAuthError = error.authError || error.nonRetryable ||
+      /401|unauthorized|invalid.*auth|invalid.*token|auth.*failed|permission denied|access denied/i.test(error.message);
+
     const isRateLimit = error.rateLimited ||
       /rate.?limit|429|too many requests|overloaded|throttl/i.test(error.message);
 
@@ -3870,6 +3874,30 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       error: error.message,
       completed_at: Date.now()
     });
+
+    if (isAuthError) {
+      debugLog(`[auth-error] Auth error for conv ${conversationId}: ${error.message}`);
+      broadcastSync({
+        type: 'streaming_error',
+        sessionId,
+        conversationId,
+        error: `Authentication failed: ${error.message}. Please check your API credentials.`,
+        recoverable: false,
+        isAuthError: true,
+        timestamp: Date.now()
+      });
+      const errorMessage = queries.createMessage(conversationId, 'assistant', `Error: Authentication failed. ${error.message}. Please update your credentials and try again.`);
+      broadcastSync({
+        type: 'message_created',
+        conversationId,
+        message: errorMessage,
+        timestamp: Date.now()
+      });
+      queries.setIsStreaming(conversationId, false);
+      batcher.drain();
+      activeExecutions.delete(conversationId);
+      return;
+    }
 
     if (isRateLimit) {
       const existingState = rateLimitState.get(conversationId) || {};
