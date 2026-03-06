@@ -166,6 +166,7 @@ class AgentGUIClient {
       this._subscribeToConversationUpdates();
       this._recoverMissedChunks();
       this.updateSendButtonState();
+      this.enablePromptArea();
       this.emit('ws:connected');
     });
 
@@ -173,6 +174,7 @@ class AgentGUIClient {
       console.log('WebSocket disconnected');
       this.updateConnectionStatus('disconnected');
       this.updateSendButtonState();
+      this.disablePromptArea();
       this.emit('ws:disconnected');
     });
 
@@ -2326,29 +2328,23 @@ class AgentGUIClient {
 
   /**
    * Disable UI controls during streaming
+   * NOTE: Only disables stop button visibility. Prompt, input, and inject remain enabled.
    */
   disableControls() {
-    if (this.ui.messageInput) {
-      this.ui.messageInput.disabled = true;
-    }
-    // Send button state managed by WebSocket connection, not streaming state
-    const injectBtn = document.getElementById('injectBtn');
+    // Prompt area and inject button are NEVER disabled during streaming
+    // Only stop button behavior changes
     const stopBtn = document.getElementById('stopBtn');
-    if (injectBtn) injectBtn.disabled = true;
     if (stopBtn) stopBtn.disabled = false;
   }
 
   /**
    * Enable UI controls
+   * NOTE: Restores stop button visibility. Prompt area always stays enabled.
    */
   enableControls() {
-    if (this.ui.messageInput) {
-      this.ui.messageInput.disabled = false;
-    }
-    // Send button state managed by WebSocket connection, not streaming state
-    const injectBtn = document.getElementById('injectBtn');
+    // Prompt area and inject button are always enabled unless disconnected
+    // Only stop button behavior changes
     const stopBtn = document.getElementById('stopBtn');
-    if (injectBtn) injectBtn.disabled = false;
     if (stopBtn) stopBtn.disabled = true;
   }
 
@@ -2956,6 +2952,28 @@ class AgentGUIClient {
     if (this.ui.sendButton) {
       this.ui.sendButton.disabled = !this.wsManager.isConnected;
     }
+  }
+
+  /**
+   * Disable prompt area (input and inject button) only on disconnect
+   */
+  disablePromptArea() {
+    if (this.ui.messageInput) {
+      this.ui.messageInput.disabled = true;
+    }
+    const injectBtn = document.getElementById('injectBtn');
+    if (injectBtn) injectBtn.disabled = true;
+  }
+
+  /**
+   * Enable prompt area (input and inject button) on connect
+   */
+  enablePromptArea() {
+    if (this.ui.messageInput) {
+      this.ui.messageInput.disabled = false;
+    }
+    const injectBtn = document.getElementById('injectBtn');
+    if (injectBtn) injectBtn.disabled = false;
   }
 
   /**
