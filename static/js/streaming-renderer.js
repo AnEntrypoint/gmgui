@@ -1671,12 +1671,26 @@ class StreamingRenderer {
       let html = '';
       if (event.path) html += this.renderFilePath(event.path);
       if (event.content) {
-        const imageInfo = this.detectBase64Image(event.content);
-        if (imageInfo) {
-          const mimeType = imageInfo.type === 'jpeg' ? 'image/jpeg' : `image/${imageInfo.type}`;
-          html += `<div style="padding:0.5rem;display:flex;flex-direction:column;gap:0.5rem"><img src="data:${mimeType};base64,${this.escapeHtml(imageInfo.data)}" style="max-width:100%;max-height:600px;border-radius:0.375rem;border:1px solid #334155" loading="lazy"><div style="font-size:0.7rem;color:#64748b;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;word-break:break-all">${this.escapeHtml(event.path)}</div></div>`;
+        let base64Data = null;
+        let mimeType = event.media_type || 'application/octet-stream';
+        if (typeof event.content === 'string') {
+          const imageInfo = this.detectBase64Image(event.content);
+          if (imageInfo) {
+            base64Data = imageInfo.data;
+            mimeType = imageInfo.type === 'jpeg' ? 'image/jpeg' : `image/${imageInfo.type}`;
+          }
+        } else if (typeof event.content === 'object' && event.content !== null) {
+          if (event.content.source?.type === 'base64' && event.content.source?.data) {
+            base64Data = event.content.source.data;
+          } else if (event.content.type === 'base64' && event.content.data) {
+            base64Data = event.content.data;
+          }
+        }
+        if (base64Data) {
+          html += `<div style="padding:0.5rem;display:flex;flex-direction:column;gap:0.5rem"><img src="data:${mimeType};base64,${this.escapeHtml(base64Data)}" style="max-width:100%;max-height:600px;border-radius:0.375rem;border:1px solid #334155" loading="lazy"><div style="font-size:0.7rem;color:#64748b;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;word-break:break-all">${this.escapeHtml(event.path)}</div></div>`;
         } else {
-          html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(event.content, 2000))}</code></pre>`;
+          const contentStr = typeof event.content === 'string' ? event.content : JSON.stringify(event.content, null, 2);
+          html += `<pre style="background:#1e293b;padding:0.75rem;border-radius:0.375rem;overflow-x:auto;font-family:'Monaco','Menlo','Ubuntu Mono',monospace;font-size:0.75rem;line-height:1.5;color:#e2e8f0;margin:0.5rem 0 0 0"><code class="lazy-hl">${this.escapeHtml(this.truncateContent(contentStr, 2000))}</code></pre>`;
         }
       }
       body.innerHTML = html;
