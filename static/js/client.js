@@ -2847,7 +2847,7 @@ class AgentGUIClient {
 
             if (result.chunks && result.chunks.length > 0) {
               result.chunks.forEach(chunk => {
-                const blockEl = this.renderer.renderBlock(chunk.data, chunk.type, false);
+                const blockEl = this.renderer.renderBlock(chunk.data, {}, false);
                 if (blockEl) {
                   const wrapper = document.createElement('div');
                   wrapper.setAttribute('data-chunk-created', chunk.created_at);
