@@ -2488,6 +2488,7 @@ class AgentGUIClient {
       this._previousConvAbort = new AbortController();
       const convSignal = this._previousConvAbort.signal;
 
+      const prevConversationId = this.state.currentConversation?.id;
       this.cacheCurrentConversation();
       this.stopChunkPolling();
       this.removeScrollUpDetection();
@@ -2558,9 +2559,16 @@ class AgentGUIClient {
           console.warn('Conversation no longer exists:', conversationId);
           this.state.currentConversation = null;
           if (window.conversationManager) window.conversationManager.loadConversations();
-          const outputEl = document.getElementById('output');
-          if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
-          this.enableControls();
+          // Resume from last successful conversation if available
+          if (prevConversationId && prevConversationId !== conversationId) {
+            console.log('Resuming from previous conversation:', prevConversationId);
+            this.showError('Conversation not found. Resuming previous conversation.');
+            await this.loadConversationMessages(prevConversationId);
+          } else {
+            const outputEl = document.getElementById('output');
+            if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
+            this.enableControls();
+          }
           return;
         }
         throw e;
@@ -2779,7 +2787,19 @@ class AgentGUIClient {
     } catch (error) {
       if (error.name === 'AbortError') return;
       console.error('Failed to load conversation messages:', error);
-      this.showError('Failed to load conversation: ' + error.message);
+      // Resume from last successful conversation if available
+      if (prevConversationId && prevConversationId !== conversationId) {
+        console.log('Resuming from previous conversation due to error:', prevConversationId);
+        this.showError('Failed to load conversation. Resuming previous conversation.');
+        try {
+          await this.loadConversationMessages(prevConversationId);
+        } catch (fallbackError) {
+          console.error('Failed to resume previous conversation:', fallbackError);
+          this.showError('Failed to load conversation: ' + error.message);
+        }
+      } else {
+        this.showError('Failed to load conversation: ' + error.message);
+      }
     }
   }
 

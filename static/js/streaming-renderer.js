@@ -751,7 +751,6 @@ class StreamingRenderer {
     if (block.id) details.dataset.toolUseId = block.id;
     details.classList.add(this._getBlockTypeClass('tool_use'));
     details.classList.add(this._getToolColorClass(toolName));
-    details.open = true;
     const summary = document.createElement('summary');
     summary.className = 'folded-tool-bar';
     const displayName = this.getToolUseDisplayName(toolName);
