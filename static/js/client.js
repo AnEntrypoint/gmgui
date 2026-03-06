@@ -2670,7 +2670,9 @@ class AgentGUIClient {
               }
               const element = this.renderer.renderBlock(chunk.block, chunk);
               if (!element) return;
+              // Ensure CSS classes are always applied for styling consistency
               element.classList.add('block-loaded');
+              element.classList.add(`block-type-${chunk.block.type}`);
               blockFrag.appendChild(element);
             });
 
