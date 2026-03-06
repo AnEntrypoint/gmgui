@@ -467,7 +467,6 @@ class AgentGUIClient {
     this.ui.stopButton = document.getElementById('stopBtn');
     this.ui.injectButton = document.getElementById('injectBtn');
     this.ui.queueButton = document.getElementById('queueBtn');
-    this.ui.steerButton = document.getElementById('steerBtn');
 
     if (this.ui.stopButton) {
       this.ui.stopButton.addEventListener('click', async () => {
@@ -484,13 +483,34 @@ class AgentGUIClient {
     if (this.ui.injectButton) {
       this.ui.injectButton.addEventListener('click', async () => {
         if (!this.state.currentConversation) return;
-        const instructions = await window.UIDialog.prompt('Enter instructions to inject into the running agent:', '', 'Inject Instructions');
-        if (!instructions) return;
-        try {
-          const data = await window.wsClient.rpc('conv.inject', { id: this.state.currentConversation.id, content: instructions });
-          console.log('Inject response:', data);
-        } catch (err) {
-          console.error('Failed to inject:', err);
+        const isStreaming = this.state.streamingConversations.has(this.state.currentConversation.id);
+
+        if (isStreaming) {
+          const message = this.ui.messageInput?.value || '';
+          if (!message.trim()) {
+            this.showError('Please enter a message to steer');
+            return;
+          }
+          try {
+            const data = await window.wsClient.rpc('conv.steer', { id: this.state.currentConversation.id, content: message });
+            console.log('Steer response:', data);
+            if (this.ui.messageInput) {
+              this.ui.messageInput.value = '';
+              this.ui.messageInput.style.height = 'auto';
+            }
+          } catch (err) {
+            console.error('Failed to steer:', err);
+            this.showError('Failed to steer: ' + err.message);
+          }
+        } else {
+          const instructions = await window.UIDialog.prompt('Enter instructions to inject into the running agent:', '', 'Inject Instructions');
+          if (!instructions) return;
+          try {
+            const data = await window.wsClient.rpc('conv.inject', { id: this.state.currentConversation.id, content: instructions });
+            console.log('Inject response:', data);
+          } catch (err) {
+            console.error('Failed to inject:', err);
+          }
         }
       });
     }
@@ -513,28 +533,6 @@ class AgentGUIClient {
         } catch (err) {
           console.error('Failed to queue:', err);
           this.showError('Failed to queue: ' + err.message);
-        }
-      });
-    }
-
-    if (this.ui.steerButton) {
-      this.ui.steerButton.addEventListener('click', async () => {
-        if (!this.state.currentConversation) return;
-        const message = this.ui.messageInput?.value || '';
-        if (!message.trim()) {
-          this.showError('Please enter a message to steer');
-          return;
-        }
-        try {
-          const data = await window.wsClient.rpc('conv.steer', { id: this.state.currentConversation.id, content: message });
-          console.log('Steer response:', data);
-          if (this.ui.messageInput) {
-            this.ui.messageInput.value = '';
-            this.ui.messageInput.style.height = 'auto';
-          }
-        } catch (err) {
-          console.error('Failed to steer:', err);
-          this.showError('Failed to steer: ' + err.message);
         }
       });
     }
@@ -990,10 +988,9 @@ class AgentGUIClient {
     console.error('Streaming error:', data);
     this._clearThinkingCountdown();
 
-    // Hide stop, steer, and inject buttons on error
+    // Hide stop and inject buttons on error
     if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
     if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
-    if (this.ui.steerButton) this.ui.steerButton.classList.remove('visible');
     if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
     const conversationId = data.conversationId || this.state.currentSession?.conversationId;
@@ -2515,7 +2512,6 @@ class AgentGUIClient {
       if (this.ui.stopButton) this.ui.stopButton.classList.remove('visible');
       if (this.ui.injectButton) this.ui.injectButton.classList.remove('visible');
       if (this.ui.queueButton) this.ui.queueButton.classList.remove('visible');
-      if (this.ui.steerButton) this.ui.steerButton.classList.remove('visible');
       if (this.ui.sendButton) this.ui.sendButton.style.display = '';
 
       var prevId = this.state.currentConversation?.id;
@@ -2831,11 +2827,10 @@ class AgentGUIClient {
     const isConnected = this.wsManager?.isConnected;
 
     const injectBtn = document.getElementById('injectBtn');
-    const steerBtn = document.getElementById('steerBtn');
     const queueBtn = document.getElementById('queueBtn');
     const stopBtn = document.getElementById('stopBtn');
 
-    [injectBtn, steerBtn, queueBtn, stopBtn].forEach(btn => {
+    [injectBtn, queueBtn, stopBtn].forEach(btn => {
       if (!btn) return;
       btn.classList.toggle('visible', isStreaming);
       btn.disabled = !isConnected;
@@ -3112,12 +3107,9 @@ class AgentGUIClient {
     if (this.ui.sendButton) {
       this.ui.sendButton.disabled = !this.wsManager.isConnected;
     }
-    // Also disable queue/steer buttons if disconnected
+    // Also disable queue and inject buttons if disconnected
     if (this.ui.injectButton && this.ui.injectButton.classList.contains('visible')) {
       this.ui.injectButton.disabled = !this.wsManager.isConnected;
-    }
-    if (this.ui.steerButton && this.ui.steerButton.classList.contains('visible')) {
-      this.ui.steerButton.disabled = !this.wsManager.isConnected;
     }
     if (this.ui.queueButton && this.ui.queueButton.classList.contains('visible')) {
       this.ui.queueButton.disabled = !this.wsManager.isConnected;
@@ -3144,16 +3136,12 @@ class AgentGUIClient {
   }
 
   /**
-   * Show queue/steer buttons when streaming (busy prompt state)
+   * Show queue/inject buttons when streaming (busy prompt state)
    */
   showStreamingPromptButtons() {
     if (this.ui.injectButton) {
       this.ui.injectButton.classList.add('visible');
       this.ui.injectButton.disabled = !this.wsManager.isConnected;
-    }
-    if (this.ui.steerButton) {
-      this.ui.steerButton.classList.add('visible');
-      this.ui.steerButton.disabled = !this.wsManager.isConnected;
     }
     if (this.ui.queueButton) {
       this.ui.queueButton.classList.add('visible');
@@ -3162,7 +3150,7 @@ class AgentGUIClient {
   }
 
   /**
-   * Ensure prompt area is always enabled and shows queue/steer when agent streaming
+   * Ensure prompt area is always enabled and shows queue/inject when agent streaming
    */
   ensurePromptAreaAlwaysEnabled() {
     if (this.ui.messageInput) {
