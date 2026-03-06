@@ -272,7 +272,15 @@ class AgentGUIClient {
       if (window.conversationManager) {
         window.conversationManager.select(conversationId);
       } else {
-        this.loadConversationMessages(conversationId).finally(() => {
+        this.loadConversationMessages(conversationId).catch((err) => {
+          console.warn('Failed to restore conversation from URL, loading latest instead:', err);
+          // If the URL conversation doesn't exist, try loading the most recent conversation
+          if (this.state.conversations && this.state.conversations.length > 0) {
+            const latestConv = this.state.conversations[0];
+            console.log('Loading latest conversation instead:', latestConv.id);
+            return this.loadConversationMessages(latestConv.id);
+          }
+        }).finally(() => {
           this._isLoadingConversation = false;
         });
       }
@@ -2489,6 +2497,7 @@ class AgentGUIClient {
       const convSignal = this._previousConvAbort.signal;
 
       const prevConversationId = this.state.currentConversation?.id;
+      const availableFallback = this.state.conversations?.find(c => c.id !== conversationId) || null;
       this.cacheCurrentConversation();
       this.stopChunkPolling();
       this.removeScrollUpDetection();
@@ -2559,11 +2568,12 @@ class AgentGUIClient {
           console.warn('Conversation no longer exists:', conversationId);
           this.state.currentConversation = null;
           if (window.conversationManager) window.conversationManager.loadConversations();
-          // Resume from last successful conversation if available
-          if (prevConversationId && prevConversationId !== conversationId) {
-            console.log('Resuming from previous conversation:', prevConversationId);
+          // Resume from last successful conversation if available, or fall back to any available conversation
+          const fallbackConv = prevConversationId ? prevConversationId : availableFallback?.id;
+          if (fallbackConv && fallbackConv !== conversationId) {
+            console.log('Resuming from fallback conversation:', fallbackConv);
             this.showError('Conversation not found. Resuming previous conversation.');
-            await this.loadConversationMessages(prevConversationId);
+            await this.loadConversationMessages(fallbackConv);
           } else {
             const outputEl = document.getElementById('output');
             if (outputEl) outputEl.innerHTML = '<p class="text-secondary" style="padding:2rem;text-align:center">Conversation not found. It may have been lost during a server restart.</p>';
@@ -2787,14 +2797,15 @@ class AgentGUIClient {
     } catch (error) {
       if (error.name === 'AbortError') return;
       console.error('Failed to load conversation messages:', error);
-      // Resume from last successful conversation if available
-      if (prevConversationId && prevConversationId !== conversationId) {
-        console.log('Resuming from previous conversation due to error:', prevConversationId);
+      // Resume from last successful conversation if available, or fall back to any available conversation
+      const fallbackConv = prevConversationId ? prevConversationId : availableFallback?.id;
+      if (fallbackConv && fallbackConv !== conversationId) {
+        console.log('Resuming from fallback conversation due to error:', fallbackConv);
         this.showError('Failed to load conversation. Resuming previous conversation.');
         try {
-          await this.loadConversationMessages(prevConversationId);
+          await this.loadConversationMessages(fallbackConv);
         } catch (fallbackError) {
-          console.error('Failed to resume previous conversation:', fallbackError);
+          console.error('Failed to resume fallback conversation:', fallbackError);
           this.showError('Failed to load conversation: ' + error.message);
         }
       } else {
