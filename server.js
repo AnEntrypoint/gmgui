@@ -4495,7 +4495,12 @@ async function resumeInterruptedStreams() {
     let toResume = [];
 
     // Primary: Check database isStreaming flag for conversations still marked as active
-    const streamingConvs = queries.getConversations().filter(c => c.isStreaming === 1);
+    // Exclude conversations whose last session completed - they should not be resumed
+    const streamingConvs = queries.getConversations().filter(c => {
+      if (c.isStreaming !== 1) return false;
+      const lastSession = queries.getLatestSession(c.id);
+      return !lastSession || lastSession.status !== 'complete';
+    });
 
     if (streamingConvs.length > 0) {
       toResume = streamingConvs;
