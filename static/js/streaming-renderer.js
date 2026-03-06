@@ -2155,6 +2155,59 @@ class StreamingRenderer {
   }
 
   /**
+   * Render block header with lazy-loading placeholder for body
+   * Returns a <details> element with just the summary, body content deferred
+   */
+  renderBlockHeader(block, context = {}) {
+    if (!block || !block.type) return null;
+
+    const typeLabel = block.type.charAt(0).toUpperCase() + block.type.slice(1).replace(/_/g, ' ');
+    const summary = document.createElement('summary');
+    summary.style.cursor = 'pointer';
+    summary.style.userSelect = 'none';
+    summary.className = 'block-header-summary';
+
+    let summaryText = typeLabel;
+    if (block.type === 'code' && block.language) {
+      summaryText += ` (${block.language})`;
+    } else if (block.type === 'bash' && block.source) {
+      summaryText += ` - ${block.source}`;
+    } else if (block.type === 'tool_use' && block.name) {
+      summaryText += ` - ${block.name}`;
+    } else if (block.type === 'text' && block.text) {
+      const preview = block.text.substring(0, 60).replace(/\n/g, ' ');
+      summaryText = preview + (block.text.length > 60 ? '...' : '');
+    }
+
+    summary.textContent = summaryText;
+
+    const details = document.createElement('details');
+    details.className = `block-type-${block.type}`;
+    details.setAttribute('data-block-type', block.type);
+    details.setAttribute('data-lazy-load', 'pending');
+    details.appendChild(summary);
+
+    // Attach lazy loader on first open
+    details.addEventListener('toggle', async (e) => {
+      if (details.open && details.getAttribute('data-lazy-load') === 'pending') {
+        details.setAttribute('data-lazy-load', 'loading');
+        try {
+          const body = this.renderBlock(block, context);
+          if (body && body !== summary) {
+            details.appendChild(body);
+          }
+          details.setAttribute('data-lazy-load', 'loaded');
+        } catch (err) {
+          console.error('Failed to lazy-load block:', err);
+          details.setAttribute('data-lazy-load', 'failed');
+        }
+      }
+    }, { once: false });
+
+    return details;
+  }
+
+  /**
    * Cleanup resources
    */
   destroy() {

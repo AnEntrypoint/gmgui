@@ -2637,25 +2637,33 @@ class AgentGUIClient {
 
             const blocksEl = messageDiv.querySelector('.message-blocks');
             const blockFrag = document.createDocumentFragment();
+            const toolResultBlocks = new Map();
+
             sessionChunkList.forEach(chunk => {
               if (!chunk.block?.type) return;
               if (chunk.block.type === 'tool_result') {
-                const lastInFrag = blockFrag.lastElementChild;
-                if (lastInFrag?.classList?.contains('block-tool-use')) {
-                  lastInFrag.classList.remove('has-success', 'has-error');
-                  lastInFrag.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
-                  const parentIsOpen = lastInFrag.hasAttribute('open');
-                  const contextWithParent = { ...chunk, parentIsOpen };
-                  const element = this.renderer.renderBlock(chunk.block, contextWithParent, blockFrag);
-                  if (element) { lastInFrag.appendChild(element); }
-                  return;
-                }
+                toolResultBlocks.set(chunk.id, chunk);
+                return;
               }
-              const element = this.renderer.renderBlock(chunk.block, chunk, blockFrag);
+              const element = this.renderer.renderBlockHeader(chunk.block, chunk);
               if (!element) return;
               blockFrag.appendChild(element);
             });
+
             blocksEl.appendChild(blockFrag);
+
+            toolResultBlocks.forEach((chunk, chunkId) => {
+              const lastBlock = blocksEl.lastElementChild;
+              if (lastBlock?.classList?.contains('block-type-tool_use')) {
+                lastBlock.classList.remove('has-success', 'has-error');
+                lastBlock.classList.add(chunk.block.is_error ? 'has-error' : 'has-success');
+                const contextWithParent = { ...chunk, parentIsOpen: lastBlock.hasAttribute('open') };
+                const element = this.renderer.renderBlock(chunk.block, contextWithParent);
+                if (element && element !== blockFrag.lastElementChild) {
+                  lastBlock.appendChild(element);
+                }
+              }
+            });
 
             if (isCurrentActiveSession) {
               const indicatorDiv = document.createElement('div');
