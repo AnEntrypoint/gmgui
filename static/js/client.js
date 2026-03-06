@@ -35,6 +35,16 @@ class AgentGUIClient {
     this.conversationCache = new Map();
     this.MAX_CACHE_SIZE = 10;
 
+    // Conversation list cache with TTL
+    this.conversationListCache = {
+      data: [],
+      timestamp: 0,
+      ttl: 30000 // 30 seconds
+    };
+
+    // Draft prompts per conversation
+    this.draftPrompts = new Map();
+
     // Event handlers
     this.eventHandlers = {};
 
@@ -155,12 +165,14 @@ class AgentGUIClient {
       this.updateConnectionStatus('connected');
       this._subscribeToConversationUpdates();
       this._recoverMissedChunks();
+      this.updateSendButtonState();
       this.emit('ws:connected');
     });
 
     this.wsManager.on('disconnected', () => {
       console.log('WebSocket disconnected');
       this.updateConnectionStatus('disconnected');
+      this.updateSendButtonState();
       this.emit('ws:disconnected');
     });
 
@@ -194,10 +206,16 @@ class AgentGUIClient {
     // Switch to idle view when selecting non-streaming conversation
     window.addEventListener('conversation-selected', (e) => {
       const convId = e.detail.conversationId;
+      // Save draft from previous conversation before switching
+      this.saveDraftPrompt();
+
       const isStreaming = convId && this.state.streamingConversations.has(convId);
       if (!isStreaming && window.switchView) {
         window.switchView('chat');
       }
+
+      // Restore draft for new conversation after a tick
+      setTimeout(() => this.restoreDraftPrompt(convId), 0);
     });
 
     // Preserve controls state across tab switches
@@ -391,6 +409,19 @@ class AgentGUIClient {
     this.ui.cliSelector = document.querySelector('[data-cli-selector]');
     this.ui.agentSelector = document.querySelector('[data-agent-selector]');
     this.ui.modelSelector = document.querySelector('[data-model-selector]');
+
+    // Auto-save drafts on input
+    if (this.ui.messageInput) {
+      this.ui.messageInput.addEventListener('input', () => {
+        this.saveDraftPrompt();
+      });
+
+      // Restore draft when conversation loads
+      const currentConvId = this.state.currentConversation?.id;
+      if (currentConvId) {
+        this.restoreDraftPrompt(currentConvId);
+      }
+    }
 
     if (this.ui.cliSelector) {
       this.ui.cliSelector.addEventListener('change', () => {
@@ -2140,10 +2171,21 @@ class AgentGUIClient {
    * Load conversations
    */
   async loadConversations() {
+    // Return cached conversations if still fresh
+    const now = Date.now();
+    if (this.conversationListCache.data.length > 0 &&
+        (now - this.conversationListCache.timestamp) < this.conversationListCache.ttl) {
+      this.state.conversations = this.conversationListCache.data;
+      return this.conversationListCache.data;
+    }
+
     return this._dedupedFetch('loadConversations', async () => {
       try {
         const { conversations } = await window.wsClient.rpc('conv.ls');
         this.state.conversations = conversations;
+        // Update cache
+        this.conversationListCache.data = conversations;
+        this.conversationListCache.timestamp = Date.now();
         return conversations;
       } catch (error) {
         console.error('Failed to load conversations:', error);
@@ -2289,9 +2331,7 @@ class AgentGUIClient {
     if (this.ui.messageInput) {
       this.ui.messageInput.disabled = true;
     }
-    if (this.ui.sendButton) {
-      this.ui.sendButton.disabled = true;
-    }
+    // Send button state managed by WebSocket connection, not streaming state
     const injectBtn = document.getElementById('injectBtn');
     const stopBtn = document.getElementById('stopBtn');
     if (injectBtn) injectBtn.disabled = true;
@@ -2305,9 +2345,7 @@ class AgentGUIClient {
     if (this.ui.messageInput) {
       this.ui.messageInput.disabled = false;
     }
-    if (this.ui.sendButton) {
-      this.ui.sendButton.disabled = false;
-    }
+    // Send button state managed by WebSocket connection, not streaming state
     const injectBtn = document.getElementById('injectBtn');
     const stopBtn = document.getElementById('stopBtn');
     if (injectBtn) injectBtn.disabled = false;
@@ -2872,6 +2910,52 @@ class AgentGUIClient {
       eventProcessor: this.eventProcessor.getStats(),
       state: this.state
     };
+  }
+
+  /**
+   * Save draft prompt for current conversation
+   */
+  saveDraftPrompt() {
+    const convId = this.state.currentConversation?.id;
+    if (convId && this.ui.messageInput) {
+      const draft = this.ui.messageInput.value;
+      this.draftPrompts.set(convId, draft);
+      if (draft) {
+        localStorage.setItem(`draft-${convId}`, draft);
+      }
+    }
+  }
+
+  /**
+   * Restore draft prompt for conversation
+   */
+  restoreDraftPrompt(conversationId) {
+    if (!this.ui.messageInput) return;
+
+    let draft = this.draftPrompts.get(conversationId) || '';
+    if (!draft) {
+      draft = localStorage.getItem(`draft-${conversationId}`) || '';
+      if (draft) this.draftPrompts.set(conversationId, draft);
+    }
+
+    this.ui.messageInput.value = draft;
+  }
+
+  /**
+   * Clear draft for conversation
+   */
+  clearDraft(conversationId) {
+    this.draftPrompts.delete(conversationId);
+    localStorage.removeItem(`draft-${conversationId}`);
+  }
+
+  /**
+   * Update send button state based on WebSocket connection
+   */
+  updateSendButtonState() {
+    if (this.ui.sendButton) {
+      this.ui.sendButton.disabled = !this.wsManager.isConnected;
+    }
   }
 
   /**
