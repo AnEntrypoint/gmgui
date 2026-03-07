@@ -22,7 +22,7 @@ import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
 import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
 import { register as registerUtilHandlers } from './lib/ws-handlers-util.js';
-import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, ensureRunning, queryModels as queryACPModels, touch as touchACP } from './lib/acp-manager.js';
+import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACPStatus, getPort as getACPPort, ensureRunning, queryModels as queryACPModels, touch as touchACP } from './lib/acp-sdk-manager.js';
 import { installGMAgentConfigs } from './lib/gm-agent-configs.js';
 import * as toolManager from './lib/tool-manager.js';
 import { pm2Manager } from './lib/pm2-manager.js';
@@ -398,27 +398,54 @@ function findCommand(cmd) {
 }
 
 async function queryACPServerAgents(baseUrl) {
-  const { fetchACPAgents, extractCompleteAgentData } = await import('./lib/acp-http-client.js');
-
-  const result = await fetchACPAgents(baseUrl);
-
-  if (!result.ok) {
-    console.error(`Failed to query ACP agents from ${baseUrl}: ${result.status} ${result.error || ''}`);
-    return [];
-  }
-
-  if (!result.data?.agents || !Array.isArray(result.data.agents)) {
-    console.error(`Invalid agents response from ${baseUrl}`);
-    return [];
-  }
-
-  return result.data.agents.map(agent => {
-    const complete = extractCompleteAgentData(agent);
-    return {
-      ...complete,
+  const endpoint = baseUrl.endsWith('/') ? baseUrl + 'agents/search' : baseUrl + '/agents/search';
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(5000)
+    });
+    if (!response.ok) {
+      console.error(`Failed to query ACP agents from ${baseUrl}: ${response.status}`);
+      return [];
+    }
+    const data = await response.json();
+    if (!data?.agents || !Array.isArray(data.agents)) {
+      console.error(`Invalid agents response from ${baseUrl}`);
+      return [];
+    }
+    return data.agents.map(agent => ({
+      id: agent.agent_id || agent.id,
+      name: agent.metadata?.ref?.name || agent.name || 'Unknown Agent',
+      metadata: {
+        ref: {
+          name: agent.metadata?.ref?.name,
+          version: agent.metadata?.ref?.version,
+          url: agent.metadata?.ref?.url,
+          tags: agent.metadata?.ref?.tags
+        },
+        description: agent.metadata?.description,
+        author: agent.metadata?.author,
+        license: agent.metadata?.license
+      },
+      specs: agent.specs ? {
+        capabilities: agent.specs.capabilities,
+        input_schema: agent.specs.input_schema || agent.specs.input,
+        output_schema: agent.specs.output_schema || agent.specs.output,
+        thread_state_schema: agent.specs.thread_state_schema || agent.specs.thread_state,
+        config_schema: agent.specs.config_schema || agent.specs.config,
+        custom_streaming_update_schema: agent.specs.custom_streaming_update_schema || agent.specs.custom_streaming_update
+      } : null,
+      custom_data: agent.custom_data,
+      icon: agent.metadata?.ref?.name?.charAt(0) || 'A',
+      protocol: 'acp',
       path: baseUrl
-    };
-  });
+    }));
+  } catch (error) {
+    console.error(`ACP agents query failed for ${baseUrl}: ${error.message}`);
+    return [];
+  }
 }
 
 function discoverAgents() {
