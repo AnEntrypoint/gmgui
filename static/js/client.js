@@ -753,6 +753,12 @@ class AgentGUIClient {
       this._serverProcessingEstimate = 0.7 * this._serverProcessingEstimate + 0.3 * serverTime;
     }
 
+    // Always subscribe to the session so blocks are not lost regardless of which conversation is active
+    if (this.wsManager.isConnected) {
+      this.wsManager.subscribeToSession(data.sessionId);
+      this.wsManager.sendMessage({ type: 'subscribe', conversationId: data.conversationId });
+    }
+
     // If this streaming event is for a different conversation than what we are viewing,
     // just track the state but do not modify the DOM or start polling
     if (this.state.currentConversation?.id !== data.conversationId) {
@@ -760,6 +766,14 @@ class AgentGUIClient {
       this.state.streamingConversations.set(data.conversationId, true);
       this.updateBusyPromptArea(data.conversationId);
       this.emit('streaming:start', data);
+
+      // Auto-load if no conversation is currently selected (e.g. server resumed on startup)
+      if (!this.state.currentConversation && !this._isLoadingConversation) {
+        this._isLoadingConversation = true;
+        this.loadConversationMessages(data.conversationId).finally(() => {
+          this._isLoadingConversation = false;
+        });
+      }
       return;
     }
 
