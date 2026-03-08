@@ -584,6 +584,7 @@ class AgentGUIClient {
 
     // Listen for active conversation deletion
     window.addEventListener('conversation-deselected', () => {
+      window.ConversationState?.clear('deselected');
       this.state.currentConversation = null;
       this.state.currentSession = null;
       this.updateUrlForConversation(null);
@@ -1318,6 +1319,7 @@ class AgentGUIClient {
   }
 
   async handleAllConversationsDeleted(data) {
+    window.ConversationState?.clear('all_deleted');
     this.state.currentConversation = null;
     this.state.conversations = [];
     this.state.sessionEvents = [];
@@ -1556,6 +1558,7 @@ class AgentGUIClient {
         if (model) body.model = model;
         if (subAgent) body.subAgent = subAgent;
         const { conversation } = await window.wsClient.rpc('conv.new', body);
+        window.ConversationState?.selectConversation(conversation.id, 'conversation_created', 1);
         this.state.currentConversation = conversation;
         this.lockAgentAndModel(agentId, model);
 
@@ -1834,6 +1837,7 @@ class AgentGUIClient {
           if (model) createBody.model = model;
           if (subAgent) createBody.subAgent = subAgent;
           const { conversation: newConv } = await window.wsClient.rpc('conv.new', createBody);
+          window.ConversationState?.selectConversation(newConv.id, 'stream_recreate', 1);
           this.state.currentConversation = newConv;
           if (window.conversationManager) {
             window.conversationManager.loadConversations();
@@ -2556,6 +2560,7 @@ class AgentGUIClient {
 
       const cachedConv = this.state.conversations.find(c => c.id === conversationId);
       if (cachedConv && this.state.currentConversation?.id !== conversationId) {
+        window.ConversationState?.selectConversation(conversationId, 'cache_load', 1);
         this.state.currentConversation = cachedConv;
       }
 
@@ -2572,6 +2577,7 @@ class AgentGUIClient {
           while (cached.dom.firstChild) {
             outputEl.appendChild(cached.dom.firstChild);
           }
+          window.ConversationState?.selectConversation(conversationId, 'dom_cache_load', 1);
           this.state.currentConversation = cached.conversation;
           const cachedHasActivity = cached.conversation.messageCount > 0 || this.state.streamingConversations.has(conversationId);
           this.applyAgentAndModelSelection(cached.conversation, cachedHasActivity);
@@ -2594,6 +2600,7 @@ class AgentGUIClient {
       } catch (e) {
         if (e.code === 404) {
           console.warn('Conversation no longer exists:', conversationId);
+          window.ConversationState?.clear('conversation_not_found');
           this.state.currentConversation = null;
           if (window.conversationManager) window.conversationManager.loadConversations();
           // Resume from last successful conversation if available, or fall back to any available conversation
@@ -2613,6 +2620,7 @@ class AgentGUIClient {
       }
       const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = fullData;
 
+      window.ConversationState?.selectConversation(conversationId, 'server_load', 1);
       this.state.currentConversation = conversation;
       const hasActivity = (allMessages && allMessages.length > 0) || isActivelyStreaming || latestSession || this.state.streamingConversations.has(conversationId);
       this.applyAgentAndModelSelection(conversation, hasActivity);

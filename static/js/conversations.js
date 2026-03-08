@@ -301,6 +301,7 @@ class ConversationManager {
       await window.wsClient.rpc('conv.del.all', {});
       console.log('[ConversationManager] Deleted all conversations');
       this._updateConversations([], 'clear_all');
+      window.ConversationState?.clear('delete_all');
       this.activeId = null;
       window.dispatchEvent(new CustomEvent('conversation-deselected'));
       this.render();
@@ -535,6 +536,11 @@ class ConversationManager {
   }
 
   select(convId) {
+    const result = window.ConversationState?.selectConversation(convId, 'user_click', 1) || { success: false };
+    if (!result.success && result.reason !== 'already_selected') {
+      console.error('[ConvMgr] activeId mutation rejected:', result.reason);
+      return;
+    }
     this.activeId = convId;
 
     document.querySelectorAll('.conversation-item').forEach(item => {
@@ -589,6 +595,7 @@ class ConversationManager {
     const newConvs = this.conversations.filter(c => c.id !== convId);
     this._updateConversations(newConvs, 'delete', { convId });
     if (wasActive) {
+      window.ConversationState?.deleteConversation(convId, 1);
       this.activeId = null;
       window.dispatchEvent(new CustomEvent('conversation-deselected'));
     }
@@ -607,6 +614,7 @@ class ConversationManager {
         this.deleteConversation(msg.conversationId);
       } else if (msg.type === 'all_conversations_deleted') {
         this._updateConversations([], 'ws_clear_all');
+        window.ConversationState?.clear('all_deleted');
         this.activeId = null;
         this.streamingConversations.clear();
         this.showEmpty('No conversations yet');
