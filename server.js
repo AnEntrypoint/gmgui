@@ -26,6 +26,7 @@ import { startAll as startACPTools, stopAll as stopACPTools, getStatus as getACP
 import { installGMAgentConfigs } from './lib/gm-agent-configs.js';
 import * as toolManager from './lib/tool-manager.js';
 import { pm2Manager } from './lib/pm2-manager.js';
+import CheckpointManager from './lib/checkpoint-manager.js';
 
 
 process.on('uncaughtException', (err, origin) => {
@@ -294,6 +295,7 @@ const rateLimitState = new Map();
 const activeProcessesByRunId = new Map();
 const activeProcessesByConvId = new Map(); // Store process handles by conversationId for steering
 const acpQueries = queries;
+const checkpointManager = new CheckpointManager(queries);
 const STUCK_AGENT_THRESHOLD_MS = 600000;
 const NO_PID_GRACE_PERIOD_MS = 60000;
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 60000;
@@ -4543,8 +4545,14 @@ async function resumeInterruptedStreams() {
     for (let i = 0; i < toResume.length; i++) {
       const conv = toResume[i];
       try {
-        const staleSessions = [...queries.getSessionsByStatus(conv.id, 'active'), ...queries.getSessionsByStatus(conv.id, 'pending')];
-        for (const s of staleSessions) {
+        // Find previous incomplete sessions to load checkpoint from
+        const previousSessions = [...queries.getSessionsByStatus(conv.id, 'active'), ...queries.getSessionsByStatus(conv.id, 'pending')];
+        const previousSessionId = previousSessions.length > 0 ? previousSessions[0].id : null;
+
+        // Load checkpoint from previous session
+        const checkpoint = previousSessionId ? checkpointManager.loadCheckpoint(previousSessionId) : null;
+
+        for (const s of previousSessions) {
           queries.updateSession(s.id, { status: 'interrupted', error: 'Server restarted, resuming', completed_at: Date.now() });
         }
 
@@ -4556,7 +4564,8 @@ async function resumeInterruptedStreams() {
         queries.createEvent('session.created', {
           sessionId: session.id,
           resumeReason: 'server_restart',
-          claudeSessionId: conv.claudeSessionId
+          claudeSessionId: conv.claudeSessionId,
+          checkpointFrom: previousSessionId
         }, conv.id, session.id);
 
         activeExecutions.set(conv.id, {
@@ -4572,11 +4581,35 @@ async function resumeInterruptedStreams() {
           conversationId: conv.id,
           agentId: conv.agentType,
           resumed: true,
+          checkpointAvailable: !!checkpoint,
           timestamp: Date.now()
         });
 
+        // Inject checkpoint events before streaming starts
+        if (checkpoint) {
+          broadcastSync({
+            type: 'streaming_resumed',
+            sessionId: session.id,
+            conversationId: conv.id,
+            resumeFrom: previousSessionId,
+            eventCount: checkpoint.events.length,
+            chunkCount: checkpoint.chunks.length,
+            timestamp: Date.now()
+          });
+
+          checkpointManager.injectCheckpointEvents(session.id, checkpoint, (evt) => {
+            broadcastSync({
+              ...evt,
+              sessionId: session.id,
+              conversationId: conv.id
+            });
+          });
+
+          checkpointManager.markSessionResumed(previousSessionId);
+        }
+
         const messageId = lastMsg?.id || null;
-        console.log(`[RESUME] Resuming conv ${conv.id} (claude session: ${conv.claudeSessionId})`);
+        console.log(`[RESUME] Resuming conv ${conv.id} (claude session: ${conv.claudeSessionId}) with checkpoint=${!!checkpoint}`);
 
         try {
           await processMessageWithStreaming(conv.id, messageId, session.id, promptText, conv.agentType, conv.model, conv.subAgent);
