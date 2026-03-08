@@ -199,6 +199,37 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_tool_install_history_tool ON tool_install_history(tool_id);
     CREATE INDEX IF NOT EXISTS idx_tool_install_history_completed ON tool_install_history(completed_at);
 
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id TEXT PRIMARY KEY,
+      workflowName TEXT NOT NULL,
+      workflowId TEXT,
+      runId TEXT,
+      sha TEXT,
+      branch TEXT,
+      status TEXT,
+      conclusion TEXT,
+      htmlUrl TEXT,
+      triggeredAt INTEGER NOT NULL,
+      completedAt INTEGER,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_name ON workflow_runs(workflowName);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_sha ON workflow_runs(sha);
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_completed ON workflow_runs(completedAt);
+
+    CREATE TABLE IF NOT EXISTS oauth_tokens (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      token TEXT NOT NULL,
+      email TEXT,
+      expires_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oauth_tokens_provider ON oauth_tokens(provider);
+
   `);
 }
 
