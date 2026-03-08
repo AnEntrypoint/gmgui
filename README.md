@@ -5,7 +5,26 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![GitHub Pages](https://img.shields.io/badge/docs-live-blue)](https://anentrypoint.github.io/agentgui/)
 
-Multi-agent GUI client for AI coding agents (Claude Code, Gemini CLI, OpenCode, Goose, etc.) with real-time streaming, WebSocket sync, and SQLite persistence.
+Multi-agent GUI client for AI coding agents with real-time streaming, WebSocket sync, and SQLite persistence.
+
+### Supported Agents
+
+| Agent | Protocol | Auto-installable |
+|-------|----------|-----------------|
+| Claude Code | CLI | - |
+| OpenCode | ACP | `opencode-ai` |
+| Gemini CLI | ACP | `@google/gemini-cli` |
+| Kilo Code | ACP | `@kilocode/cli` |
+| Goose | ACP | - |
+| OpenHands | ACP | - |
+| Augment Code | ACP | - |
+| Cline | ACP | - |
+| Kimi CLI | ACP | - |
+| Qwen Code | ACP | - |
+| Codex CLI | ACP | - |
+| Mistral Vibe | ACP | - |
+| Kiro CLI | ACP | - |
+| fast-agent | ACP | - |
 
 ![Main Interface](docs/screenshot-main.png)
 
@@ -20,7 +39,7 @@ Modern AI coding requires juggling multiple agents, each in their own terminal. 
 
 ## Features
 
-- 🤖 **Multi-Agent Support** - Switch between Claude Code, Gemini CLI, OpenCode, Kilo, and more from one interface
+- 🤖 **Multi-Agent Support** - 14 agents: Claude Code, Gemini CLI, OpenCode, Kilo, Goose, OpenHands, Augment, Cline, Kimi, Qwen, Codex, Mistral Vibe, Kiro, fast-agent
 - ⚡ **Real-Time Streaming** - Watch agents work with live streaming output and tool calls via WebSocket
 - 💾 **Session Persistence** - Full conversation history stored in SQLite with WAL mode
 - 🔄 **WebSocket Sync** - Live updates across multiple clients with automatic reconnection
@@ -67,7 +86,7 @@ Server starts on `http://localhost:3000/gm/`
 - Node.js 18+ (LTS recommended)
 - SQLite 3
 - Modern browser (Chrome, Firefox, Safari, Edge)
-- At least one AI coding agent installed (Claude Code, Gemini CLI, etc.)
+- At least one supported AI coding agent installed (see table above)
 - Optional: Python 3.9+ for text-to-speech on Windows
 
 ## Architecture
