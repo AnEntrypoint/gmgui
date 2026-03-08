@@ -24,6 +24,10 @@ class ConversationManager {
     this.streamingConversations = new Set();
     this.agents = new Map();
 
+    this._conversationVersion = 0;
+    this._lastMutationSource = null;
+    this._lastMutationTime = 0;
+
     this.folderBrowser = {
       modal: null,
       listEl: null,
@@ -70,6 +74,29 @@ class ConversationManager {
     } catch (err) {
       console.error('[ConversationManager] Error loading agents:', err);
     }
+  }
+
+  _updateConversations(newArray, source, context = {}) {
+    const oldLen = this.conversations.length;
+    const newLen = Array.isArray(newArray) ? newArray.length : 0;
+    const mutationId = ++this._conversationVersion;
+    const timestamp = Date.now();
+
+    this.conversations = Array.isArray(newArray) ? newArray : [];
+    this._lastMutationSource = source;
+    this._lastMutationTime = timestamp;
+
+    window._conversationCacheVersion = mutationId;
+
+    if (context.verbose) {
+      console.log(`[ConvMgr] mutation #${mutationId} (${source}): ${oldLen} → ${newLen} items, ts=${timestamp}`);
+    }
+
+    return { version: mutationId, timestamp, oldLen, newLen };
+  }
+
+  getConversationCacheVersion() {
+    return this._conversationVersion;
   }
 
   getAgentDisplayName(agentId) {
@@ -273,7 +300,7 @@ class ConversationManager {
       this.deleteAllBtn.disabled = true;
       await window.wsClient.rpc('conv.del.all', {});
       console.log('[ConversationManager] Deleted all conversations');
-      this.conversations = [];
+      this._updateConversations([], 'clear_all');
       this.activeId = null;
       window.dispatchEvent(new CustomEvent('conversation-deselected'));
       this.render();
@@ -374,7 +401,9 @@ class ConversationManager {
   async loadConversations() {
     try {
       const data = await window.wsClient.rpc('conv.ls');
-      this.conversations = data.conversations || [];
+      const convList = data.conversations || [];
+
+      this._updateConversations(convList, 'poll');
 
       for (const conv of this.conversations) {
         if (conv.isStreaming === 1 || conv.isStreaming === true) {
@@ -536,21 +565,29 @@ class ConversationManager {
     if (this.conversations.some(c => c.id === conv.id)) {
       return;
     }
-    this.conversations.unshift(conv);
+    const newConvs = [conv, ...this.conversations];
+    this._updateConversations(newConvs, 'add', { convId: conv.id });
     this.render();
   }
 
   updateConversation(convId, updates) {
-    const conv = this.conversations.find(c => c.id === convId);
-    if (conv) {
-      Object.assign(conv, updates);
+    const idx = this.conversations.findIndex(c => c.id === convId);
+    if (idx >= 0) {
+      const updated = Object.assign({}, this.conversations[idx], updates);
+      const newConvs = [
+        ...this.conversations.slice(0, idx),
+        updated,
+        ...this.conversations.slice(idx + 1)
+      ];
+      this._updateConversations(newConvs, 'update', { convId });
       this.render();
     }
   }
 
   deleteConversation(convId) {
     const wasActive = this.activeId === convId;
-    this.conversations = this.conversations.filter(c => c.id !== convId);
+    const newConvs = this.conversations.filter(c => c.id !== convId);
+    this._updateConversations(newConvs, 'delete', { convId });
     if (wasActive) {
       this.activeId = null;
       window.dispatchEvent(new CustomEvent('conversation-deselected'));
@@ -569,7 +606,7 @@ class ConversationManager {
       } else if (msg.type === 'conversation_deleted') {
         this.deleteConversation(msg.conversationId);
       } else if (msg.type === 'all_conversations_deleted') {
-        this.conversations = [];
+        this._updateConversations([], 'ws_clear_all');
         this.activeId = null;
         this.streamingConversations.clear();
         this.showEmpty('No conversations yet');
