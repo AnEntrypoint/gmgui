@@ -79,6 +79,10 @@ class AgentGUIClient {
     this._inflightRequests = new Map();
     this._previousConvAbort = null;
 
+    // PHASE 2: Request Lifetime Tracking
+    this._loadInProgress = {}; // { [conversationId]: { requestId, abortController, timestamp, prevConversationId } }
+    this._currentRequestId = 0; // Auto-incrementing request counter
+
     this._scrollKalman = typeof KalmanFilter !== 'undefined' ? new KalmanFilter({ processNoise: 50, measurementNoise: 100 }) : null;
     this._scrollTarget = 0;
     this._scrollAnimating = false;
@@ -2523,6 +2527,55 @@ class AgentGUIClient {
 
   invalidateCache(conversationId) {
     this.conversationCache.delete(conversationId);
+  }
+
+  /**
+   * PHASE 2: Create a new load request with lifetime tracking
+   * Assigns unique requestId, tracks in _loadInProgress, returns abort signal
+   * Automatically cancels previous loads to this conversation
+   */
+  _makeLoadRequest(conversationId) {
+    const requestId = ++this._currentRequestId;
+    const abortController = new AbortController();
+
+    // Cancel previous request to this conversation
+    if (this._loadInProgress[conversationId]) {
+      const prevReq = this._loadInProgress[conversationId];
+      try {
+        prevReq.abortController.abort();
+      } catch (e) {}
+    }
+
+    this._loadInProgress[conversationId] = {
+      requestId,
+      abortController,
+      timestamp: Date.now(),
+      prevConversationId: this.state.currentConversation?.id
+    };
+
+    return { requestId, abortController: abortController.signal };
+  }
+
+  /**
+   * PHASE 2: Verify request is still current before rendering
+   * Returns true if requestId matches current load for this conversation
+   * Returns false if newer request arrived, or request was cancelled
+   */
+  _verifyRequestId(conversationId, requestId) {
+    const current = this._loadInProgress[conversationId];
+    if (!current) return false;
+    if (current.requestId !== requestId) return false;
+    return true;
+  }
+
+  /**
+   * PHASE 2: Complete/cleanup a load request
+   */
+  _completeLoadRequest(conversationId, requestId) {
+    const req = this._loadInProgress[conversationId];
+    if (req && req.requestId === requestId) {
+      delete this._loadInProgress[conversationId];
+    }
   }
 
   async loadConversationMessages(conversationId) {
