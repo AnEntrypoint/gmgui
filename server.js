@@ -39,7 +39,13 @@ process.on('unhandledRejection', (reason, promise) => {
   if (reason instanceof Error) console.error(reason.stack);
 });
 
-process.on('SIGINT', () => { console.log('[SIGNAL] SIGINT received (ignored - uncrashable)'); });
+process.on('SIGINT', () => {
+  console.log('[SIGNAL] SIGINT received - graceful shutdown');
+  try { pm2Manager.disconnect(); } catch (_) {}
+  stopACPTools().catch(() => {}).finally(() => {
+    try { wss.close(() => server.close(() => process.exit(0))); } catch (_) { process.exit(0); }
+  });
+});
 process.on('SIGHUP', () => { console.log('[SIGNAL] SIGHUP received (ignored - uncrashable)'); });
 process.on('beforeExit', (code) => { console.log('[PROCESS] beforeExit with code:', code); });
 process.on('exit', (code) => { console.log('[PROCESS] exit with code:', code); });
@@ -4493,18 +4499,8 @@ if (watch) {
 process.on('SIGTERM', () => {
   console.log('[SIGNAL] SIGTERM received - graceful shutdown');
   try { pm2Manager.disconnect(); } catch (_) {}
-  Promise.resolve().then(() => {
-    stopACPTools().then(() => {
-      wss.close(() => server.close(() => process.exit(0)));
-    }).catch(() => {
-      wss.close(() => server.close(() => process.exit(0)));
-    });
-  }).catch(() => {
-    stopACPTools().then(() => {
-      wss.close(() => server.close(() => process.exit(0)));
-    }).catch(() => {
-      wss.close(() => server.close(() => process.exit(0)));
-    });
+  stopACPTools().catch(() => {}).finally(() => {
+    try { wss.close(() => server.close(() => process.exit(0))); } catch (_) { process.exit(0); }
   });
 });
 

@@ -40,6 +40,8 @@ class ThemeManager {
     }
 
     document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(theme);
     localStorage.setItem(this.THEME_KEY, theme);
     this.updateThemeIcon(theme);
   }
