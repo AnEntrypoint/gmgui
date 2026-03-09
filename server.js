@@ -894,6 +894,12 @@ const PROVIDER_CONFIGS = {
       path.join(os.homedir(), '.config', 'proxypilot', 'config.json')
     ],
     configFormat: (apiKey, model) => ({ api_key: apiKey, default_model: model })
+  },
+  'codex': {
+    name: 'Codex CLI', configPaths: [
+      path.join(os.homedir(), '.codex', 'auth.json')
+    ],
+    configFormat: (apiKey) => ({ auth_mode: 'apikey', OPENAI_API_KEY: apiKey })
   }
 };
 
@@ -917,7 +923,7 @@ function getProviderConfigs() {
         if (fs.existsSync(configPath)) {
           const content = fs.readFileSync(configPath, 'utf8');
           const parsed = JSON.parse(content);
-          const rawKey = parsed.api_key || parsed.apiKey || parsed.github_token || '';
+          const rawKey = parsed.api_key || parsed.apiKey || parsed.github_token || parsed.OPENAI_API_KEY || '';
           configs[providerId] = {
             name: config.name,
             apiKey: maskKey(rawKey),
