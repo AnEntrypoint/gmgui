@@ -4340,7 +4340,7 @@ wsRouter.onLegacy((data, ws) => {
       ws.terminalProc = proc;
       ws.terminalPty = true;
       proc.on('data', (chunk) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: Buffer.from(chunk).toString('base64'), encoding: 'base64' }));
       });
       proc.on('exit', (code) => {
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));

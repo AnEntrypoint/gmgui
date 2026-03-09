@@ -10,6 +10,20 @@
     return proto + '//' + location.host + BASE + '/sync';
   }
 
+  function getCwd() {
+    try {
+      if (window.conversationManager) {
+        var mgr = window.conversationManager;
+        var id = mgr.activeId;
+        if (id && mgr.conversations) {
+          var conv = mgr.conversations.find(function(c) { return c.id === id; });
+          if (conv && conv.workingDirectory) return conv.workingDirectory;
+        }
+      }
+    } catch (_) {}
+    return undefined;
+  }
+
   function ensureTerm() {
     var output = document.getElementById('terminalOutput');
     if (!output) return false;
@@ -69,24 +83,21 @@
   }
 
   function connectAndStart() {
-    console.log('Terminal: Connecting to WebSocket');
+    var cwd = getCwd();
     if (ws && ws.readyState === WebSocket.OPEN) {
-      console.log('Terminal: Sending terminal_start command');
       var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
-      ws.send(JSON.stringify({ type: 'terminal_start', cwd: window.__STARTUP_CWD || undefined, cols: dims.cols, rows: dims.rows }));
+      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
       setTimeout(function() { if (term && term.focus) term.focus(); }, 100);
       return;
     }
     if (ws && ws.readyState === WebSocket.CONNECTING) {
-      console.log('Terminal: WebSocket already connecting');
       return;
     }
 
     ws = new WebSocket(getWsUrl());
     ws.onopen = function() {
-      console.log('Terminal: WebSocket connected, starting terminal');
       var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
-      ws.send(JSON.stringify({ type: 'terminal_start', cwd: window.__STARTUP_CWD || undefined, cols: dims.cols, rows: dims.rows }));
+      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
       setTimeout(function() { if (term && term.focus) term.focus(); }, 100);
     };
     ws.onmessage = function(e) {
@@ -100,25 +111,18 @@
         } else if (msg.type === 'terminal_exit' && term) {
           term.write('\r\n[Process exited with code ' + msg.code + ']\r\n');
           if (termActive) setTimeout(connectAndStart, 2000);
-        } else if (msg.type === 'terminal_started') {
-          console.log('Terminal: Started successfully');
         }
       } catch(_) {}
     };
     ws.onclose = function() {
-      console.log('Terminal: WebSocket closed');
       ws = null;
       if (termActive) setTimeout(connectAndStart, 2000);
     };
-    ws.onerror = function(error) {
-      console.error('Terminal: WebSocket error:', error);
-    };
+    ws.onerror = function() {};
   }
 
   function startTerminal() {
-    console.log('Terminal: Starting terminal module');
     if (!ensureTerm()) {
-      console.log('Terminal: Terminal not ready, retrying');
       setTimeout(startTerminal, 200);
       return;
     }
@@ -128,7 +132,6 @@
   }
 
   function stopTerminal() {
-    console.log('Terminal: Stopping terminal module');
     termActive = false;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'terminal_stop' }));
@@ -140,13 +143,10 @@
   }
 
   function initTerminalEarly() {
-    console.log('Terminal: Initializing terminal early (not yet active)');
     if (!ensureTerm()) {
-      console.log('Terminal: Waiting for xterm.js to load');
       setTimeout(initTerminalEarly, 200);
       return;
     }
-    console.log('Terminal: Terminal UI initialized and ready for interaction');
   }
 
   if (document.readyState === 'loading') {
@@ -167,8 +167,8 @@
     }
   });
 
-  window.terminalModule = { 
-    start: startTerminal, 
+  window.terminalModule = {
+    start: startTerminal,
     stop: stopTerminal,
     getTerminal: function() { return term; },
     isActive: function() { return termActive; }
