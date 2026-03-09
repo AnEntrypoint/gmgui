@@ -322,7 +322,7 @@
       return '<div class="tool-item">' +
         '<div style="display: flex; flex-direction: column; gap: 0.3rem;">' +
         '<div class="tool-header">' +
-        '<span class="tool-name">' + esc(tool.id) + '</span>' +
+        '<span class="tool-name">' + esc(tool.name || tool.id) + '</span>' +
         '</div>' +
         '<div class="tool-status-indicator ' + statusClass + '">' +
         '<span class="tool-status-dot"></span>' +

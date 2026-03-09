@@ -4768,17 +4768,18 @@ function onServerReady() {
 
   const toolIds = ['gm-oc', 'gm-gc', 'gm-kilo', 'gm-cc', 'codex'];
   queries.initializeToolInstallations(toolIds.map(id => ({ id })));
-  for (const toolId of toolIds) {
-    const status = toolManager.checkToolStatus(toolId);
-    if (status) {
-      queries.updateToolStatus(toolId, {
-        status: status.installed ? 'installed' : 'not_installed',
-        version: status.version,
-        last_check_at: Date.now()
-      });
+  console.log('[TOOLS] Starting background provisioning...');
+  toolManager.autoProvision((evt) => {
+    broadcastSync(evt);
+    if (evt.type === 'tool_install_complete' || evt.type === 'tool_update_complete') {
+      const d = evt.data || {};
+      queries.updateToolStatus(evt.toolId, { status: 'installed', version: d.version || null, installed_at: Date.now() });
+      queries.addToolInstallHistory(evt.toolId, evt.type.includes('update') ? 'update' : 'install', 'success', null);
+    } else if (evt.type === 'tool_install_failed' || evt.type === 'tool_update_failed') {
+      queries.updateToolStatus(evt.toolId, { status: 'failed', error_message: evt.data?.error });
+      queries.addToolInstallHistory(evt.toolId, evt.type.includes('update') ? 'update' : 'install', 'failed', evt.data?.error);
     }
-  }
-  console.log('[TOOLS] Initialization complete');
+  }).catch(err => console.error('[TOOLS] Auto-provision error:', err.message));
 
   ensureModelsDownloaded().then(async ok => {
     if (ok) console.log('[MODELS] Speech models ready');
