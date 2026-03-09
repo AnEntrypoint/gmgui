@@ -79,9 +79,9 @@ async function runTests() {
         console.log('  1. Frontend sends POST /api/tools/{id}/update');
         console.log('  2. Backend sets status to "updating" in DB');
         console.log('  3. Backend sends immediate 200 response');
-        console.log('  4. Backend spawns bunx process async');
+        console.log('  4. Backend spawns bun x process async');
         console.log('  5. Backend broadcasts WebSocket "tool_update_progress" events');
-        console.log('  6. When bunx completes:');
+        console.log('  6. When bun x completes:');
         console.log('     - Clears caches');
         console.log('     - Calls checkToolStatusAsync() for fresh status');
         console.log('     - Broadcasts "tool_update_complete" with new status');

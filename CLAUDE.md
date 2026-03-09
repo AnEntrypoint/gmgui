@@ -19,7 +19,7 @@ database.js            SQLite setup (WAL mode), schema, query functions
 lib/claude-runner.js   Agent framework - spawns CLI processes, parses stream-json output
 lib/acp-manager.js     ACP tool lifecycle - auto-starts opencode/kilo HTTP servers, restart on crash
 lib/speech.js          Speech-to-text and text-to-speech via @huggingface/transformers
-bin/gmgui.cjs          CLI entry point (npx agentgui / bunx agentgui)
+bin/gmgui.cjs          CLI entry point (npx agentgui / bun x agentgui)
 static/index.html      Main HTML shell
 static/app.js          App initialization
 static/theme.js        Theme switching
@@ -97,8 +97,8 @@ Tool updates are managed through a complete pipeline:
 
 **Update Flow:**
 1. Frontend (`static/js/tools-manager.js`) initiates POST to `/api/tools/{id}/update`
-2. Server (`server.js` lines 1904-1961 for individual, 1973-2003 for batch) spawns bunx process
-3. Tool manager (`lib/tool-manager.js` lines 400-432) executes `bunx <package>` and detects new version
+2. Server (`server.js` lines 1904-1961 for individual, 1973-2003 for batch) spawns bun x process
+3. Tool manager (`lib/tool-manager.js` lines 400-432) executes `bun x <package>` and detects new version
 4. Version is saved to database: `queries.updateToolStatus(toolId, { version, status: 'installed' })`
 5. WebSocket broadcasts `tool_update_complete` with version and status data
 6. Frontend updates UI and removes tool from `operationInProgress` set
@@ -117,7 +117,7 @@ Tool updates are managed through a complete pipeline:
 
 ## Tool Detection System
 
-The system auto-detects installed AI coding tools via `bunx` package resolution:
+The system auto-detects installed AI coding tools via `bun x` package resolution:
 - **OpenCode**: `opencode-ai` package (id: gm-oc)
 - **Gemini CLI**: `@google/gemini-cli` package (id: gm-gc)
 - **Kilo**: `@kilocode/cli` package (id: gm-kilo)
@@ -129,7 +129,7 @@ Tool configuration in `lib/tool-manager.js` TOOLS array includes id, name, pkg, 
 - Kilo: pkg='@kilocode/cli', pluginId='@kilocode/cli' (stored at ~/.config/kilo/agents/@kilocode/cli/)
 - OpenCode: pkg='opencode-ai', pluginId='opencode-ai' (stored at ~/.config/opencode/agents/opencode-ai/)
 
-Detection happens by spawning `bunx <package> --version` to check if tools are installed. Version detection uses pluginId to find the correct plugin.json file. Response from `/api/tools` includes: id, name, pkg, installed, status (one of: installed|needs_update|not_installed), isUpToDate, upgradeNeeded, hasUpdate. Frontend displays tools in UI and updates based on installation status.
+Detection happens by spawning `bun x <package> --version` to check if tools are installed. Version detection uses pluginId to find the correct plugin.json file. Response from `/api/tools` includes: id, name, pkg, installed, status (one of: installed|needs_update|not_installed), isUpToDate, upgradeNeeded, hasUpdate. Frontend displays tools in UI and updates based on installation status.
 
 ### Tool Installation and Update UI Flow
 

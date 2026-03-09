@@ -9,20 +9,20 @@ async function gmgui(args = []) {
   const command = args[0] || 'start';
 
   if (command === 'start') {
-    // Always use node as runtime for reliability. When invoked via bunx,
+    // Always use node as runtime for reliability. When invoked via bun x,
     // dependencies are already managed. When invoked via npm/npx, we install
     // dependencies ourselves. This avoids ENOENT errors on systems where bun
-    // may not be in PATH even though bunx works.
+    // may not be in PATH even though bun x works.
     const installer = 'npm';
 
     // Ensure dependencies are installed only if node_modules is missing
-    // Skip this for bunx/npx which manage dependencies independently
+    // Skip this for bun x/npx which manage dependencies independently
     const nodeModulesPath = path.join(projectRoot, 'node_modules');
     const execPath = process.env.npm_execpath || '';
     const isBunx = execPath.includes('bun') || process.env.BUN_INSTALL;
     const isNpx = execPath.includes('npx') || (process.env._ && process.env._.includes('npx'));
     
-    // Also skip if running from temp/cache directory (bunx/npm cache)
+    // Also skip if running from temp/cache directory (bun x/npm cache)
     const isFromCache = projectRoot.includes('node_modules') && 
                         (projectRoot.includes('.bun') || projectRoot.includes('_npx') || projectRoot.includes('npm-cache'));
 
@@ -72,7 +72,7 @@ async function gmgui(args = []) {
 }
 
 // Always run when executed as a bin file (this file should only be used that way)
-// Works with npm, npx, bunx, and direct execution
+// Works with npm, npx, bun x, and direct execution
 gmgui(process.argv.slice(2)).catch(err => {
   console.error(err.message);
   process.exit(1);

@@ -302,7 +302,7 @@ jobs:
 
              Install with:
              ```bash
-             bunx agentgui@latest
+             bun x agentgui@latest
              npm install -g agentgui
              npx agentgui
              ```
