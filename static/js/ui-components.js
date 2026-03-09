@@ -27,15 +27,15 @@ class UIComponents {
     };
 
     modal.innerHTML = `
-      <div class="modal-content ${sizeClasses[size] || sizeClasses['medium']} bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6">
-        <div class="modal-header flex justify-between items-center mb-4 pb-4 border-b">
+      <div class="modal-content card ${sizeClasses[size] || sizeClasses['medium']}">
+        <div class="card-header flex justify-between items-center">
           <h2 class="text-xl font-bold">${UIComponents.escapeHtml(title)}</h2>
-          <button class="modal-close text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-2xl leading-none">&times;</button>
+          <button class="btn btn-ghost btn-sm modal-close">&times;</button>
         </div>
-        <div class="modal-body mb-4">
+        <div class="card-body modal-body">
           ${typeof content === 'string' ? UIComponents.escapeHtml(content) : ''}
         </div>
-        <div class="modal-footer flex gap-2 justify-end">
+        <div class="card-footer flex gap-2 justify-end">
           ${buttons.map(btn => `
             <button class="btn btn-${btn.variant || 'secondary'}" data-action="${btn.action || 'close'}">
               ${UIComponents.escapeHtml(btn.label)}
@@ -93,11 +93,7 @@ class UIComponents {
 
     tabs.forEach((tab, index) => {
       const btn = document.createElement('button');
-      btn.className = `tab-button px-4 py-2 font-medium transition-colors ${
-        index === activeTab
-          ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-          : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-      }`;
+      btn.className = `tab tab-underline tab-button ${index === activeTab ? 'tab-active' : ''}`;
       btn.textContent = tab.label;
       btn.dataset.tabIndex = index;
 
@@ -105,11 +101,9 @@ class UIComponents {
         // Update active button
         tabButtons.querySelectorAll('.tab-button').forEach((b, i) => {
           if (i === index) {
-            b.classList.add('border-b-2', 'border-blue-500', 'text-blue-600', 'dark:text-blue-400');
-            b.classList.remove('text-gray-600', 'dark:text-gray-400');
+            b.classList.add('tab-active');
           } else {
-            b.classList.remove('border-b-2', 'border-blue-500', 'text-blue-600', 'dark:text-blue-400');
-            b.classList.add('text-gray-600', 'dark:text-gray-400');
+            b.classList.remove('tab-active');
           }
         });
 
@@ -155,13 +149,13 @@ class UIComponents {
 
     const alert = document.createElement('div');
     const typeClasses = {
-      'info': 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900 dark:border-blue-700 dark:text-blue-200',
-      'success': 'bg-green-50 border-green-200 text-green-800 dark:bg-green-900 dark:border-green-700 dark:text-green-200',
-      'warning': 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:border-yellow-700 dark:text-yellow-200',
-      'error': 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900 dark:border-red-700 dark:text-red-200'
+      'info': 'alert-info',
+      'success': 'alert-success',
+      'warning': 'alert-warning',
+      'error': 'alert-error'
     };
 
-    alert.className = `alert border-l-4 p-4 mb-4 rounded ${typeClasses[type] || typeClasses['info']}`;
+    alert.className = `alert ${typeClasses[type] || typeClasses['info']}`;
     alert.innerHTML = `
       <div class="flex justify-between items-center">
         <span>${UIComponents.escapeHtml(message)}</span>
@@ -191,18 +185,15 @@ class UIComponents {
     } = config;
 
     const sizeClasses = {
-      'small': 'w-4 h-4',
-      'medium': 'w-8 h-8',
-      'large': 'w-12 h-12'
+      'small': 'spinner-xs',
+      'medium': 'spinner-sm',
+      'large': 'spinner-md'
     };
 
     const container = document.createElement('div');
     container.className = 'flex items-center gap-3 justify-center p-4';
     container.innerHTML = `
-      <svg class="animate-spin ${sizeClasses[size] || sizeClasses['medium']} text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" opacity="0.25"></circle>
-        <path d="M4 12a8 8 0 018-8" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-      </svg>
+      <div class="spinner-simple spinner-primary ${sizeClasses[size] || sizeClasses['medium']}"></div>
       <span class="text-gray-700 dark:text-gray-300">${UIComponents.escapeHtml(text)}</span>
     `;
     return container;
@@ -227,9 +218,7 @@ class UIComponents {
     }
 
     html += `
-      <div class="progress-bar bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-        <div class="progress-fill bg-blue-500 h-full transition-all" style="width: ${Math.min(100, Math.max(0, percentage))}%"></div>
-      </div>
+      <progress class="progress progress-primary progress-xs w-full" value="${Math.min(100, Math.max(0, percentage))}" max="100"></progress>
     `;
 
     container.innerHTML = html;
@@ -291,7 +280,7 @@ class UIComponents {
         placeholder="${UIComponents.escapeHtml(placeholder)}"
         value="${UIComponents.escapeHtml(value)}"
         ${required ? 'required' : ''}
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="input input-block input-solid"
       />
     `;
 
@@ -323,7 +312,7 @@ class UIComponents {
       <select
         name="${name}"
         ${required ? 'required' : ''}
-        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="select select-block select-solid"
       >
         ${options.map(opt => `
           <option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>
@@ -373,21 +362,21 @@ class UIComponents {
     } = config;
 
     const sizeClasses = {
-      'small': 'text-xs px-2 py-1',
-      'medium': 'text-sm px-3 py-1',
-      'large': 'text-base px-4 py-2'
+      'small': 'badge-sm',
+      'medium': 'badge-md',
+      'large': 'badge-lg'
     };
 
     const variantClasses = {
-      'default': 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-      'primary': 'bg-blue-200 text-blue-800 dark:bg-blue-700 dark:text-blue-200',
-      'success': 'bg-green-200 text-green-800 dark:bg-green-700 dark:text-green-200',
-      'warning': 'bg-yellow-200 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-200',
-      'error': 'bg-red-200 text-red-800 dark:bg-red-700 dark:text-red-200'
+      'default': 'badge-flat',
+      'primary': 'badge-flat-primary',
+      'success': 'badge-flat-success',
+      'warning': 'badge-flat-warning',
+      'error': 'badge-flat-error'
     };
 
     const badge = document.createElement('span');
-    badge.className = `badge rounded-full font-medium ${sizeClasses[size] || sizeClasses['medium']} ${variantClasses[variant] || variantClasses['default']}`;
+    badge.className = `badge ${sizeClasses[size] || sizeClasses['medium']} ${variantClasses[variant] || variantClasses['default']}`;
     badge.textContent = label;
     return badge;
   }

@@ -960,7 +960,7 @@ class AgentGUIClient {
     if (block.type === 'text' && block.text) {
       const text = block.text;
       if (this.isHtmlContent(text)) {
-        return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(text)}</div>`;
+        return `<div class="html-content">${this.sanitizeHtml(text)}</div>`;
       }
       const parts = this.parseMarkdownCodeBlocks(text);
       if (parts.length === 1 && parts[0].type === 'text') {
@@ -968,7 +968,7 @@ class AgentGUIClient {
       }
       return parts.map(part => {
         if (part.type === 'html') {
-          return `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(part.content)}</div>`;
+          return `<div class="html-content">${this.sanitizeHtml(part.content)}</div>`;
         } else if (part.type === 'code') {
           return this.renderCodeBlock(part.language, part.code);
         }
@@ -1422,10 +1422,10 @@ class AgentGUIClient {
     if (language.toLowerCase() === 'html') {
       return `
         <div class="message-code">
-          <div class="html-rendered-label mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+          <div class="html-rendered-label">
             Rendered HTML
           </div>
-          <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+          <div class="html-content">
             ${this.sanitizeHtml(code)}
           </div>
         </div>
@@ -1442,7 +1442,7 @@ class AgentGUIClient {
   renderMessageContent(content) {
     if (typeof content === 'string') {
       if (this.isHtmlContent(content)) {
-        return `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(content)}</div></div>`;
+        return `<div class="message-text"><div class="html-content">${this.sanitizeHtml(content)}</div></div>`;
       }
       return `<div class="message-text">${this.escapeHtml(content)}</div>`;
     } else if (content && typeof content === 'object' && content.type === 'claude_execution') {
@@ -1458,7 +1458,7 @@ class AgentGUIClient {
             const parts = this.parseMarkdownCodeBlocks(block.text);
             parts.forEach(part => {
               if (part.type === 'html') {
-                html += `<div class="message-text"><div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">${this.sanitizeHtml(part.content)}</div></div>`;
+                html += `<div class="message-text"><div class="html-content">${this.sanitizeHtml(part.content)}</div></div>`;
               } else if (part.type === 'text') {
                 html += `<div class="message-text">${this.escapeHtml(part.content)}</div>`;
               } else if (part.type === 'code') {
@@ -1470,10 +1470,10 @@ class AgentGUIClient {
             if (block.language === 'html') {
               html += `
                 <div class="message-code">
-                  <div class="html-rendered-label mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+                  <div class="html-rendered-label">
                     Rendered HTML
                   </div>
-                  <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+                  <div class="html-content">
                     ${this.sanitizeHtml(block.code)}
                   </div>
                 </div>

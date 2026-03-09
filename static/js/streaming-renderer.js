@@ -460,7 +460,7 @@ class StreamingRenderer {
     html = html.replace(/_([^_]+)_/g, '<em class="italic text-gray-700 dark:text-gray-300">$1</em>');
 
     // Render inline code: `code`
-    html = html.replace(/`([^`]+)`/g, '<code class="inline-code bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono text-red-600 dark:text-red-400">$1</code>');
+    html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
 
     // Render markdown links: [text](url)
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 dark:text-blue-400 hover:underline" target="_blank">$1</a>');
@@ -1895,13 +1895,13 @@ class StreamingRenderer {
     let html = '';
     parts.forEach(part => {
       if (part.type === 'html') {
-        html += `<div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto mb-3">${part.content}</div>`;
+        html += `<div class="html-content mb-3">${part.content}</div>`;
       } else if (part.type === 'text') {
         html += `<div class="p-4 bg-white dark:bg-gray-950 rounded-lg border border-gray-200 dark:border-gray-800 mb-3 leading-relaxed text-sm">${this.parseAndRenderMarkdown(part.content)}</div>`;
       } else if (part.type === 'code') {
         if (part.language.toLowerCase() === 'html') {
-          html += `<div class="html-rendered-container mb-3 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-800">
-            <div class="html-rendered-label px-4 py-2 bg-blue-100 dark:bg-blue-900 text-xs font-semibold text-blue-900 dark:text-blue-200">Rendered HTML</div>
+          html += `<div class="html-rendered-container mb-3">
+            <div class="html-rendered-label">Rendered HTML</div>
             <div class="html-content bg-white dark:bg-gray-800 p-4 overflow-x-auto">${part.code}</div>
           </div>`;
         } else {
@@ -1910,7 +1910,7 @@ class StreamingRenderer {
             <details class="collapsible-code">
               <summary class="collapsible-code-summary">
                 <span>${this.escapeHtml(part.language)} - ${partLineCount} line${partLineCount !== 1 ? 's' : ''}</span>
-                <button class="copy-code-btn text-gray-400 hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-800" title="Copy code" onclick="event.preventDefault();event.stopPropagation();navigator.clipboard.writeText(this.closest('.collapsible-code').querySelector('code').textContent)">
+                <button class="copy-code-btn" title="Copy code" onclick="event.preventDefault();event.stopPropagation();navigator.clipboard.writeText(this.closest('.collapsible-code').querySelector('code').textContent)">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                   </svg>
@@ -1957,10 +1957,10 @@ class StreamingRenderer {
     // Render HTML code blocks as actual HTML elements
     if (language === 'html') {
       div.innerHTML = `
-        <div class="html-rendered-container mb-2 p-2 bg-blue-50 dark:bg-blue-900 rounded border border-blue-200 dark:border-blue-700 text-xs text-blue-700 dark:text-blue-300">
+        <div class="html-rendered-container alert-info text-xs mb-2 text-blue-700 dark:text-blue-300">
           Rendered HTML
         </div>
-        <div class="html-content bg-white dark:bg-gray-800 p-4 rounded border border-gray-200 dark:border-gray-700 overflow-x-auto">
+        <div class="html-content">
           ${code}
         </div>
       `;
