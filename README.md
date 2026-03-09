@@ -87,7 +87,6 @@ Server starts on `http://localhost:3000/gm/`
 - SQLite 3
 - Modern browser (Chrome, Firefox, Safari, Edge)
 - At least one supported AI coding agent installed (see table above)
-- Optional: Python 3.9+ for text-to-speech on Windows
 
 ## Architecture
 

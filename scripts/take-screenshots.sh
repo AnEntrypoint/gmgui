@@ -30,8 +30,17 @@ ab screenshot --full "$DOCS_DIR/screenshot-main.png"
 echo "Saved screenshot-main.png"
 
 ab eval 'document.querySelector(".conversation-item")?.click()'
-sleep 2
+sleep 3
 ab wait --load networkidle
+sleep 2
+
+# Wait for conversation content to render
+ab eval '(async()=>{for(let i=0;i<20;i++){if(document.querySelector("#output .event-block, #output .message-block")){return"ready"}await new Promise(r=>setTimeout(r,500))}return"timeout"})()'
+sleep 1
+
+# Scroll down to show action content
+ab eval 'var s=document.getElementById("output-scroll")||document.getElementById("output");if(s){s.scrollTop=Math.min(s.scrollHeight*0.4,800)}'
+sleep 1
 
 ab screenshot --full "$DOCS_DIR/screenshot-chat.png"
 echo "Saved screenshot-chat.png"
@@ -56,6 +65,10 @@ ab screenshot --full "$DOCS_DIR/screenshot-files.png"
 echo "Saved screenshot-files.png"
 
 ab eval 'document.querySelector(".view-toggle-btn[data-view=\"terminal\"]")?.click()'
+sleep 3
+
+# Wait for terminal to have content
+ab eval '(async()=>{for(let i=0;i<10;i++){var t=document.querySelector("#terminalOutput .xterm-screen");if(t&&t.textContent.trim().length>5)return"ready";await new Promise(r=>setTimeout(r,500))}return"timeout"})()'
 sleep 1
 
 ab screenshot --full "$DOCS_DIR/screenshot-terminal.png"
