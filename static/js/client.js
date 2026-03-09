@@ -765,10 +765,15 @@ class AgentGUIClient {
       this._serverProcessingEstimate = 0.7 * this._serverProcessingEstimate + 0.3 * serverTime;
     }
 
-    // Always subscribe to the session so blocks are not lost regardless of which conversation is active
+    // Subscribe to the session so blocks are not lost, but skip conversation
+    // re-subscribe when resumed=true to prevent infinite loop (server sends
+    // streaming_start on subscribe when activeExecutions exists, which would
+    // trigger another subscribe here, looping forever)
     if (this.wsManager.isConnected) {
       this.wsManager.subscribeToSession(data.sessionId);
-      this.wsManager.sendMessage({ type: 'subscribe', conversationId: data.conversationId });
+      if (!data.resumed) {
+        this.wsManager.sendMessage({ type: 'subscribe', conversationId: data.conversationId });
+      }
     }
 
     // If this streaming event is for a different conversation than what we are viewing,
