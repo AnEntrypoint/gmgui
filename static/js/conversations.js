@@ -191,7 +191,8 @@ class ConversationManager {
 
       this.folderBrowser.listEl.innerHTML = '';
 
-      if (dirPath !== '~' && dirPath !== '/' && dirPath !== this.folderBrowser.homePath) {
+      const isAtRoot = dirPath === '~' || dirPath === '/' || dirPath === this.folderBrowser.homePath || /^[A-Za-z]:[\\\/]?$/.test(dirPath);
+      if (!isAtRoot) {
         const parentPath = this.getParentPath(dirPath);
         const upItem = document.createElement('li');
         upItem.className = 'folder-list-item';
@@ -212,7 +213,8 @@ class ConversationManager {
         li.addEventListener('click', () => {
           const expandedBase = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
           const separator = expandedBase.includes('\\') ? '\\' : '/';
-          const newPath = expandedBase + separator + folder.name;
+          const base = expandedBase.replace(/[\/\\]+$/, '');
+          const newPath = base + separator + folder.name;
           this.loadFolders(newPath);
         });
         this.folderBrowser.listEl.appendChild(li);
@@ -244,17 +246,25 @@ class ConversationManager {
 
     const expanded = dirPath === '~' ? this.folderBrowser.homePath : dirPath;
     const parts = pathSplit(expanded);
-    const separator = expanded.includes('\\') ? '\\' : '/';
+    const isWin = expanded.includes('\\') || /^[A-Za-z]:/.test(expanded);
+    const separator = isWin ? '\\' : '/';
+    const rootPath = isWin && parts[0] && /^[A-Za-z]:$/.test(parts[0]) ? parts[0] + separator : separator;
 
     let html = '';
-    html += `<span class="folder-breadcrumb-segment" data-path="${separator}">${separator} </span>`;
+    html += `<span class="folder-breadcrumb-segment" data-path="${this.escapeHtml(rootPath)}">${this.escapeHtml(rootPath)} </span>`;
 
     let accumulated = '';
+    const isDriveLetter = isWin && parts[0] && /^[A-Za-z]:$/.test(parts[0]);
     for (let i = 0; i < parts.length; i++) {
-      accumulated += separator + parts[i];
+      if (i === 0 && isDriveLetter) {
+        accumulated = parts[0];
+      } else {
+        accumulated += separator + parts[i];
+      }
+      const segPath = (i === 0 && isDriveLetter) ? rootPath : accumulated;
       const isLast = i === parts.length - 1;
       html += `<span class="folder-breadcrumb-separator">${separator}</span>`;
-      html += `<span class="folder-breadcrumb-segment${isLast ? '' : ''}" data-path="${this.escapeHtml(accumulated)}">${this.escapeHtml(parts[i])}</span>`;
+      html += `<span class="folder-breadcrumb-segment${isLast ? '' : ''}" data-path="${this.escapeHtml(segPath)}">${this.escapeHtml(parts[i])}</span>`;
     }
 
     this.folderBrowser.breadcrumbEl.innerHTML = html;
