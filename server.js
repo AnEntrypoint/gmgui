@@ -4247,7 +4247,7 @@ registerUtilHandlers(wsRouter, {
   broadcastSync, getSpeech, getProviderConfigs, saveProviderConfig,
   startGeminiOAuth, exchangeGeminiOAuthCode,
   geminiOAuthState: () => geminiOAuthState,
-  STARTUP_CWD, activeScripts, voiceCacheManager, toolManager
+  STARTUP_CWD, activeScripts, voiceCacheManager, toolManager, discoveredAgents
 });
 
 wsRouter.onLegacy((data, ws) => {
