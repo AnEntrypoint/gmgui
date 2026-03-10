@@ -12,12 +12,22 @@
 
   function getCwd() {
     try {
-      if (window.conversationManager) {
+      // Try conversation manager first
+      if (window.conversationManager && window.conversationManager.activeId) {
         var mgr = window.conversationManager;
         var id = mgr.activeId;
-        if (id && mgr.conversations) {
+        if (mgr.conversations) {
           var conv = mgr.conversations.find(function(c) { return c.id === id; });
           if (conv && conv.workingDirectory) return conv.workingDirectory;
+        }
+      }
+      // Fallback to global currentConversation
+      if (window.currentConversation) {
+        var convId = window.currentConversation;
+        if (window.conversationManager && window.conversationManager.conversations) {
+          var convList = window.conversationManager.conversations;
+          var match = convList.find(function(c) { return c.id === convId; });
+          if (match && match.workingDirectory) return match.workingDirectory;
         }
       }
     } catch (_) {}
