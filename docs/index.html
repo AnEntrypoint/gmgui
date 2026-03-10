@@ -193,21 +193,27 @@
     /* Screenshots */
     .screenshot-gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 2rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
       margin-top: 3rem;
+    }
+
+    .screenshot-gallery.two-col {
+      grid-template-columns: repeat(2, 1fr);
+      margin-top: 1.5rem;
     }
 
     .screenshot-item {
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
       transition: all 0.3s ease;
+      background: #1f2937;
     }
 
     .screenshot-item:hover {
-      transform: scale(1.03);
-      box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.2);
     }
 
     .screenshot-item img {
@@ -217,11 +223,13 @@
     }
 
     .screenshot-caption {
-      padding: 1rem;
-      background: #f9fafb;
+      padding: 0.875rem 1rem;
+      background: #1f2937;
       text-align: center;
       font-weight: 600;
-      color: #374151;
+      color: #e5e7eb;
+      font-size: 0.9rem;
+      letter-spacing: 0.02em;
     }
 
     /* Code Block */
@@ -321,7 +329,8 @@
         grid-template-columns: 1fr;
       }
 
-      .screenshot-gallery {
+      .screenshot-gallery,
+      .screenshot-gallery.two-col {
         grid-template-columns: 1fr;
       }
     }
@@ -332,7 +341,7 @@
   <section class="hero">
     <div class="hero-content">
       <h1>AgentGUI</h1>
-      <p>Multi-agent GUI for AI coding assistants. One interface for all your AI agents.</p>
+      <p>Multi-agent GUI for Claude Code, Gemini CLI, OpenCode &amp; more. Real-time streaming, dark mode, voice, and SQLite persistence.</p>
       
       <div class="badges">
         <img src="https://img.shields.io/npm/v/agentgui?color=brightgreen" alt="npm version">
@@ -443,18 +452,26 @@
 
       <div class="screenshot-gallery">
         <div class="screenshot-item">
-          <img src="screenshot-light.png" alt="Light Mode">
-          <div class="screenshot-caption">Light Mode</div>
+          <img src="screenshot-light.png" alt="Welcome Screen - Light Mode">
+          <div class="screenshot-caption">Welcome Screen · Light Mode</div>
         </div>
-
         <div class="screenshot-item">
-          <img src="screenshot-dark.png" alt="Dark Mode">
-          <div class="screenshot-caption">Dark Mode</div>
+          <img src="screenshot-dark.png" alt="Welcome Screen - Dark Mode">
+          <div class="screenshot-caption">Welcome Screen · Dark Mode</div>
         </div>
-
         <div class="screenshot-item">
-          <img src="screenshot-dark-conversation.png" alt="Active Conversation">
-          <div class="screenshot-caption">Active Conversation</div>
+          <img src="screenshot-dark-conversation.png" alt="Live Streaming">
+          <div class="screenshot-caption">Live Agent Streaming</div>
+        </div>
+      </div>
+      <div class="screenshot-gallery two-col">
+        <div class="screenshot-item">
+          <img src="screenshot-conversation.png" alt="Tool Use & Code Output">
+          <div class="screenshot-caption">Tool Use &amp; Code Output</div>
+        </div>
+        <div class="screenshot-item">
+          <img src="screenshot-tools.png" alt="Tools & Extensions">
+          <div class="screenshot-caption">Tools &amp; Extensions Manager</div>
         </div>
       </div>
     </div>
