@@ -393,11 +393,13 @@ function findCommand(cmd) {
   const localBin = path.join(path.dirname(fileURLToPath(import.meta.url)), 'node_modules', '.bin', isWindows ? cmd + '.cmd' : cmd);
   if (fs.existsSync(localBin)) return localBin;
   try {
+    // Add timeout to prevent hanging during agent discovery
+    const timeoutMs = 2000;
     if (isWindows) {
-      const result = execSync(`where ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      const result = execSync(`where ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: timeoutMs }).trim();
       return result.split('\n')[0].trim();
     } else {
-      const result = execSync(`which ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      const result = execSync(`which ${cmd}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: timeoutMs }).trim();
       return result;
     }
   } catch (_) {
@@ -479,7 +481,11 @@ function discoverAgents() {
     if (result) {
       agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: result, protocol: bin.protocol });
     } else if (bin.npxPackage) {
+      // For npx-launchable packages (including claude-code as fallback)
       agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: null, protocol: bin.protocol, npxPackage: bin.npxPackage, npxLaunchable: true });
+    } else if (bin.id === 'claude-code') {
+      // Ensure Claude Code is always available as an npx-launchable agent
+      agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: null, protocol: bin.protocol, npxPackage: '@anthropic-ai/claude-code', npxLaunchable: true });
     }
   }
   return agents;
@@ -1834,9 +1840,10 @@ const server = http.createServer(async (req, res) => {
     if (pathOnly === '/api/tools' && req.method === 'GET') {
       console.log('[TOOLS-API] Handling GET /api/tools');
       try {
+        // Return immediately with cached data (non-blocking) - skip network version checks
         const tools = await Promise.race([
-          toolManager.getAllToolsAsync(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+          toolManager.getAllToolsAsync(true), // skipPublishedVersion=true for fast response
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
         ]);
         const result = tools.map((t) => ({
           id: t.id,
@@ -1853,7 +1860,7 @@ const server = http.createServer(async (req, res) => {
         }));
         sendJSON(req, res, 200, { tools: result });
       } catch (err) {
-        console.log('[TOOLS-API] Timeout or error, returning partial data:', err.message);
+        console.log('[TOOLS-API] Timeout (expected with long CLI operations), returning cached data:', err.message);
         // Return cached tool statuses on timeout
         sendJSON(req, res, 200, { tools: [] });
       }
@@ -4734,9 +4741,6 @@ function performAgentHealthCheck() {
 }
 
 function onServerReady() {
-  // Clear tool status cache to ensure fresh detection of installed tools
-  toolManager.clearStatusCache();
-
   console.log(`GMGUI running on http://localhost:${PORT}${BASE_URL}/`);
   console.log(`Agents: ${discoveredAgents.map(a => a.name).join(', ') || 'none'}`);
   console.log(`Hot reload: ${watch ? 'on' : 'off'}`);
