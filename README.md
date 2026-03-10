@@ -26,7 +26,7 @@ Multi-agent GUI client for AI coding agents with real-time streaming, WebSocket 
 | Kiro CLI | ACP | - |
 | fast-agent | ACP | - |
 
-![Main Interface](docs/screenshot-main.png)
+![Main Interface](docs/screenshot-dark.png)
 
 ## Why AgentGUI?
 
@@ -50,17 +50,13 @@ Modern AI coding requires juggling multiple agents, each in their own terminal. 
 
 ### Screenshots
 
-| Main Interface | Chat View |
-|----------------|-----------|
-| ![Main](docs/screenshot-main.png) | ![Chat](docs/screenshot-chat.png) |
+| Light Mode | Dark Mode |
+|------------|-----------|
+| ![Light](docs/screenshot-light.png) | ![Dark](docs/screenshot-dark.png) |
 
-| Files Browser | Terminal View |
-|---------------|---------------|
-| ![Files](docs/screenshot-files.png) | ![Terminal](docs/screenshot-terminal.png) |
-
-| Tools Management | Conversation |
-|------------------|--------------|
-| ![Tools](docs/screenshot-tools-popup.png) | ![Conversation](docs/screenshot-conversation.png) |
+| Active Conversation |
+|---------------------|
+| ![Conversation](docs/screenshot-dark-conversation.png) |
 
 ## Quick Start
 
