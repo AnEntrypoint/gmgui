@@ -532,7 +532,8 @@ class AgentGUIClient {
           return;
         }
         try {
-          const data = await window.wsClient.rpc('conv.queue', { id: this.state.currentConversation.id, content: message });
+          // Queue uses msg.send which will enqueue if streaming is active
+          const data = await window.wsClient.rpc('msg.send', { id: this.state.currentConversation.id, content: message });
           console.log('Queue response:', data);
           if (this.ui.messageInput) {
             this.ui.messageInput.value = '';
