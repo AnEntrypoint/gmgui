@@ -918,6 +918,24 @@ class AgentGUIClient {
       this.scrollToBottom(true);
     }
 
+    // Immediately fetch any existing chunks for this session and start polling
+    // This ensures real-time feedback appears immediately
+    try {
+      const initialChunks = await this.fetchChunks(data.conversationId, 0);
+      // Filter to only chunks from the current session
+      const sessionChunks = initialChunks.filter(c => c.sessionId === data.sessionId && c.block && c.block.type);
+      if (sessionChunks.length > 0) {
+        this.renderChunkBatch(sessionChunks);
+        // Update lastFetchTimestamp so polling doesn't duplicate these chunks
+        const lastChunk = sessionChunks[sessionChunks.length - 1];
+        if (lastChunk && lastChunk.created_at) {
+          this.chunkPollState.lastFetchTimestamp = lastChunk.created_at;
+        }
+      }
+    } catch (e) {
+      console.warn('Initial chunk fetch failed:', e.message);
+    }
+
     // Start polling for chunks from database
     this.startChunkPolling(data.conversationId);
 
@@ -1935,7 +1953,10 @@ class AgentGUIClient {
     if (pollState.isPolling) return;
 
     pollState.isPolling = true;
-    pollState.lastFetchTimestamp = Date.now();
+    // Only reset lastFetchTimestamp if it wasn't already set by initial fetch
+    if (pollState.lastFetchTimestamp === 0) {
+      pollState.lastFetchTimestamp = Date.now();
+    }
     pollState.backoffDelay = this._getAdaptivePollInterval();
     pollState.sessionCheckCounter = 0;
     pollState.emptyPollCount = 0;
