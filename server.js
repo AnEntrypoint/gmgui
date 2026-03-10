@@ -515,6 +515,7 @@ async function discoverExternalACPServers() {
 }
 
 const discoveredAgents = discoverAgents();
+console.log('[STARTUP] Agent discovery:', discoveredAgents.map(a => ({ id: a.id, found: !!a.path })));
 initializeDescriptors(discoveredAgents);
 
 const modelCache = new Map();
@@ -1048,11 +1049,23 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === '/') { res.writeHead(302, { Location: BASE_URL + '/' }); res.end(); return; }
 
-  if (!req.url.startsWith(BASE_URL + '/') && req.url !== BASE_URL) {
+  // Handle requests with or without BASE_URL prefix (for reverse proxy compatibility)
+  let routePath = req.url;
+  if (req.url.startsWith(BASE_URL + '/')) {
+    routePath = req.url.slice(BASE_URL.length);
+  } else if (req.url === BASE_URL) {
+    routePath = '/';
+  } else if (req.url.startsWith('/api/') || req.url.startsWith('/js/') || req.url.startsWith('/css/') ||
+             req.url.startsWith('/vendor/') || req.url.startsWith('/sync') || req.url === '/' ||
+             req.url.startsWith('/conversations/')) {
+    // Allow requests without BASE_URL prefix for static files and known routes
+    // This supports reverse proxies that strip the BASE_URL prefix
+    routePath = req.url;
+  } else {
     res.writeHead(404); res.end('Not found'); return;
   }
 
-  const routePath = req.url.slice(BASE_URL.length) || '/';
+  routePath = routePath || '/';
 
   try {
     // Remove query parameters from routePath for matching
