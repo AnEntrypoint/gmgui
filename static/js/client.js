@@ -283,11 +283,17 @@ class AgentGUIClient {
             const latestConv = this.state.conversations[0];
             console.log('Loading latest conversation instead:', latestConv.id);
             return this.loadConversationMessages(latestConv.id);
+          } else {
+            // No conversations available - show welcome screen
+            this._showWelcomeScreen();
           }
         }).finally(() => {
           this._isLoadingConversation = false;
         });
       }
+    } else {
+      // No conversation in URL - show welcome screen
+      this._showWelcomeScreen();
     }
   }
 
@@ -599,8 +605,7 @@ class AgentGUIClient {
       this.updateUrlForConversation(null);
       this.stopChunkPolling();
       this.enableControls();
-      const outputEl = document.getElementById('output');
-      if (outputEl) outputEl.innerHTML = '';
+      this._showWelcomeScreen();
       if (this.ui.messageInput) {
         this.ui.messageInput.value = '';
         this.ui.messageInput.style.height = 'auto';
@@ -1860,6 +1865,54 @@ class AgentGUIClient {
     });
   }
 
+  /**
+   * Show native loading spinner on document element
+   */
+  showLoadingSpinner() {
+    document.documentElement.style.pointerEvents = 'auto';
+    // Show native CSS loading indicator (not removing, just visual cue)
+    const indicator = document.querySelector('[data-model-dl-indicator]');
+    if (indicator && !indicator.classList.contains('visible')) {
+      indicator.classList.add('visible');
+    }
+  }
+
+  /**
+   * Hide native loading spinner
+   */
+  hideLoadingSpinner() {
+    const indicator = document.querySelector('[data-model-dl-indicator]');
+    if (indicator && indicator.classList.contains('visible')) {
+      indicator.classList.remove('visible');
+    }
+  }
+
+  /**
+   * Show welcome screen when no conversation is selected
+   */
+  _showWelcomeScreen() {
+    const outputEl = document.getElementById('output');
+    if (!outputEl) return;
+    outputEl.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:2rem;padding:2rem;">
+        <div style="text-align:center;">
+          <h1 style="margin:0;font-size:2.5rem;color:var(--color-text-primary);">Welcome to AgentGUI</h1>
+          <p style="margin:1rem 0 0 0;font-size:1.1rem;color:var(--color-text-secondary);">Start a new conversation or select one from the sidebar</p>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;max-width:600px;">
+          <div style="padding:1.5rem;border-radius:0.5rem;background:var(--color-bg-secondary);border:1px solid var(--color-border);">
+            <h3 style="margin:0 0 0.5rem 0;color:var(--color-primary);">New Conversation</h3>
+            <p style="margin:0;font-size:0.9rem;color:var(--color-text-secondary);">Create a new chat with any AI agent</p>
+          </div>
+          <div style="padding:1.5rem;border-radius:0.5rem;background:var(--color-bg-secondary);border:1px solid var(--color-border);">
+            <h3 style="margin:0 0 0.5rem 0;color:var(--color-primary);">Available Agents</h3>
+            <p style="margin:0;font-size:0.9rem;color:var(--color-text-secondary);">Claude Code, Gemini, OpenCode, and more</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   _showSkeletonLoading(conversationId) {
     const outputEl = document.getElementById('output');
     if (!outputEl) return;
@@ -1883,6 +1936,8 @@ class AgentGUIClient {
         </div>
       </div>
     `;
+    // Keep loading spinner visible during hydration
+    this.showLoadingSpinner();
   }
 
   async streamToConversation(conversationId, prompt, agentId, model, subAgent) {
@@ -2722,6 +2777,8 @@ class AgentGUIClient {
           this.conversationCache.delete(conversationId);
           this.syncPromptState(conversationId);
           this.restoreScrollPosition(conversationId);
+          // Hydration complete - hide loading spinner
+          this.hideLoadingSpinner();
           // Prompt state is immutable: computed from shouldResumeStreaming via syncPromptState
           // Do not call enableControls/disableControls here - prompt state is determined by streaming status
           return;
@@ -2734,7 +2791,9 @@ class AgentGUIClient {
 
       let fullData;
       try {
-        fullData = await window.wsClient.rpc('conv.full', { id: conversationId });
+        // Load only recent chunks initially (lazy load older ones)
+        // Use chunkLimit of 50 to make page load faster
+        fullData = await window.wsClient.rpc('conv.full', { id: conversationId, chunkLimit: 50 });
       } catch (e) {
         if (e.code === 404) {
           console.warn('Conversation no longer exists:', conversationId);
@@ -2967,9 +3026,12 @@ class AgentGUIClient {
 
         this.restoreScrollPosition(conversationId);
         this.setupScrollUpDetection(conversationId);
+        // Hydration complete - hide loading spinner
+        this.hideLoadingSpinner();
       }
     } catch (error) {
       if (error.name === 'AbortError') return;
+      this.hideLoadingSpinner();
       console.error('Failed to load conversation messages:', error);
       // Resume from last successful conversation if available, or fall back to any available conversation
       const fallbackConv = prevConversationId ? prevConversationId : availableFallback?.id;
