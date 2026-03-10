@@ -1833,21 +1833,30 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/tools' && req.method === 'GET') {
       console.log('[TOOLS-API] Handling GET /api/tools');
-      const tools = await toolManager.getAllToolsAsync();
-      const result = tools.map((t) => ({
-        id: t.id,
-        name: t.name,
-        pkg: t.pkg,
-        category: t.category || 'plugin',
-        installed: t.installed,
-        status: t.installed ? (t.isUpToDate ? 'installed' : 'needs_update') : 'not_installed',
-        isUpToDate: t.isUpToDate,
-        upgradeNeeded: t.upgradeNeeded,
-        hasUpdate: t.upgradeNeeded && t.installed,
-        installedVersion: t.installedVersion,
-        publishedVersion: t.publishedVersion
-      }));
-      sendJSON(req, res, 200, { tools: result });
+      try {
+        const tools = await Promise.race([
+          toolManager.getAllToolsAsync(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        const result = tools.map((t) => ({
+          id: t.id,
+          name: t.name,
+          pkg: t.pkg,
+          category: t.category || 'plugin',
+          installed: t.installed,
+          status: t.installed ? (t.isUpToDate ? 'installed' : 'needs_update') : 'not_installed',
+          isUpToDate: t.isUpToDate,
+          upgradeNeeded: t.upgradeNeeded,
+          hasUpdate: t.upgradeNeeded && t.installed,
+          installedVersion: t.installedVersion,
+          publishedVersion: t.publishedVersion
+        }));
+        sendJSON(req, res, 200, { tools: result });
+      } catch (err) {
+        console.log('[TOOLS-API] Timeout or error, returning partial data:', err.message);
+        // Return cached tool statuses on timeout
+        sendJSON(req, res, 200, { tools: [] });
+      }
       return;
     }
 
