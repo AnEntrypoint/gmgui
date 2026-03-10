@@ -1162,6 +1162,14 @@ class AgentGUIClient {
       this.saveScrollPosition(conversationId);
     }
 
+    // Fetch any final chunks that may have been missed during polling
+    // This ensures all output is visible without requiring a page refresh
+    if (conversationId && sessionId) {
+      this.fetchRemainingChunks(conversationId, sessionId).catch(err => {
+        console.warn('Final chunk fetch failed:', err.message);
+      });
+    }
+
     this.enableControls();
     this.emit('streaming:complete', data);
 
@@ -2077,6 +2085,23 @@ class AgentGUIClient {
     this._chunkMissedPredictions = 0;
     this._lastChunkArrival = 0;
     if (this._placeholderTimer) { clearTimeout(this._placeholderTimer); this._placeholderTimer = null; }
+  }
+
+  /**
+   * Fetch any remaining chunks after streaming completes
+   * Ensures all output is visible without requiring a page refresh
+   */
+  async fetchRemainingChunks(conversationId, sessionId) {
+    try {
+      const lastTimestamp = this.chunkPollState.lastFetchTimestamp || 0;
+      const chunks = await this.fetchChunks(conversationId, lastTimestamp);
+      const sessionChunks = chunks.filter(c => c.sessionId === sessionId && c.block && c.block.type);
+      if (sessionChunks.length > 0) {
+        this.renderChunkBatch(sessionChunks);
+      }
+    } catch (err) {
+      console.error('Failed to fetch remaining chunks:', err);
+    }
   }
 
   /**
