@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Patch script to fix Windows path duplication issue in fsbrowse
+ * and sync fsbrowse styling with AgentGUI dark mode theme
  * Fixes: Error ENOENT: no such file or directory, scandir 'C:\C:\dev'
  */
 
@@ -89,4 +90,130 @@ try {
 } catch (err) {
   console.error('[PATCH] Error applying fsbrowse patch:', err.message);
   process.exit(1);
+}
+
+// Patch fsbrowse CSS for dark mode theme sync
+const fsbrowseCSSPath = path.join(__dirname, '..', 'node_modules', 'fsbrowse', 'public', 'style.css');
+
+if (fs.existsSync(fsbrowseCSSPath)) {
+  try {
+    let cssContent = fs.readFileSync(fsbrowseCSSPath, 'utf8');
+
+    // Check if dark mode CSS is already patched
+    if (cssContent.includes('html.dark {')) {
+      console.log('[PATCH] fsbrowse dark mode CSS already patched');
+    } else {
+      // Inject dark mode CSS rules
+      const darkModeCSS = `/* Light mode - explicit */
+html.light {
+  --primary: #3b82f6;
+  --primary-dark: #2563eb;
+  --secondary: #6b7280;
+  --border: #e5e7eb;
+  --bg: #ffffff;
+  --bg-alt: #f9fafb;
+  --text: #111827;
+  --text-light: #6b7280;
+  --danger: #ef4444;
+}
+
+/* Dark mode - explicit, matches AgentGUI grey dark theme */
+html.dark {
+  --primary: #737373;
+  --primary-dark: #525252;
+  --secondary: #a3a3a3;
+  --border: #333333;
+  --bg: #1a1a1a;
+  --bg-alt: #242424;
+  --text: #e5e5e5;
+  --text-light: #a3a3a3;
+  --danger: #ef4444;
+}
+
+/* Fallback: media query for dark mode preference */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --primary: #60a5fa;
+    --primary-dark: #3b82f6;
+    --secondary: #9ca3af;
+    --border: #374151;
+    --bg: #111827;
+    --bg-alt: #1f2937;
+    --text: #f3f4f6;
+    --text-light: #9ca3af;
+    --danger: #f87171;
+  }
+}`;
+
+      // Find the closing brace of :root and insert after it
+      cssContent = cssContent.replace(
+        /:root \{[\s\S]*?\}\s*@media/,
+        match => match.replace('@media', darkModeCSS + '\n@media')
+      );
+
+      fs.writeFileSync(fsbrowseCSSPath, cssContent, 'utf8');
+      console.log('[PATCH] fsbrowse dark mode CSS patched successfully');
+    }
+  } catch (err) {
+    console.warn('[PATCH] Could not patch fsbrowse CSS:', err.message);
+  }
+}
+
+// Patch fsbrowse app.js for theme sync
+const fsbrowseAppJSPath = path.join(__dirname, '..', 'node_modules', 'fsbrowse', 'public', 'app.js');
+
+if (fs.existsSync(fsbrowseAppJSPath)) {
+  try {
+    let appContent = fs.readFileSync(fsbrowseAppJSPath, 'utf8');
+
+    // Check if theme sync is already patched
+    if (appContent.includes('setupThemeSync')) {
+      console.log('[PATCH] fsbrowse theme sync already patched');
+    } else {
+      // Inject setupThemeSync call and method
+      const themeSyncMethod = `
+  setupThemeSync() {
+    // Sync theme from parent window/localStorage if available
+    const syncTheme = () => {
+      const theme = localStorage.getItem('gmgui-theme') ||
+                    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.className = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+    };
+
+    syncTheme();
+
+    // Watch for storage changes from other tabs/windows
+    window.addEventListener('storage', e => {
+      if (e.key === 'gmgui-theme') syncTheme();
+    });
+
+    // Watch for media query changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTheme);
+  },`;
+
+      // Add setupThemeSync call to init()
+      appContent = appContent.replace(
+        'async init() {',
+        'async init() {\n    this.setupThemeSync();'
+      );
+
+      // Add setupThemeSync method after init()
+      appContent = appContent.replace(
+        'async init() {\n    this.setupThemeSync();\n    this.setupDragDrop();',
+        'async init() {\n    this.setupThemeSync();\n    this.setupDragDrop();'
+      );
+
+      // Insert the method after the api() method
+      appContent = appContent.replace(
+        'api(path) {\n    return `${this.basePath}${path}`;\n  },',
+        'api(path) {\n    return `${this.basePath}${path}`;\n  },' + themeSyncMethod
+      );
+
+      fs.writeFileSync(fsbrowseAppJSPath, appContent, 'utf8');
+      console.log('[PATCH] fsbrowse theme sync patched successfully');
+    }
+  } catch (err) {
+    console.warn('[PATCH] Could not patch fsbrowse app.js:', err.message);
+  }
 }
