@@ -180,6 +180,17 @@
     }
   });
 
+  // Restart terminal in the new conversation's cwd when conversation switches while terminal is active
+  window.addEventListener('conversation-changed', function(e) {
+    if (!termActive) return;
+    var cwd = getCwd();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
+      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
+      if (term) term.write('\r\n\x1b[33m[Switched to: ' + (cwd || '/') + ']\x1b[0m\r\n');
+    }
+  });
+
   window.terminalModule = {
     start: startTerminal,
     stop: stopTerminal,

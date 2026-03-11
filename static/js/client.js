@@ -66,6 +66,12 @@ class AgentGUIClient {
     this._inflightRequests = new Map();
     this._previousConvAbort = null;
 
+    // Background conversation cache: keeps last 50 conversations' streaming blocks in memory
+    // Blocks are stored as packed msgpackr Uint8Arrays for memory efficiency
+    // Map<conversationId, { packed: Uint8Array[], seqSet: Set<number>, sessionId: string }>
+    this._bgCache = new Map();
+    this.BG_CACHE_MAX = 50;
+
     // PHASE 2: Request Lifetime Tracking
     this._loadInProgress = {}; // { [conversationId]: { requestId, abortController, timestamp, prevConversationId } }
     this._currentRequestId = 0; // Auto-incrementing request counter
@@ -955,6 +961,29 @@ class AgentGUIClient {
     if (!this.state.streamingBlocks) this.state.streamingBlocks = [];
     this.state.streamingBlocks.push(block);
 
+    // Cache block for background conversations (all 50 cached convs, not just active)
+    const convId = data.conversationId;
+    if (convId) {
+      let entry = this._bgCache.get(convId);
+      if (!entry) {
+        // Evict oldest if at capacity
+        if (this._bgCache.size >= this.BG_CACHE_MAX) {
+          const oldestKey = this._bgCache.keys().next().value;
+          this._bgCache.delete(oldestKey);
+        }
+        entry = { packed: [], seqSet: new Set(), sessionId: data.sessionId };
+        this._bgCache.set(convId, entry);
+      }
+      if (data.seq === undefined || !entry.seqSet.has(data.seq)) {
+        if (data.seq !== undefined) entry.seqSet.add(data.seq);
+        entry.sessionId = data.sessionId;
+        // Pack with msgpackr if available, else store raw
+        try {
+          entry.packed.push(typeof msgpackr !== 'undefined' ? msgpackr.pack(block) : block);
+        } catch (_) { entry.packed.push(block); }
+      }
+    }
+
     // Only render for the currently-visible session
     if (this.state.currentSession?.id !== data.sessionId) return;
 
@@ -1671,6 +1700,30 @@ class AgentGUIClient {
     }
   }
 
+  // Flush background-cached blocks into the active streaming container
+  _flushBgCache(conversationId, sessionId) {
+    const entry = this._bgCache.get(conversationId);
+    if (!entry || entry.packed.length === 0) return;
+    if (entry.sessionId !== sessionId) { this._bgCache.delete(conversationId); return; }
+
+    const streamingEl = document.getElementById(`streaming-${sessionId}`);
+    if (!streamingEl) return;
+    const blocksEl = streamingEl.querySelector('.streaming-blocks');
+    if (!blocksEl) return;
+
+    const seenSeqs = (this._renderedSeqs || {})[sessionId] || new Set();
+    for (const packed of entry.packed) {
+      try {
+        const block = (typeof msgpackr !== 'undefined' && packed instanceof Uint8Array)
+          ? msgpackr.unpack(packed) : packed;
+        const el = this.renderer.renderBlock(block, { sessionId }, blocksEl);
+        if (el) blocksEl.appendChild(el);
+      } catch (_) {}
+    }
+    this._bgCache.delete(conversationId);
+    this.scrollToBottom();
+  }
+
   async _recoverMissedChunks() {
     if (!this.state.currentSession?.id) return;
     if (!this.state.streamingConversations.has(this.state.currentConversation?.id)) return;
@@ -1813,12 +1866,25 @@ class AgentGUIClient {
   _showWelcomeScreen() {
     const outputEl = document.getElementById('output');
     if (!outputEl) return;
+    // Build agent options from loaded agents list
+    const agents = this.state.agents || [];
+    const agentOptions = agents.map(a =>
+      `<option value="${this.escapeHtml(a.id)}">${this.escapeHtml(a.name.split(/[\s\-]+/)[0])}</option>`
+    ).join('');
     outputEl.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:2rem;padding:2rem;">
         <div style="text-align:center;">
           <h1 style="margin:0;font-size:2.5rem;color:var(--color-text-primary);">Welcome to AgentGUI</h1>
           <p style="margin:1rem 0 0 0;font-size:1.1rem;color:var(--color-text-secondary);">Start a new conversation or select one from the sidebar</p>
         </div>
+        ${agents.length > 0 ? `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:0.75rem;">
+          <label style="font-size:0.85rem;color:var(--color-text-secondary);font-weight:500;">Select Agent</label>
+          <select id="welcomeAgentSelect" style="padding:0.5rem 1rem;border-radius:0.375rem;border:1px solid var(--color-border);background:var(--color-bg-secondary);color:var(--color-text-primary);font-size:1rem;cursor:pointer;">
+            ${agentOptions}
+          </select>
+        </div>
+        ` : ''}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;max-width:600px;">
           <div style="padding:1.5rem;border-radius:0.5rem;background:var(--color-bg-secondary);border:1px solid var(--color-border);">
             <h3 style="margin:0 0 0.5rem 0;color:var(--color-primary);">New Conversation</h3>
@@ -1826,11 +1892,22 @@ class AgentGUIClient {
           </div>
           <div style="padding:1.5rem;border-radius:0.5rem;background:var(--color-bg-secondary);border:1px solid var(--color-border);">
             <h3 style="margin:0 0 0.5rem 0;color:var(--color-primary);">Available Agents</h3>
-            <p style="margin:0;font-size:0.9rem;color:var(--color-text-secondary);">Claude Code, Gemini, OpenCode, and more</p>
+            <p style="margin:0;font-size:0.9rem;color:var(--color-text-secondary);">${agents.length > 0 ? agents.map(a => a.name.split(/[\s\-]+/)[0]).join(', ') : 'Claude Code, Gemini, OpenCode, and more'}</p>
           </div>
         </div>
       </div>
     `;
+    // Sync welcome agent select with the bottom bar cli selector
+    const welcomeSel = document.getElementById('welcomeAgentSelect');
+    if (welcomeSel) {
+      if (this.ui.cliSelector) welcomeSel.value = this.ui.cliSelector.value;
+      welcomeSel.addEventListener('change', () => {
+        if (this.ui.cliSelector) {
+          this.ui.cliSelector.value = welcomeSel.value;
+          this.ui.cliSelector.dispatchEvent(new Event('change'));
+        }
+      });
+    }
   }
 
   _showSkeletonLoading(conversationId) {
@@ -2463,6 +2540,7 @@ class AgentGUIClient {
           }
           window.ConversationState?.selectConversation(conversationId, 'dom_cache_load', 1);
           this.state.currentConversation = cached.conversation;
+          window.dispatchEvent(new CustomEvent('conversation-changed', { detail: { conversationId, conversation: cached.conversation } }));
           const cachedHasActivity = cached.conversation.messageCount > 0 || this.state.streamingConversations.has(conversationId);
           this.applyAgentAndModelSelection(cached.conversation, cachedHasActivity);
           this.conversationCache.delete(conversationId);
@@ -2510,6 +2588,7 @@ class AgentGUIClient {
 
       window.ConversationState?.selectConversation(conversationId, 'server_load', 1);
       this.state.currentConversation = conversation;
+      window.dispatchEvent(new CustomEvent('conversation-changed', { detail: { conversationId, conversation } }));
       const hasActivity = (allMessages && allMessages.length > 0) || isActivelyStreaming || latestSession || this.state.streamingConversations.has(conversationId);
       this.applyAgentAndModelSelection(conversation, hasActivity);
 
@@ -2702,6 +2781,9 @@ class AgentGUIClient {
           }
 
           this.updateUrlForConversation(conversationId, latestSession.id);
+
+          // Flush any blocks accumulated in the background cache while this conv wasn't active
+          this._flushBgCache(conversationId, latestSession.id);
 
           // IMMUTABLE: Prompt remains enabled - syncPromptState will set correct state
           this.syncPromptState(conversationId);
