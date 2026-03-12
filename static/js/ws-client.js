@@ -78,12 +78,14 @@ class WsClient {
 
 window.WsClient = WsClient;
 
-// Bootstrap: load codec (which pulls gpt-tokenizer from esm.sh), then connect
+// Bootstrap: create wsManager and wsClient synchronously so other modules can use them immediately.
+// Codec is loaded async and upgrades encoding once ready; websocket-manager falls back to msgpackr until then.
+window.wsManager = new WebSocketManager();
+window.wsClient = new WsClient(window.wsManager);
+window.wsManager.connect().catch(function() {});
+
 import('./codec.js').then(codec => {
   window._codec = codec;
-  window.wsManager = new WebSocketManager();
-  window.wsClient = new WsClient(window.wsManager);
-  window.wsManager.connect().catch(function() {});
 }).catch(e => {
-  console.error('[ws-client] Failed to load codec:', e);
+  console.error('[ws-client] Failed to load codec, using msgpackr fallback:', e);
 });
