@@ -442,6 +442,11 @@ class AgentGUIClient {
 
     if (this.ui.agentSelector) {
       this.ui.agentSelector.addEventListener('change', () => {
+        // Load models for the selected sub-agent
+        const selectedSubAgentId = this.ui.agentSelector.value;
+        if (selectedSubAgentId) {
+          this.loadModelsForAgent(selectedSubAgentId);
+        }
         if (!this._agentLocked) {
           this.saveAgentAndModelToConversation();
         }
@@ -2068,13 +2073,34 @@ class AgentGUIClient {
           .join('');
         this.ui.agentSelector.style.display = 'inline-block';
         console.log(`[Agent Selector] Loaded ${subAgents.length} sub-agents for ${cliAgentId}`);
-        this.loadModelsForAgent(cliAgentId);
+        // Auto-select first sub-agent and load its models
+        const firstSubAgentId = subAgents[0].id;
+        this.ui.agentSelector.value = firstSubAgentId;
+        this.loadModelsForAgent(firstSubAgentId);
       } else {
         console.log(`[Agent Selector] No sub-agents found for ${cliAgentId}`);
+        // Load models for the CLI agent itself (fallback for agents without sub-agents)
+        const cliToAcpMap = {
+          'cli-opencode': 'opencode',
+          'cli-gemini': 'gemini',
+          'cli-kilo': 'kilo',
+          'cli-codex': 'codex'
+        };
+        const acpAgentId = cliToAcpMap[cliAgentId] || cliAgentId;
+        this.loadModelsForAgent(acpAgentId);
       }
     } catch (err) {
       // No sub-agents available for this CLI tool — keep hidden
       console.warn(`[Agent Selector] Failed to load sub-agents for ${cliAgentId}:`, err.message);
+      // Fallback: load models for the corresponding ACP agent
+      const cliToAcpMap = {
+        'cli-opencode': 'opencode',
+        'cli-gemini': 'gemini',
+        'cli-kilo': 'kilo',
+        'cli-codex': 'codex'
+      };
+      const acpAgentId = cliToAcpMap[cliAgentId] || cliAgentId;
+      this.loadModelsForAgent(acpAgentId);
     }
   }
 

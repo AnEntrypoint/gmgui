@@ -512,6 +512,29 @@ function discoverAgents() {
       agents.push({ id: bin.id, name: bin.name, icon: bin.icon, path: null, protocol: bin.protocol, npxPackage: '@anthropic-ai/claude-code', npxLaunchable: true });
     }
   }
+
+  // Add CLI tool wrappers for ACP agents (these map CLI commands to plugin sub-agents)
+  // These allow users to select "OpenCode", "Gemini", etc. and then pick a model/variant
+  const cliWrappers = [
+    { id: 'cli-opencode', name: 'OpenCode', icon: 'O', protocol: 'cli-wrapper', acpId: 'opencode' },
+    { id: 'cli-gemini', name: 'Gemini', icon: 'G', protocol: 'cli-wrapper', acpId: 'gemini' },
+    { id: 'cli-kilo', name: 'Kilo', icon: 'K', protocol: 'cli-wrapper', acpId: 'kilo' },
+    { id: 'cli-codex', name: 'Codex', icon: 'X', protocol: 'cli-wrapper', acpId: 'codex' },
+  ];
+
+  // Only add CLI wrappers for agents that are already discovered
+  console.log('[discoverAgents] Found agents:', agents.map(a => a.id).join(', '));
+  for (const wrapper of cliWrappers) {
+    if (agents.some(a => a.id === wrapper.acpId)) {
+      console.log(`[discoverAgents] Adding CLI wrapper for ${wrapper.id}`);
+      agents.push(wrapper);
+      console.log(`[discoverAgents] After push, agents.length = ${agents.length}, includes ${wrapper.id}? ${agents.some(a => a.id === wrapper.id)}`);
+    } else {
+      console.log(`[discoverAgents] Skipping CLI wrapper ${wrapper.id} (ACP agent ${wrapper.acpId} not found)`);
+    }
+  }
+  console.log('[discoverAgents] Final agent count:', agents.length, 'Agent IDs:', agents.map(a => a.id).join(', '));
+
   return agents;
 }
 
@@ -533,16 +556,23 @@ initializeDescriptors(discoveredAgents);
 // Agent discovery happens asynchronously in background to not block startup
 async function initializeAgentDiscovery() {
   try {
-    discoveredAgents = discoverAgents();
+    const agents = discoverAgents();
+    // Mutate the existing array instead of reassigning to preserve closure references in handlers
+    discoveredAgents.length = 0;
+    discoveredAgents.push(...agents);
     initializeDescriptors(discoveredAgents);
-    console.log('[AGENTS] Discovered:', discoveredAgents.map(a => ({ id: a.id, found: !!a.path })));
+    console.log('[AGENTS] Discovered:', discoveredAgents.map(a => ({ id: a.id, found: !!a.path, protocol: a.protocol })));
+    console.log('[AGENTS] Total count:', discoveredAgents.length);
   } catch (err) {
     console.error('[AGENTS] Discovery error:', err.message);
   }
 }
 
 // Start immediately but don't wait for it
-initializeAgentDiscovery().catch(() => {});
+const startTime = Date.now();
+initializeAgentDiscovery().then(() => {
+  console.log('[INIT] initializeAgentDiscovery completed in', Date.now() - startTime, 'ms');
+}).catch(() => {});
 
 const modelCache = new Map();
 
@@ -1878,6 +1908,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathOnly === '/api/agents' && req.method === 'GET') {
+      console.log(`[API /api/agents] Returning ${discoveredAgents.length} agents:`, discoveredAgents.map(a => a.id).join(', '));
             sendJSON(req, res, 200, { agents: discoveredAgents });
       return;
     }
@@ -4284,11 +4315,13 @@ registerConvHandlers(wsRouter, {
   broadcastSync, processMessageWithStreaming, activeProcessesByConvId
 });
 
+console.log('[INIT] About to call registerSessionHandlers, discoveredAgents.length:', discoveredAgents.length);
 registerSessionHandlers(wsRouter, {
   db: queries, discoveredAgents, modelCache,
   getAgentDescriptor, activeScripts, broadcastSync,
   startGeminiOAuth, geminiOAuthState: () => geminiOAuthState
 });
+console.log('[INIT] registerSessionHandlers completed');
 
 registerRunHandlers(wsRouter, {
   queries, discoveredAgents, activeExecutions, activeProcessesByRunId,
