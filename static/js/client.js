@@ -1140,14 +1140,25 @@ class AgentGUIClient {
     }
 
     const sessionId = data.sessionId || this.state.currentSession?.id;
+
+    // Remove all orphaned streaming indicators (handles case where session never started)
+    const outputEl2 = document.getElementById('output');
+    if (outputEl2) {
+      outputEl2.querySelectorAll('.streaming-indicator').forEach(ind => {
+        ind.innerHTML = `<span style="color:var(--color-error);">Error: ${this.escapeHtml(data.error || 'Unknown error')}</span>`;
+      });
+    }
+
     const streamingEl = document.getElementById(`streaming-${sessionId}`);
     if (streamingEl) {
+      streamingEl.classList.remove('streaming-message');
       const indicator = streamingEl.querySelector('.streaming-indicator');
       if (indicator) {
         indicator.innerHTML = `<span style="color:var(--color-error);">Error: ${this.escapeHtml(data.error || 'Unknown error')}</span>`;
       }
     }
 
+    this.unlockAgentAndModel();
     this.enableControls();
     this.emit('streaming:error', data);
   }
@@ -1306,6 +1317,7 @@ class AgentGUIClient {
       }
     }
 
+    outputEl.querySelectorAll('p.text-secondary').forEach(p => p.remove());
     const messageHtml = `
       <div class="message message-${data.message.role}" data-msg-id="${data.message.id}">
         <div class="message-role">${data.message.role.charAt(0).toUpperCase() + data.message.role.slice(1)}</div>
@@ -1723,6 +1735,7 @@ class AgentGUIClient {
   _showOptimisticMessage(pendingId, content) {
     const messagesEl = document.querySelector('.conversation-messages');
     if (!messagesEl) return;
+    messagesEl.querySelectorAll('p.text-secondary').forEach(p => p.remove());
     const div = document.createElement('div');
     div.className = 'message message-user message-sending';
     div.id = pendingId;

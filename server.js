@@ -1153,8 +1153,9 @@ const server = http.createServer(async (req, res) => {
 
     if (pathOnly === '/api/conversations' && req.method === 'POST') {
       const body = await parseBody(req);
-      // Normalize working directory to avoid Windows path issues
-      const normalizedWorkingDir = body.workingDirectory ? path.resolve(body.workingDirectory) : null;
+      // Normalize working directory to avoid Windows path issues; expand ~ to home
+      const expandTilde = p => p && p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+      const normalizedWorkingDir = body.workingDirectory ? path.resolve(expandTilde(body.workingDirectory)) : null;
       const conversation = queries.createConversation(body.agentId, body.title, normalizedWorkingDir, body.model || null);
       queries.createEvent('conversation.created', { agentId: body.agentId, workingDirectory: conversation.workingDirectory, model: conversation.model }, conversation.id);
       broadcastSync({ type: 'conversation_created', conversation });
@@ -1181,9 +1182,10 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === 'POST' || req.method === 'PUT') {
         const body = await parseBody(req);
-        // Normalize working directory if present to avoid Windows path issues
+        // Normalize working directory if present to avoid Windows path issues; expand ~ to home
         if (body.workingDirectory) {
-          body.workingDirectory = path.resolve(body.workingDirectory);
+          const expandTilde = p => p && p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+          body.workingDirectory = path.resolve(expandTilde(body.workingDirectory));
         }
         const conv = queries.updateConversation(convMatch[1], body);
         if (!conv) { sendJSON(req, res, 404, { error: 'Conversation not found' }); return; }
