@@ -300,6 +300,7 @@ const messageQueues = new Map();
 const rateLimitState = new Map();
 const activeProcessesByRunId = new Map();
 const activeProcessesByConvId = new Map(); // Store process handles by conversationId for steering
+const steeringTimeouts = new Map(); // Track timeout handles for process cleanup
 const acpQueries = queries;
 const checkpointManager = new CheckpointManager(queries);
 const STUCK_AGENT_THRESHOLD_MS = 600000;
@@ -3967,7 +3968,12 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     }
 
     activeExecutions.delete(conversationId);
-    activeProcessesByConvId.delete(conversationId);
+    // Keep process alive for steering for up to 30 seconds after execution completes
+    const steeringTimeout = setTimeout(() => {
+      activeProcessesByConvId.delete(conversationId);
+      steeringTimeouts.delete(conversationId);
+    }, 30000);
+    steeringTimeouts.set(conversationId, steeringTimeout);
     batcher.drain();
     debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
 
@@ -4312,7 +4318,7 @@ const wsRouter = new WsRouter();
 
 registerConvHandlers(wsRouter, {
   queries, activeExecutions, messageQueues, rateLimitState,
-  broadcastSync, processMessageWithStreaming, activeProcessesByConvId
+  broadcastSync, processMessageWithStreaming, activeProcessesByConvId, steeringTimeouts
 });
 
 console.log('[INIT] About to call registerSessionHandlers, discoveredAgents.length:', discoveredAgents.length);
