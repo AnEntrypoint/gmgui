@@ -18,6 +18,8 @@ import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
 import { WSOptimizer } from './lib/ws-optimizer.js';
 import { WsRouter } from './lib/ws-protocol.js';
+import { encode as wsEncode } from './lib/codec.js';
+const sendWs = (ws, obj) => { if (ws.readyState === 1) ws.send(wsEncode(obj)); };
 import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
 import { register as registerSessionHandlers } from './lib/ws-handlers-session.js';
 import { register as registerRunHandlers } from './lib/ws-handlers-run.js';
@@ -3944,7 +3946,7 @@ wss.on('connection', (ws, req) => {
     ws.subscriptions = new Set();
     ws.clientId = `client-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    ws.send(JSON.stringify({
+    sendWs(ws, ({
       type: 'sync_connected',
       clientId: ws.clientId,
       timestamp: Date.now()
@@ -4064,7 +4066,7 @@ wsRouter.onLegacy((data, ws) => {
     }
     const subTarget = data.sessionId || data.conversationId;
     debugLog(`[WebSocket] Client ${ws.clientId} subscribed to ${subTarget}`);
-    ws.send(JSON.stringify({
+    sendWs(ws, ({
       type: 'subscription_confirmed',
       sessionId: data.sessionId,
       conversationId: data.conversationId,
@@ -4075,7 +4077,7 @@ wsRouter.onLegacy((data, ws) => {
     if (data.conversationId && activeExecutions.has(data.conversationId)) {
       const execution = activeExecutions.get(data.conversationId);
       const conv = queries.getConversation(data.conversationId);
-      ws.send(JSON.stringify({
+      sendWs(ws, ({
         type: 'streaming_start',
         sessionId: execution.sessionId,
         conversationId: data.conversationId,
@@ -4093,7 +4095,7 @@ wsRouter.onLegacy((data, ws) => {
 
         const latestSession = queries.getLatestSession(data.conversationId);
         if (latestSession) {
-          ws.send(JSON.stringify({
+          sendWs(ws, ({
             type: 'streaming_resumed',
             sessionId: latestSession.id,
             conversationId: data.conversationId,
@@ -4104,7 +4106,7 @@ wsRouter.onLegacy((data, ws) => {
           }));
 
           checkpointManager.injectCheckpointEvents(latestSession.id, checkpoint, (evt) => {
-            ws.send(JSON.stringify({
+            sendWs(ws, ({
               ...evt,
               sessionId: latestSession.id,
               conversationId: data.conversationId
@@ -4127,7 +4129,7 @@ wsRouter.onLegacy((data, ws) => {
     }
     debugLog(`[WebSocket] Client ${ws.clientId} unsubscribed from ${data.sessionId || data.conversationId}`);
   } else if (data.type === 'get_subscriptions') {
-    ws.send(JSON.stringify({
+    sendWs(ws, ({
       type: 'subscriptions',
       subscriptions: Array.from(ws.subscriptions),
       timestamp: Date.now()
@@ -4139,7 +4141,7 @@ wsRouter.onLegacy((data, ws) => {
     ws.latencyAvg = data.avg || 0;
     ws.latencyTrend = data.trend || 'stable';
   } else if (data.type === 'ping') {
-    ws.send(JSON.stringify({
+    sendWs(ws, ({
       type: 'pong',
       requestId: data.requestId,
       timestamp: Date.now()
@@ -4162,18 +4164,18 @@ wsRouter.onLegacy((data, ws) => {
       ws.terminalProc = proc;
       ws.terminalPty = true;
       proc.on('data', (chunk) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: Buffer.from(chunk).toString('base64'), encoding: 'base64' }));
+        if (ws.readyState === 1) sendWs(ws, ({ type: 'terminal_output', data: Buffer.from(chunk).toString('base64'), encoding: 'base64' }));
       });
       proc.on('exit', (code) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
+        if (ws.readyState === 1) sendWs(ws, { type: 'terminal_exit', code });
         ws.terminalProc = null;
       });
       proc.on('error', (err) => {
         console.error('[TERMINAL] PTY error (contained):', err.message);
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code: 1, error: err.message }));
+        if (ws.readyState === 1) sendWs(ws, { type: 'terminal_exit', code: 1, error: err.message });
         ws.terminalProc = null;
       });
-      ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
+      sendWs(ws, ({ type: 'terminal_started', timestamp: Date.now() }));
     } catch (e) {
       console.error('[TERMINAL] Failed to spawn PTY, falling back to pipes:', e.message);
       const { spawn } = require('child_process');
@@ -4183,24 +4185,24 @@ wsRouter.onLegacy((data, ws) => {
       ws.terminalProc = proc;
       ws.terminalPty = false;
       proc.stdout.on('data', (chunk) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+        if (ws.readyState === 1) sendWs(ws, ({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
       });
       proc.stderr.on('data', (chunk) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
+        if (ws.readyState === 1) sendWs(ws, ({ type: 'terminal_output', data: chunk.toString('base64'), encoding: 'base64' }));
       });
       proc.on('exit', (code) => {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code }));
+        if (ws.readyState === 1) sendWs(ws, { type: 'terminal_exit', code });
         ws.terminalProc = null;
       });
       proc.on('error', (err) => {
         console.error('[TERMINAL] Spawn error (contained):', err.message);
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'terminal_exit', code: 1, error: err.message }));
+        if (ws.readyState === 1) sendWs(ws, { type: 'terminal_exit', code: 1, error: err.message });
         ws.terminalProc = null;
       });
       proc.stdin.on('error', () => {});
       proc.stdout.on('error', () => {});
       proc.stderr.on('error', () => {});
-      ws.send(JSON.stringify({ type: 'terminal_started', timestamp: Date.now() }));
+      sendWs(ws, ({ type: 'terminal_started', timestamp: Date.now() }));
     }
   } else if (data.type === 'terminal_input') {
     if (ws.terminalProc) {
@@ -4229,56 +4231,56 @@ wsRouter.onLegacy((data, ws) => {
      }
     } else if (data.type === 'pm2_list') {
       if (!pm2Manager.connected) {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'pm2_unavailable', reason: 'PM2 not connected', timestamp: Date.now() }));
+        if (ws.readyState === 1) sendWs(ws, ({ type: 'pm2_unavailable', reason: 'PM2 not connected', timestamp: Date.now() }));
       } else {
         pm2Manager.listProcesses().then(processes => {
           if (ws.readyState === 1) {
             const hasActive = processes.some(p => ['online','launching','stopping','waiting restart'].includes(p.status));
-            ws.send(JSON.stringify({ type: 'pm2_list_response', processes, hasActive }));
+            sendWs(ws, { type: 'pm2_list_response', processes, hasActive });
           }
         }).catch(() => {
-          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'pm2_unavailable', reason: 'list failed', timestamp: Date.now() }));
+          if (ws.readyState === 1) sendWs(ws, ({ type: 'pm2_unavailable', reason: 'list failed', timestamp: Date.now() }));
         });
       }
     } else if (data.type === 'pm2_start_monitoring') {
       pm2Subscribers.add(ws);
       ws.pm2Subscribed = true;
       if (!pm2Manager.connected) {
-        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'pm2_unavailable', reason: 'PM2 not connected', timestamp: Date.now() }));
+        if (ws.readyState === 1) sendWs(ws, ({ type: 'pm2_unavailable', reason: 'PM2 not connected', timestamp: Date.now() }));
       } else {
-        ws.send(JSON.stringify({ type: 'pm2_monitoring_started' }));
+        sendWs(ws, { type: 'pm2_monitoring_started' });
       }
     } else if (data.type === 'pm2_stop_monitoring') {
       pm2Subscribers.delete(ws);
       ws.pm2Subscribed = false;
-      ws.send(JSON.stringify({ type: 'pm2_monitoring_stopped' }));
+      sendWs(ws, { type: 'pm2_monitoring_stopped' });
     } else if (data.type === 'pm2_start') {
       pm2Manager.startProcess(data.name).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_start_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_start_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_stop') {
       pm2Manager.stopProcess(data.name).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_stop_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_stop_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_restart') {
       pm2Manager.restartProcess(data.name).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_restart_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_restart_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_delete') {
       pm2Manager.deleteProcess(data.name).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_delete_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_delete_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_logs') {
       pm2Manager.getLogs(data.name, { lines: data.lines || 100 }).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_logs_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_logs_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_flush_logs') {
       pm2Manager.flushLogs(data.name).then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_flush_logs_response', name: data.name, ...result }));
+        sendWs(ws, { type: 'pm2_flush_logs_response', name: data.name, ...result });
       });
     } else if (data.type === 'pm2_ping') {
       pm2Manager.ping().then(result => {
-        ws.send(JSON.stringify({ type: 'pm2_ping_response', ...result }));
+        sendWs(ws, { type: 'pm2_ping_response', ...result });
       });
     }
 
