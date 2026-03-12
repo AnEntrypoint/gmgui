@@ -1108,13 +1108,13 @@ export const queries = {
       }
 
       const deleteAllStmt = db.transaction(() => {
-        prep('DELETE FROM stream_updates');
-        prep('DELETE FROM chunks');
-        prep('DELETE FROM events');
-        prep('DELETE FROM voice_cache');
-        prep('DELETE FROM sessions');
-        prep('DELETE FROM messages');
-        prep('DELETE FROM conversations');
+        prep('DELETE FROM stream_updates').run();
+        prep('DELETE FROM chunks').run();
+        prep('DELETE FROM events').run();
+        prep('DELETE FROM voice_cache').run();
+        prep('DELETE FROM sessions').run();
+        prep('DELETE FROM messages').run();
+        prep('DELETE FROM conversations').run();
       });
 
       deleteAllStmt();
