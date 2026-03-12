@@ -691,18 +691,23 @@ class AgentGUIClient {
 
       switch (data.type) {
         case 'streaming_start':
+          window.syncDebugger?.logEvent('streaming_start', data);
           this.handleStreamingStart(data).catch(e => console.error('handleStreamingStart error:', e));
           break;
         case 'streaming_resumed':
+          window.syncDebugger?.logEvent('streaming_resumed', data);
           this.handleStreamingResumed(data).catch(e => console.error('handleStreamingResumed error:', e));
           break;
         case 'streaming_progress':
+          window.syncDebugger?.logEvent('streaming_progress', { sessionId: data.sessionId });
           this.handleStreamingProgress(data);
           break;
         case 'streaming_complete':
+          window.syncDebugger?.logEvent('streaming_complete', data);
           this.handleStreamingComplete(data);
           break;
         case 'streaming_error':
+          window.syncDebugger?.logEvent('streaming_error', data);
           this.handleStreamingError(data);
           break;
         case 'conversation_created':
@@ -712,9 +717,11 @@ class AgentGUIClient {
           this.handleAllConversationsDeleted(data);
           break;
         case 'message_created':
+          window.syncDebugger?.logEvent('message_created', data);
           this.handleMessageCreated(data);
           break;
         case 'conversation_updated':
+          window.syncDebugger?.logEvent('conversation_updated', data);
           this.handleConversationUpdated(data);
           break;
         case 'queue_status':
@@ -781,6 +788,7 @@ class AgentGUIClient {
     if (this.state.currentConversation?.id !== data.conversationId) {
       console.log('Streaming started for non-active conversation:', data.conversationId);
       this.state.streamingConversations.set(data.conversationId, true);
+      console.log('[SYNC] streaming_start - non-active conv:', { convId: data.conversationId, sessionId: data.sessionId, streamingCount: this.state.streamingConversations.size });
       this.updateBusyPromptArea(data.conversationId);
       this.emit('streaming:start', data);
 
@@ -1143,12 +1151,14 @@ class AgentGUIClient {
     if (conversationId && this.state.currentConversation?.id !== conversationId) {
       console.log('Streaming completed for non-active conversation:', conversationId);
       this.state.streamingConversations.delete(conversationId);
+      console.log('[SYNC] streaming_complete - non-active conv:', { convId: conversationId, streamingCount: this.state.streamingConversations.size });
       this.updateBusyPromptArea(conversationId);
       this.emit('streaming:complete', data);
       return;
     }
 
     this.state.streamingConversations.delete(conversationId);
+    console.log('[SYNC] streaming_complete - active conv:', { convId: conversationId, streamingCount: this.state.streamingConversations.size, interrupted: data.interrupted });
     this.updateBusyPromptArea(conversationId);
 
     const sessionId = data.sessionId || this.state.currentSession?.id;
@@ -1230,6 +1240,8 @@ class AgentGUIClient {
       this.emit('message:created', data);
       return;
     }
+
+    console.log('[SYNC] message_created:', { msgId: data.message.id, role: data.message.role, convId: data.conversationId });
 
     // Update messageCount in current conversation state for user messages
     if (data.message.role === 'user' && this.state.currentConversation) {
@@ -1873,7 +1885,26 @@ class AgentGUIClient {
         latencyEma: self.wsManager?._latencyEma || null,
         serverProcessingEstimate: self._serverProcessingEstimate,
         latencyTrend: self.wsManager?.latency?.trend || null
-      })
+      }),
+
+      // Sync-to-display debugging
+      getSyncState: () => ({
+        currentConversation: self.state.currentConversation,
+        isStreaming: self.state.currentConversation && self.state.streamingConversations.has(self.state.currentConversation.id),
+        streamingConversations: Array.from(self.state.streamingConversations),
+        rendererEventQueueLength: self.renderer?.eventQueue?.length || 0,
+        rendererEventHistoryLength: self.renderer?.eventHistory?.length || 0,
+      }),
+
+      // Message DOM state
+      getMessageState: () => {
+        const output = document.querySelector('.conversation-messages');
+        if (!output) return { error: 'No conversation output found' };
+        const messageCount = output.querySelectorAll('.message').length;
+        const queueItems = output.querySelectorAll('.queue-item').length;
+        const pendingMessages = output.querySelectorAll('.message-sending').length;
+        return { messageCount, queueItems, pendingMessages };
+      }
     };
   }
 
