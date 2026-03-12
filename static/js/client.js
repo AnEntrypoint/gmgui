@@ -1156,6 +1156,16 @@ class AgentGUIClient {
       if (indicator) {
         indicator.innerHTML = `<span style="color:var(--color-error);">Error: ${this.escapeHtml(data.error || 'Unknown error')}</span>`;
       }
+    } else {
+      const outputEl3 = document.getElementById('output');
+      const messagesEl3 = outputEl3 && outputEl3.querySelector('.conversation-messages');
+      if (messagesEl3 && data.error) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'message';
+        errDiv.style = 'padding:0.75rem;border:1px solid var(--color-error, #e53e3e);border-radius:4px;margin:0.5rem 0;';
+        errDiv.innerHTML = `<span style="color:var(--color-error, #e53e3e);">Error: ${this.escapeHtml(data.error)}</span>`;
+        messagesEl3.appendChild(errDiv);
+      }
     }
 
     this.unlockAgentAndModel();
@@ -2889,6 +2899,21 @@ class AgentGUIClient {
           messagesEl.appendChild(frag);
         } else {
           messagesEl.appendChild(this.renderMessagesFragment(allMessages || []));
+        }
+
+        if (shouldResumeStreaming && latestSession && chunks.length === 0) {
+          const streamDiv = document.createElement('div');
+          streamDiv.id = `streaming-${latestSession.id}`;
+          streamDiv.className = 'streaming-message';
+          const indicatorDiv = document.createElement('div');
+          indicatorDiv.className = 'streaming-indicator';
+          indicatorDiv.style = 'display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;color:var(--color-text-secondary);font-size:0.875rem;';
+          indicatorDiv.innerHTML = `
+            <span class="animate-spin" style="display:inline-block;width:1rem;height:1rem;border:2px solid var(--color-border);border-top-color:var(--color-primary);border-radius:50%;"></span>
+            <span class="streaming-indicator-label">Agent is starting...</span>
+          `;
+          streamDiv.appendChild(indicatorDiv);
+          messagesEl.appendChild(streamDiv);
         }
 
         if (shouldResumeStreaming && latestSession) {
