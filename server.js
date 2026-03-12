@@ -4643,89 +4643,41 @@ server.on('error', (err) => {
   }
 });
 
+// On startup: mark all active/pending sessions as interrupted (server was down, they didn't complete).
+// Then resumeInterruptedStreams will pick up recent ones for auto-resume.
 function recoverStaleSessions() {
   try {
-    const now = Date.now();
-    const RESUME_WINDOW_MS = 600000; // 10 minutes
-
-    const resumable = new Set();
-    const resumableConvs = queries.getResumableConversations ? queries.getResumableConversations(RESUME_WINDOW_MS) : [];
-    for (const conv of resumableConvs) {
-      resumable.add(conv.id); // All agent types are resumable
-    }
-
-    const staleSessions = queries.getActiveSessions ? queries.getActiveSessions() : [];
-    let markedCount = 0;
+    const RESUME_WINDOW_MS = 600000;
+    const cutoff = Date.now() - RESUME_WINDOW_MS;
+    const staleSessions = queries.getActiveSessions();
     for (const session of staleSessions) {
-      if (activeExecutions.has(session.conversationId)) continue;
-      if (resumable.has(session.conversationId)) continue;
       queries.updateSession(session.id, {
-        status: 'error',
+        status: session.started_at > cutoff ? 'interrupted' : 'error',
         error: 'Server restarted',
-        completed_at: now
+        completed_at: Date.now()
       });
-      markedCount++;
     }
-    if (markedCount > 0) {
-      console.log(`[RECOVERY] Marked ${markedCount} stale session(s) as error`);
-    }
-
-    const streamingConvs = queries.getStreamingConversations ? queries.getStreamingConversations() : [];
-    let clearedCount = 0;
-    for (const conv of streamingConvs) {
-      if (activeExecutions.has(conv.id)) continue;
-      if (resumable.has(conv.id)) continue;
-      queries.setIsStreaming(conv.id, false);
-      clearedCount++;
-    }
-    if (clearedCount > 0) {
-      console.log(`[RECOVERY] Cleared isStreaming flag on ${clearedCount} stale conversation(s)`);
-    }
-    if (resumable.size > 0) {
-      console.log(`[RECOVERY] Found ${resumable.size} resumable conversation(s)`);
+    // Clear all isStreaming flags - nothing is running yet
+    queries.clearAllStreamingFlags();
+    if (staleSessions.length > 0) {
+      console.log(`[RECOVERY] Marked ${staleSessions.length} stale session(s); cleared streaming flags`);
     }
   } catch (err) {
-    console.error('[RECOVERY] Stale session recovery error:', err.message);
+    console.error('[RECOVERY] Error:', err.message);
   }
 }
 
+// Resume conversations with recently interrupted sessions (started within 10 min).
 async function resumeInterruptedStreams() {
   try {
-    const RESUME_WINDOW_MS = 600000; // Only resume sessions active within the last 10 minutes
-    const cutoff = Date.now() - RESUME_WINDOW_MS;
-
-    // Get conversations marked as streaming in database (isStreaming=1)
-    // Fall back to getResumableConversations if isStreaming is not being used
-    let toResume = [];
-
-    // Primary: Check database isStreaming flag for conversations still marked as active
-    // Exclude conversations whose last session completed or started more than 10 min ago
-    const streamingConvs = queries.getConversations().filter(c => {
-      if (c.isStreaming !== 1) return false;
-      const lastSession = queries.getLatestSession(c.id);
-      if (!lastSession) return false;
-      if (lastSession.status === 'complete') return false;
-      // Only resume if session started within the last 10 minutes
-      return lastSession.started_at > cutoff;
-    });
-
-    if (streamingConvs.length > 0) {
-      toResume = streamingConvs;
-    } else {
-      // Fallback: Use session-based resumable conversations (already filtered by 10 min)
-      toResume = queries.getResumableConversations ? queries.getResumableConversations(RESUME_WINDOW_MS) : [];
-    }
-
+    const toResume = queries.getResumableConversations(600000);
     if (toResume.length === 0) return;
-
     console.log(`[RESUME] Resuming ${toResume.length} interrupted conversation(s)`);
-
     for (let i = 0; i < toResume.length; i++) {
       const conv = toResume[i];
       try {
-        const previousSessions = [...queries.getSessionsByStatus(conv.id, 'active'), ...queries.getSessionsByStatus(conv.id, 'pending')];
-        const previousSessionId = previousSessions.length > 0 ? previousSessions[0].id : null;
-        await resumeConversation(conv.id, previousSessionId, 'Server restarted, resuming');
+        const lastSession = queries.getLatestSession(conv.id);
+        await resumeConversation(conv.id, lastSession?.id || null, 'Server restarted');
         if (i < toResume.length - 1) await new Promise(r => setTimeout(r, 200));
       } catch (err) {
         console.error(`[RESUME] Failed to resume conv ${conv.id}: ${err.message}`);
@@ -4733,7 +4685,7 @@ async function resumeInterruptedStreams() {
       }
     }
   } catch (err) {
-    console.error('[RESUME] Error during stream resumption:', err.message);
+    console.error('[RESUME] Error:', err.message);
   }
 }
 

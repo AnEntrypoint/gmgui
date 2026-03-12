@@ -1453,7 +1453,7 @@ class AgentGUIClient {
     this.enableControls();
   }
 
-  async handleAllConversationsDeleted(data) {
+  handleAllConversationsDeleted(data) {
     window.ConversationState?.clear('all_deleted');
     this.state.currentConversation = null;
     this.state.conversations = [];
@@ -1462,10 +1462,6 @@ class AgentGUIClient {
     this.conversationListCache = { data: [], timestamp: 0, ttl: 30000 };
     this.draftPrompts.clear();
     window.dispatchEvent(new CustomEvent('conversation-deselected'));
-    if (window.conversationManager) {
-      this.state.currentConversation = null;
-      await window.conversationManager.loadConversations();
-    }
     const outputEl = document.getElementById('output');
     if (outputEl) outputEl.innerHTML = '';
   }
