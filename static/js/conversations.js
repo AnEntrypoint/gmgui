@@ -46,12 +46,13 @@ class ConversationManager {
   async init() {
     this.newBtn?.addEventListener('click', () => this.openFolderBrowser());
     this.setupDelegatedListeners();
-    await this.loadAgents();
-    this.loadConversations();
+    this.showLoading();
     this.setupWebSocketListener();
     this.setupFolderBrowser();
     this.setupCloneUI();
     this.setupDeleteAllButton();
+
+    await Promise.all([this.loadAgents(), this.loadConversations()]);
 
     this._pollInterval = setInterval(() => this.loadConversations(), 30000);
 
@@ -67,7 +68,10 @@ class ConversationManager {
 
   async loadAgents() {
     try {
-      const data = await window.wsClient.rpc('agent.ls');
+      const base = window.__BASE_URL || '/gm';
+      const res = await fetch(base + '/api/agents');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
       for (const agent of data.agents || []) {
         this.agents.set(agent.id, agent);
       }
@@ -409,9 +413,21 @@ class ConversationManager {
     }
   }
 
+  showLoading() {
+    if (!this.listEl) return;
+    this.listEl.innerHTML = '';
+    if (this.emptyEl) {
+      this.emptyEl.textContent = 'Loading...';
+      this.emptyEl.style.display = 'block';
+    }
+  }
+
   async loadConversations() {
     try {
-      const data = await window.wsClient.rpc('conv.ls');
+      const base = window.__BASE_URL || '/gm';
+      const res = await fetch(base + '/api/conversations');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
       const convList = data.conversations || [];
 
       this._updateConversations(convList, 'poll');
