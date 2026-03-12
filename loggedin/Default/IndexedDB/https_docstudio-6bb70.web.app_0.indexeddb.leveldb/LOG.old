@@ -1,0 +1,6 @@
+2026/03/11-05:46:39.682 3c39f Creating DB /config/workspace/agentgui/loggedin/Default/IndexedDB/https_docstudio-6bb70.web.app_0.indexeddb.leveldb since it was missing.
+2026/03/11-05:46:39.691 3c39f Reusing MANIFEST /config/workspace/agentgui/loggedin/Default/IndexedDB/https_docstudio-6bb70.web.app_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/11-05:46:50.586 3c3a4 Level-0 table #5: started
+2026/03/11-05:46:50.590 3c3a4 Level-0 table #5: 1487 bytes OK
+2026/03/11-05:46:50.598 3c3a4 Delete type=0 #3
+2026/03/11-05:46:50.598 3c3a4 Manual compaction at level-0 from '\x00\x02\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x03\x00\x00\x00' @ 0 : 0; will stop at (end)
