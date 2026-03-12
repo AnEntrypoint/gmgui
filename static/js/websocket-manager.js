@@ -1,3 +1,6 @@
+// codec is loaded as ES module and exposed globally by ws-client.js
+// or inline: import('./codec.js').then(m => window._codec = m)
+
 class WebSocketManager {
   constructor(config = {}) {
     this.config = {
@@ -133,16 +136,8 @@ class WebSocketManager {
   async onMessage(event) {
     try {
       let parsed;
-      if (event.data instanceof Blob || event.data instanceof ArrayBuffer) {
-        // Binary frame: msgpackr-encoded (perMessageDeflate decompressed by browser)
-        const buf = event.data instanceof Blob
-          ? await event.data.arrayBuffer()
-          : event.data;
-        parsed = msgpackr.unpack(new Uint8Array(buf));
-      } else {
-        // Fallback: plain JSON (ping/pong control frames, legacy)
-        parsed = JSON.parse(event.data);
-      }
+      const buf = event.data instanceof Blob ? await event.data.arrayBuffer() : event.data;
+      parsed = window._codec ? window._codec.decode(buf) : msgpackr.unpack(new Uint8Array(buf));
       const messages = Array.isArray(parsed) ? parsed : [parsed];
       this.stats.totalMessagesReceived += messages.length;
 
@@ -443,7 +438,7 @@ class WebSocketManager {
     }
 
     try {
-      this.ws.send(msgpackr.pack(data));
+      this.ws.send(window._codec ? window._codec.encode(data) : msgpackr.pack(data));
       this.stats.totalMessagesSent++;
       return true;
     } catch (error) {
@@ -467,7 +462,7 @@ class WebSocketManager {
     this.messageBuffer = [];
     for (const message of messages) {
       try {
-        this.ws.send(msgpackr.pack(message));
+        this.ws.send(window._codec ? window._codec.encode(message) : msgpackr.pack(message));
         this.stats.totalMessagesSent++;
       } catch (error) {
         this.bufferMessage(message);
@@ -491,7 +486,7 @@ class WebSocketManager {
       if (type === 'session') msg.sessionId = id;
       else msg.conversationId = id;
       try {
-        this.ws.send(msgpackr.pack(msg));
+        this.ws.send(window._codec ? window._codec.encode(msg) : msgpackr.pack(msg));
         this.stats.totalMessagesSent++;
       } catch (_) {}
     }

@@ -16,7 +16,6 @@ import fsbrowse from 'fsbrowse';
 import { queries } from './database.js';
 import { runClaudeWithStreaming } from './lib/claude-runner.js';
 import { initializeDescriptors, getAgentDescriptor } from './lib/agent-descriptors.js';
-import { SSEStreamManager } from './lib/sse-stream.js';
 import { WSOptimizer } from './lib/ws-optimizer.js';
 import { WsRouter } from './lib/ws-protocol.js';
 import { register as registerConvHandlers } from './lib/ws-handlers-conv.js';
@@ -1537,57 +1536,9 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // POST /runs/stream - Create stateless run and stream output (MUST be before generic /runs/:id route)
+    // POST /runs/stream - SSE removed, use WebSocket
     if (pathOnly === '/api/runs/stream' && req.method === 'POST') {
-      const body = await parseBody(req);
-      const { agent_id, input, config } = body;
-      if (!agent_id) {
-        sendJSON(req, res, 422, { error: 'agent_id is required' });
-        return;
-      }
-      const agent = discoveredAgents.find(a => a.id === agent_id);
-      if (!agent) {
-        sendJSON(req, res, 404, { error: 'Agent not found' });
-        return;
-      }
-      const run = queries.createRun(agent_id, null, input, config);
-      const sseManager = new SSEStreamManager(res, run.run_id);
-      sseManager.start();
-      sseManager.sendProgress({ type: 'run_created', run_id: run.run_id });
-
-      const eventHandler = (eventData) => {
-        if (eventData.sessionId === run.run_id || eventData.conversationId === run.thread_id) {
-          if (eventData.type === 'streaming_progress' && eventData.block) {
-            sseManager.sendProgress(eventData.block);
-          } else if (eventData.type === 'streaming_error') {
-            sseManager.sendError(eventData.error || 'Execution error');
-          } else if (eventData.type === 'streaming_complete') {
-            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
-            sseManager.cleanup();
-          }
-        }
-      };
-
-      sseStreamHandlers.set(run.run_id, eventHandler);
-      req.on('close', () => {
-        sseStreamHandlers.delete(run.run_id);
-        sseManager.cleanup();
-      });
-
-      const statelessThreadId = queries.getRun(run.run_id)?.thread_id;
-      if (statelessThreadId) {
-        const conv = queries.getConversation(statelessThreadId);
-        if (conv && input?.content) {
-          const statelessSession = queries.createSession(statelessThreadId);
-          queries.updateRunStatus(run.run_id, 'active');
-          activeExecutions.set(statelessThreadId, { pid: null, startTime: Date.now(), sessionId: statelessSession.id, lastActivity: Date.now() });
-          activeProcessesByRunId.set(run.run_id, { threadId: statelessThreadId, sessionId: statelessSession.id });
-          queries.setIsStreaming(statelessThreadId, true);
-          processMessageWithStreaming(statelessThreadId, null, statelessSession.id, input.content, agent_id, config?.model || null)
-            .then(() => { queries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
-            .catch((err) => { queries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
-        }
-      }
+      res.writeHead(410); res.end(JSON.stringify({ error: 'SSE removed, use WebSocket' }));
       return;
     }
 
@@ -2346,35 +2297,7 @@ const server = http.createServer(async (req, res) => {
 
     const runStreamMatch = pathOnly.match(/^\/api\/runs\/([^/]+)\/stream$/);
     if (runStreamMatch && req.method === 'GET') {
-      const runId = runStreamMatch[1];
-      const run = queries.getRun(runId);
-      if (!run) {
-        sendJSON(req, res, 404, { error: 'Run not found' });
-        return;
-      }
-
-      const sseManager = new SSEStreamManager(res, runId);
-      sseManager.start();
-      sseManager.sendProgress({ type: 'joined', run_id: runId });
-
-      const eventHandler = (eventData) => {
-        if (eventData.sessionId === runId || eventData.conversationId === run.thread_id) {
-          if (eventData.type === 'streaming_progress' && eventData.block) {
-            sseManager.sendProgress(eventData.block);
-          } else if (eventData.type === 'streaming_error') {
-            sseManager.sendError(eventData.error || 'Execution error');
-          } else if (eventData.type === 'streaming_complete') {
-            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
-            sseManager.cleanup();
-          }
-        }
-      };
-
-      sseStreamHandlers.set(runId, eventHandler);
-      req.on('close', () => {
-        sseStreamHandlers.delete(runId);
-        sseManager.cleanup();
-      });
+      res.writeHead(410); res.end(JSON.stringify({ error: 'SSE removed, use WebSocket' }));
       return;
     }
 
@@ -3220,112 +3143,17 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // POST /threads/{thread_id}/runs/stream - Create run on thread and stream output
+    // POST /threads/{thread_id}/runs/stream - SSE removed, use WebSocket
     const threadRunsStreamMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/stream$/);
     if (threadRunsStreamMatch && req.method === 'POST') {
-      const threadId = threadRunsStreamMatch[1];
-      try {
-        const body = await parseBody(req);
-        const { agent_id, input, config } = body;
-
-        const thread = queries.getThread(threadId);
-        if (!thread) {
-          sendJSON(req, res, 404, { error: 'Thread not found', type: 'not_found' });
-          return;
-        }
-
-        if (thread.status !== 'idle') {
-          sendJSON(req, res, 409, { error: 'Thread has pending runs', type: 'conflict' });
-          return;
-        }
-
-        const agent = discoveredAgents.find(a => a.id === agent_id);
-        if (!agent) {
-          sendJSON(req, res, 404, { error: 'Agent not found', type: 'not_found' });
-          return;
-        }
-
-        const run = queries.createRun(agent_id, threadId, input, config);
-        const sseManager = new SSEStreamManager(res, run.run_id);
-        sseManager.start();
-        sseManager.sendProgress({ type: 'run_created', run_id: run.run_id, thread_id: threadId });
-
-        const eventHandler = (eventData) => {
-          if (eventData.sessionId === run.run_id || eventData.conversationId === threadId) {
-            if (eventData.type === 'streaming_progress' && eventData.block) {
-              sseManager.sendProgress(eventData.block);
-            } else if (eventData.type === 'streaming_error') {
-              sseManager.sendError(eventData.error || 'Execution error');
-            } else if (eventData.type === 'streaming_complete') {
-              sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
-              sseManager.cleanup();
-            }
-          }
-        };
-
-        sseStreamHandlers.set(run.run_id, eventHandler);
-        req.on('close', () => {
-          sseStreamHandlers.delete(run.run_id);
-          sseManager.cleanup();
-        });
-
-        const conv = queries.getConversation(threadId);
-        if (conv && input?.content) {
-          const session = queries.createSession(threadId);
-          queries.updateRunStatus(run.run_id, 'active');
-          activeExecutions.set(threadId, { pid: null, startTime: Date.now(), sessionId: session.id, lastActivity: Date.now() });
-          activeProcessesByRunId.set(run.run_id, { threadId, sessionId: session.id });
-          queries.setIsStreaming(threadId, true);
-          processMessageWithStreaming(threadId, null, session.id, input.content, agent_id, config?.model || null)
-            .then(() => { queries.updateRunStatus(run.run_id, 'success'); activeProcessesByRunId.delete(run.run_id); })
-            .catch((err) => { queries.updateRunStatus(run.run_id, 'error'); activeProcessesByRunId.delete(run.run_id); sseManager.sendError(err.message); sseManager.cleanup(); });
-        }
-      } catch (err) {
-        sendJSON(req, res, 422, { error: err.message, type: 'validation_error' });
-      }
+      res.writeHead(410); res.end(JSON.stringify({ error: 'SSE removed, use WebSocket' }));
       return;
     }
 
-    // GET /threads/{thread_id}/runs/{run_id}/stream - Stream output from run on thread
+    // GET /threads/{thread_id}/runs/{run_id}/stream - SSE removed, use WebSocket
     const threadRunStreamMatch = pathOnly.match(/^\/api\/threads\/([a-f0-9-]{36})\/runs\/([a-f0-9-]{36})\/stream$/);
     if (threadRunStreamMatch && req.method === 'GET') {
-      const threadId = threadRunStreamMatch[1];
-      const runId = threadRunStreamMatch[2];
-
-      const thread = queries.getThread(threadId);
-      if (!thread) {
-        sendJSON(req, res, 404, { error: 'Thread not found', type: 'not_found' });
-        return;
-      }
-
-      const run = queries.getRun(runId);
-      if (!run || run.thread_id !== threadId) {
-        sendJSON(req, res, 404, { error: 'Run not found on thread', type: 'not_found' });
-        return;
-      }
-
-      const sseManager = new SSEStreamManager(res, runId);
-      sseManager.start();
-      sseManager.sendProgress({ type: 'joined', run_id: runId, thread_id: threadId });
-
-      const eventHandler = (eventData) => {
-        if (eventData.sessionId === runId || eventData.conversationId === threadId) {
-          if (eventData.type === 'streaming_progress' && eventData.block) {
-            sseManager.sendProgress(eventData.block);
-          } else if (eventData.type === 'streaming_error') {
-            sseManager.sendError(eventData.error || 'Execution error');
-          } else if (eventData.type === 'streaming_complete') {
-            sseManager.sendComplete({ eventCount: eventData.eventCount }, { timestamp: eventData.timestamp });
-            sseManager.cleanup();
-          }
-        }
-      };
-
-      sseStreamHandlers.set(runId, eventHandler);
-      req.on('close', () => {
-        sseStreamHandlers.delete(runId);
-        sseManager.cleanup();
-      });
+      res.writeHead(410); res.end(JSON.stringify({ error: 'SSE removed, use WebSocket' }));
       return;
     }
 
@@ -4102,7 +3930,6 @@ wss.on('error', (err) => {
 const hotReloadClients = [];
 const syncClients = new Set();
 const subscriptionIndex = new Map();
-const sseStreamHandlers = new Map();
 const pm2Subscribers = new Set();
 
 wss.on('connection', (ws, req) => {
@@ -4187,11 +4014,6 @@ function broadcastSync(event) {
       }
     }
 
-    if (sseStreamHandlers.size > 0) {
-      for (const [runId, handler] of sseStreamHandlers.entries()) {
-        try { handler(event); } catch (e) {}
-      }
-    }
   } catch (err) {
     console.error('[BROADCAST] Error (contained):', err.message);
   }

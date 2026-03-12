@@ -78,10 +78,12 @@ class WsClient {
 
 window.WsClient = WsClient;
 
-try {
+// Bootstrap: load codec (which pulls gpt-tokenizer from esm.sh), then connect
+import('./codec.js').then(codec => {
+  window._codec = codec;
   window.wsManager = new WebSocketManager();
   window.wsClient = new WsClient(window.wsManager);
   window.wsManager.connect().catch(function() {});
-} catch (e) {
-  console.error('[ws-client] Failed to initialize:', e);
-}
+}).catch(e => {
+  console.error('[ws-client] Failed to load codec:', e);
+});
