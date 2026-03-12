@@ -2208,13 +2208,13 @@ const server = http.createServer(async (req, res) => {
     if (modelsMatch && req.method === 'GET') {
       const agentId = modelsMatch[1];
       const cached = modelCache.get(agentId);
-      if (cached && (Date.now() - cached.ts) < 300000) {
+      if (cached && (Date.now() - cached.timestamp) < 300000) {
         sendJSON(req, res, 200, { models: cached.models });
         return;
       }
       try {
         const models = await getModelsForAgent(agentId);
-        modelCache.set(agentId, { models, ts: Date.now() });
+        modelCache.set(agentId, { models, timestamp: Date.now() });
         sendJSON(req, res, 200, { models });
       } catch (err) {
         sendJSON(req, res, 200, { models: [] });

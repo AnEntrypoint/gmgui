@@ -2,10 +2,7 @@
   var activeDialogs = [];
   var dialogZIndex = 10000;
 
-  function escapeHtml(text) {
-    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-    return String(text).replace(/[&<>"']/g, function(c) { return map[c]; });
-  }
+  function escapeHtml(text) { return window._escHtml(text); }
 
   function createOverlay() {
     var overlay = document.createElement('div');

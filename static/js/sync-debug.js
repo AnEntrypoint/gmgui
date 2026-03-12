@@ -133,16 +133,14 @@ class SyncDebugger {
   }
 }
 
-// Create global instance
-window.syncDebugger = new SyncDebugger();
-
-// Expose commands
-window.debugSync = {
-  enable: () => window.syncDebugger.enable(),
-  disable: () => window.syncDebugger.disable(),
-  report: () => window.syncDebugger.printReport(),
-  clear: () => window.syncDebugger.clearLogs(),
-  get: () => window.syncDebugger.getReport()
-};
-
-console.log('[SyncDebug] Available. Use: debugSync.enable(), debugSync.report(), debugSync.clear()');
+if (window.__DEBUG__) {
+  window.syncDebugger = new SyncDebugger();
+  window.debugSync = {
+    enable: () => window.syncDebugger.enable(),
+    disable: () => window.syncDebugger.disable(),
+    report: () => window.syncDebugger.printReport(),
+    clear: () => window.syncDebugger.clearLogs(),
+    get: () => window.syncDebugger.getReport()
+  };
+  console.log('[SyncDebug] Available. Use: debugSync.enable(), debugSync.report(), debugSync.clear()');
+}
