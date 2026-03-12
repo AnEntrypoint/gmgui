@@ -730,6 +730,9 @@ class AgentGUIClient {
         case 'queue_updated':
           this.handleQueueUpdated(data);
           break;
+        case 'queue_item_dequeued':
+          this.handleQueueItemDequeued(data);
+          break;
         case 'rate_limit_hit':
           this.handleRateLimitHit(data);
           break;
@@ -1323,6 +1326,13 @@ class AgentGUIClient {
 
   handleQueueUpdated(data) {
     if (data.conversationId !== this.state.currentConversation?.id) return;
+    this.fetchAndRenderQueue(data.conversationId);
+  }
+
+  handleQueueItemDequeued(data) {
+    if (data.conversationId !== this.state.currentConversation?.id) return;
+    // Item was dequeued and execution started - remove from queue indicator
+    // and update queue display
     this.fetchAndRenderQueue(data.conversationId);
   }
 
