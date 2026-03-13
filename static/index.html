@@ -840,6 +840,18 @@
       background-color: var(--color-bg-secondary);
     }
 
+    .agent-selector[data-streaming="true"], .model-selector[data-streaming="true"] {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background-color: var(--color-bg-secondary);
+    }
+
+    .message-textarea[data-streaming="true"] {
+      opacity: 0.7;
+      cursor: not-allowed;
+      background-color: var(--color-bg-secondary);
+    }
+
     .model-selector {
       padding: 0.5rem;
       border: none;
@@ -910,6 +922,29 @@
 
     .send-btn:hover:not(:disabled) { background-color: var(--color-primary-dark); }
     .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .send-btn[data-streaming="true"] { opacity: 0.5; cursor: not-allowed; background-color: var(--color-primary); }
+
+    /* ===== Data-streaming state styling for all prompt controls ===== */
+    .input-section[data-streaming="true"] {
+      opacity: 0.85;
+    }
+
+    .input-section[data-streaming="true"] .message-textarea {
+      opacity: 0.7;
+      cursor: not-allowed;
+      background-color: var(--color-bg-secondary);
+    }
+
+    .input-section[data-streaming="true"] .agent-selector,
+    .input-section[data-streaming="true"] .model-selector {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .input-section[data-streaming="true"] .send-btn {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
     .send-btn svg { width: 18px; height: 18px; }
 

@@ -76,6 +76,17 @@ class AgentGUIClient {
     this._loadInProgress = {}; // { [conversationId]: { requestId, abortController, timestamp, prevConversationId } }
     this._currentRequestId = 0; // Auto-incrementing request counter
 
+    // Prompt area state machine: READY | LOADING | STREAMING | QUEUED | DISABLED
+    // Controls atomic transitions to prevent inconsistent UI states
+    this._promptState = 'READY'; // Initial state
+    this._promptStateTransitions = {
+      'READY': ['LOADING', 'STREAMING', 'DISABLED'],
+      'LOADING': ['READY', 'STREAMING', 'DISABLED'],
+      'STREAMING': ['QUEUED', 'READY'],
+      'QUEUED': ['STREAMING', 'READY'],
+      'DISABLED': ['READY']
+    };
+
     this._scrollTarget = 0;
     this._scrollAnimating = false;
     this._scrollLerpFactor = config.scrollAnimationSpeed || 0.15;
@@ -2694,6 +2705,11 @@ class AgentGUIClient {
 
       this._showSkeletonLoading(conversationId);
 
+      // Disable send button during skeleton loading to prevent race conditions
+      if (this.ui.sendButton) {
+        this.ui.sendButton.disabled = true;
+      }
+
       let fullData;
       try {
         fullData = await window.wsClient.rpc('conv.full', { id: conversationId, chunkLimit: 50 });
@@ -2911,12 +2927,12 @@ class AgentGUIClient {
             frag.appendChild(userDiv);
             userMsgIdx++;
           }
-          messagesEl.appendChild(frag);
+          if (!convSignal.aborted) messagesEl.appendChild(frag);
         } else {
-          messagesEl.appendChild(this.renderMessagesFragment(allMessages || []));
+          if (!convSignal.aborted) messagesEl.appendChild(this.renderMessagesFragment(allMessages || []));
         }
 
-        if (shouldResumeStreaming && latestSession && chunks.length === 0) {
+        if (!convSignal.aborted && shouldResumeStreaming && latestSession && chunks.length === 0) {
           const streamDiv = document.createElement('div');
           streamDiv.id = `streaming-${latestSession.id}`;
           streamDiv.className = 'streaming-message';
@@ -2954,6 +2970,11 @@ class AgentGUIClient {
           this.syncPromptState(conversationId);
         } else {
           this.syncPromptState(conversationId);
+        }
+
+        // Re-enable send button after skeleton loading completes
+        if (this.ui.sendButton) {
+          this.ui.sendButton.disabled = false;
         }
 
         this.restoreScrollPosition(conversationId);
