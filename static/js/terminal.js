@@ -1,37 +1,29 @@
 (function() {
-  var ws = null;
   var term = null;
   var fitAddon = null;
   var termActive = false;
   var BASE = window.__BASE_URL || '';
-
-  function getWsUrl() {
-    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return proto + '//' + location.host + BASE + '/sync';
-  }
+  var _wsListener = null;
 
   function getCwd() {
     try {
-      // Try conversation manager first
       if (window.conversationManager && window.conversationManager.activeId) {
         var mgr = window.conversationManager;
-        var id = mgr.activeId;
-        if (mgr.conversations) {
-          var conv = mgr.conversations.find(function(c) { return c.id === id; });
-          if (conv && conv.workingDirectory) return conv.workingDirectory;
-        }
+        var conv = mgr.conversations && mgr.conversations.find(function(c) { return c.id === mgr.activeId; });
+        if (conv && conv.workingDirectory) return conv.workingDirectory;
       }
-      // Fallback to global currentConversation
-      if (window.currentConversation) {
-        var convId = window.currentConversation;
-        if (window.conversationManager && window.conversationManager.conversations) {
-          var convList = window.conversationManager.conversations;
-          var match = convList.find(function(c) { return c.id === convId; });
-          if (match && match.workingDirectory) return match.workingDirectory;
-        }
+      if (window.currentConversation && window.conversationManager && window.conversationManager.conversations) {
+        var match = window.conversationManager.conversations.find(function(c) { return c.id === window.currentConversation; });
+        if (match && match.workingDirectory) return match.workingDirectory;
       }
     } catch (_) {}
     return undefined;
+  }
+
+  function wsSend(obj) {
+    if (window.wsManager && window.wsManager.send) {
+      window.wsManager.send(obj);
+    }
   }
 
   function ensureTerm() {
@@ -60,16 +52,12 @@
     fitAddon.fit();
 
     term.onData(function(data) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        var encoded = btoa(unescape(encodeURIComponent(data)));
-        ws.send(JSON.stringify({ type: 'terminal_input', data: encoded }));
-      }
+      var encoded = btoa(unescape(encodeURIComponent(data)));
+      wsSend({ type: 'terminal_input', data: encoded });
     });
 
     term.onResize(function(size) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'terminal_resize', cols: size.cols, rows: size.rows }));
-      }
+      wsSend({ type: 'terminal_resize', cols: size.cols, rows: size.rows });
     });
 
     var resizeTimer;
@@ -78,57 +66,42 @@
         try { fitAddon.fit(); } catch(_) {}
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function() {
-          if (term && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'terminal_resize', cols: term.cols, rows: term.rows }));
-          }
+          if (term) wsSend({ type: 'terminal_resize', cols: term.cols, rows: term.rows });
         }, 200);
       }
     });
 
-    output.addEventListener('click', function() {
+    document.getElementById('terminalOutput').addEventListener('click', function() {
       if (term && term.focus) term.focus();
     });
 
     return true;
   }
 
-  function connectAndStart() {
-    var cwd = getCwd();
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
-      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
-      setTimeout(function() { if (term && term.focus) term.focus(); }, 100);
-      return;
-    }
-    if (ws && ws.readyState === WebSocket.CONNECTING) {
-      return;
-    }
+  function installWsListener() {
+    if (_wsListener || !window.wsManager) return;
+    _wsListener = function(msg) {
+      if (!termActive) return;
+      if (msg.type === 'terminal_output' && term) {
+        var raw = msg.encoding === 'base64'
+          ? decodeURIComponent(escape(atob(msg.data)))
+          : msg.data;
+        term.write(raw);
+      } else if (msg.type === 'terminal_exit' && term) {
+        term.write('\r\n[Process exited with code ' + msg.code + ']\r\n');
+        if (termActive) setTimeout(startSession, 2000);
+      }
+    };
+    window.wsManager.on('message', _wsListener);
+  }
 
-    ws = new WebSocket(getWsUrl());
-    ws.onopen = function() {
-      var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
-      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
-      setTimeout(function() { if (term && term.focus) term.focus(); }, 100);
-    };
-    ws.onmessage = function(e) {
-      try {
-        var msg = JSON.parse(e.data);
-        if (msg.type === 'terminal_output' && term) {
-          var raw = msg.encoding === 'base64'
-            ? decodeURIComponent(escape(atob(msg.data)))
-            : msg.data;
-          term.write(raw);
-        } else if (msg.type === 'terminal_exit' && term) {
-          term.write('\r\n[Process exited with code ' + msg.code + ']\r\n');
-          if (termActive) setTimeout(connectAndStart, 2000);
-        }
-      } catch(_) {}
-    };
-    ws.onclose = function() {
-      ws = null;
-      if (termActive) setTimeout(connectAndStart, 2000);
-    };
-    ws.onerror = function() {};
+  function startSession() {
+    if (!window.wsManager) return;
+    installWsListener();
+    var cwd = getCwd();
+    var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
+    wsSend({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows });
+    setTimeout(function() { if (term && term.focus) term.focus(); }, 100);
   }
 
   function startTerminal() {
@@ -137,19 +110,21 @@
       return;
     }
     termActive = true;
-    connectAndStart();
+    if (window.wsManager && window.wsManager.isConnected) {
+      startSession();
+    } else if (window.wsManager) {
+      var onConnected = function() {
+        window.wsManager.off('connected', onConnected);
+        startSession();
+      };
+      window.wsManager.on('connected', onConnected);
+    }
     setTimeout(function() { if (fitAddon) try { fitAddon.fit(); } catch(_) {} }, 100);
   }
 
   function stopTerminal() {
     termActive = false;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'terminal_stop' }));
-    }
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
+    wsSend({ type: 'terminal_stop' });
   }
 
   function initTerminalEarly() {
@@ -172,7 +147,7 @@
         return;
       }
       termActive = true;
-      connectAndStart();
+      startSession();
       setTimeout(function() { if (fitAddon) try { fitAddon.fit(); } catch(_) {} }, 50);
       setTimeout(function() { if (fitAddon) try { fitAddon.fit(); } catch(_) {} }, 300);
     } else if (termActive) {
@@ -180,15 +155,12 @@
     }
   });
 
-  // Restart terminal in the new conversation's cwd when conversation switches while terminal is active
-  window.addEventListener('conversation-changed', function(e) {
+  window.addEventListener('conversation-changed', function() {
     if (!termActive) return;
     var cwd = getCwd();
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
-      ws.send(JSON.stringify({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows }));
-      if (term) term.write('\r\n\x1b[33m[Switched to: ' + (cwd || '/') + ']\x1b[0m\r\n');
-    }
+    var dims = term ? { cols: term.cols, rows: term.rows } : { cols: 80, rows: 24 };
+    wsSend({ type: 'terminal_start', cwd: cwd, cols: dims.cols, rows: dims.rows });
+    if (term) term.write('\r\n\x1b[33m[Switched to: ' + (cwd || '/') + ']\x1b[0m\r\n');
   });
 
   window.terminalModule = {

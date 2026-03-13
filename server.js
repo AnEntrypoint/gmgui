@@ -3237,7 +3237,7 @@ function serveFile(filePath, res, req) {
         'Content-Type': contentType,
         'Content-Length': stats.size,
         'ETag': etag,
-        'Cache-Control': ['.js', '.css'].includes(ext) ? 'no-cache' : 'public, max-age=3600, must-revalidate'
+        'Cache-Control': ['.js', '.css'].includes(ext) ? 'public, max-age=0, must-revalidate' : 'public, max-age=3600, must-revalidate'
       };
       if (acceptsEncoding(req, 'br') && stats.size > 860) {
         const stream = fs.createReadStream(filePath);
@@ -4151,7 +4151,8 @@ wsRouter.onLegacy((data, ws) => {
       try { ws.terminalProc.kill(); } catch(e) {}
     }
     try {
-      const pty = require('node-pty');
+      const _req = createRequire(import.meta.url);
+      const pty = _req('node-pty');
       const shell = process.env.SHELL || '/bin/bash';
       const cwd = data.cwd || process.env.STARTUP_CWD || process.env.HOME || '/';
       const proc = pty.spawn(shell, [], {
@@ -4178,7 +4179,6 @@ wsRouter.onLegacy((data, ws) => {
       sendWs(ws, ({ type: 'terminal_started', timestamp: Date.now() }));
     } catch (e) {
       console.error('[TERMINAL] Failed to spawn PTY, falling back to pipes:', e.message);
-      const { spawn } = require('child_process');
       const shell = process.env.SHELL || '/bin/bash';
       const cwd = data.cwd || process.env.STARTUP_CWD || process.env.HOME || '/';
       const proc = spawn(shell, ['-i'], { cwd, env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, stdio: ['pipe', 'pipe', 'pipe'] });
