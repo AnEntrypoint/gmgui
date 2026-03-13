@@ -431,7 +431,15 @@ class ConversationManager {
       const data = await res.json();
       const convList = data.conversations || [];
 
-      this._updateConversations(convList, 'poll');
+      // Never clear conversations on poll if the list is empty — preserve existing state
+      // Empty list likely indicates a server error, not actually empty conversations
+      if (convList.length > 0) {
+        this._updateConversations(convList, 'poll');
+      } else if (this.conversations.length === 0) {
+        // First load and empty - show empty state, but don't clear on subsequent polls
+        this._updateConversations(convList, 'poll');
+      }
+      // If convList is empty but this.conversations has items, do nothing - keep existing
 
       const clientStreamingMap = window.agentGuiClient?.state?.streamingConversations;
       for (const conv of this.conversations) {
@@ -447,7 +455,10 @@ class ConversationManager {
       this.render();
     } catch (err) {
       console.error('Failed to load conversations:', err);
-      this.showEmpty('Failed to load conversations');
+      // Don't show error state if we already have conversations cached - server may be transient issue
+      if (this.conversations.length === 0) {
+        this.showEmpty('Failed to load conversations');
+      }
     }
   }
 
