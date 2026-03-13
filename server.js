@@ -3910,6 +3910,7 @@ function scheduleRetry(conversationId, messageId, content, agentId, model, subAg
     conversationId,
     messageId,
     agentId,
+    queueLength: messageQueues.get(conversationId)?.length || 0,
     timestamp: Date.now()
   });
 
@@ -3961,6 +3962,7 @@ function drainMessageQueue(conversationId) {
     conversationId,
     messageId: next.messageId,
     agentId: next.agentId,
+    queueLength: queue?.length || 0,
     timestamp: Date.now()
   });
 
@@ -4069,8 +4071,16 @@ const BROADCAST_TYPES = new Set([
 
 const wsOptimizer = new WSOptimizer();
 
+// Global sequence counter for atomic event ordering across all broadcasts
+let broadcastSeq = 0;
+
 function broadcastSync(event) {
   try {
+    // Assign global sequence number to ALL events for ordering guarantee
+    if (!event.seq) {
+      event.seq = ++broadcastSeq;
+    }
+
     const isBroadcast = BROADCAST_TYPES.has(event.type);
 
     if (syncClients.size > 0) {
@@ -4152,12 +4162,15 @@ wsRouter.onLegacy((data, ws) => {
     if (data.conversationId && activeExecutions.has(data.conversationId)) {
       const execution = activeExecutions.get(data.conversationId);
       const conv = queries.getConversation(data.conversationId);
+      const queue = messageQueues.get(data.conversationId);
       sendWs(ws, ({
         type: 'streaming_start',
         sessionId: execution.sessionId,
         conversationId: data.conversationId,
         agentId: conv?.agentType || conv?.agentId || 'claude-code',
+        queueLength: queue?.length || 0,
         resumed: true,
+        seq: ++broadcastSeq,
         timestamp: Date.now()
       }));
     }
