@@ -1510,6 +1510,18 @@ export const queries = {
     });
   },
 
+  getConversationChunksSince(conversationId, since) {
+    const stmt = prep(
+      `SELECT id, sessionId, conversationId, sequence, type, data, created_at
+       FROM chunks WHERE conversationId = ? AND created_at > ? ORDER BY created_at ASC`
+    );
+    const rows = stmt.all(conversationId, since);
+    return rows.map(row => {
+      try { return { ...row, data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data }; }
+      catch (e) { return row; }
+    });
+  },
+
   getRecentConversationChunks(conversationId, limit = 500) {
     const stmt = prep(
       `SELECT id, sessionId, conversationId, sequence, type, data, created_at
