@@ -3426,7 +3426,7 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
       if (parsed.type === 'system') {
         if (parsed.subtype === 'task_notification') return;
 
-        if (parsed.session_id) {
+        if (parsed.session_id && parsed.session_id !== resumeSessionId) {
           queries.setClaudeSessionId(conversationId, parsed.session_id);
           debugLog(`[stream] Eagerly persisted claudeSessionId=${parsed.session_id} for conv=${conversationId}`);
         }
