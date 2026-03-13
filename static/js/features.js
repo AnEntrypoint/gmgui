@@ -39,6 +39,7 @@
     }
     function closeSidebar() {
       sidebar.classList.remove('mobile-visible');
+      sidebar.classList.add('collapsed'); // Ensure sidebar is hidden on close
       if (overlay) overlay.classList.remove('visible');
     }
     if (toggleBtn) toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleSidebar(); });

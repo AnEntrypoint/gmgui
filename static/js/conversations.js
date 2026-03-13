@@ -433,8 +433,11 @@ class ConversationManager {
 
       this._updateConversations(convList, 'poll');
 
+      const clientStreamingMap = window.agentGuiClient?.state?.streamingConversations;
       for (const conv of this.conversations) {
-        if (conv.isStreaming === 1 || conv.isStreaming === true) {
+        const serverStreaming = conv.isStreaming === 1 || conv.isStreaming === true;
+        const clientStreaming = clientStreamingMap ? clientStreamingMap.has(conv.id) : false;
+        if (serverStreaming || clientStreaming) {
           this.streamingConversations.add(conv.id);
         } else {
           this.streamingConversations.delete(conv.id);

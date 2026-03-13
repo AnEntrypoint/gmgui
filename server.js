@@ -311,6 +311,45 @@ const debugLog = (msg) => {
   console.error(`[${timestamp}] ${msg}`);
 };
 
+// Atomic cleanup function - ensures consistent state across all data structures
+function cleanupExecution(conversationId, broadcastCompletion = false) {
+  debugLog(`[cleanup] Starting cleanup for ${conversationId}`);
+
+  // Clean in-memory maps in atomic block
+  activeExecutions.delete(conversationId);
+  const proc = activeProcessesByConvId.get(conversationId);
+  activeProcessesByConvId.delete(conversationId);
+
+  // Cancel steering timeout if present
+  const steeringTimeout = steeringTimeouts.get(conversationId);
+  if (steeringTimeout) {
+    clearTimeout(steeringTimeout);
+    steeringTimeouts.delete(conversationId);
+  }
+
+  // Try to kill process if still alive
+  if (proc) {
+    try {
+      if (proc.kill) proc.kill('SIGTERM');
+    } catch (e) {
+      debugLog(`[cleanup] Error killing process: ${e.message}`);
+    }
+  }
+
+  // Clean database state
+  queries.setIsStreaming(conversationId, false);
+
+  if (broadcastCompletion) {
+    broadcastSync({
+      type: 'execution_cleaned_up',
+      conversationId,
+      timestamp: Date.now()
+    });
+  }
+
+  debugLog(`[cleanup] Cleanup complete for ${conversationId}`);
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = process.env.PORTABLE_EXE_DIR || __dirname;
 const PORT = process.env.PORT || 3000;
@@ -3832,10 +3871,18 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     });
   } finally {
     batcher.drain();
-    activeExecutions.delete(conversationId);
+    // Use atomic cleanup but only if not in rate limit recovery
     if (!rateLimitState.has(conversationId)) {
-      queries.setIsStreaming(conversationId, false);
+      cleanupExecution(conversationId);
       drainMessageQueue(conversationId);
+    } else {
+      // Rate limit in flight - keep execution entry for now, but clean process handle
+      activeProcessesByConvId.delete(conversationId);
+      const steeringTimeout = steeringTimeouts.get(conversationId);
+      if (steeringTimeout) {
+        clearTimeout(steeringTimeout);
+        steeringTimeouts.delete(conversationId);
+      }
     }
   }
 }
@@ -3871,6 +3918,16 @@ function scheduleRetry(conversationId, messageId, content, agentId, model, subAg
     .catch(err => {
       debugLog(`[rate-limit] Retry failed: ${err.message}`);
       console.error(`[rate-limit] Retry error for conv ${conversationId}:`, err);
+      // Clean up state on retry failure
+      cleanupExecution(conversationId);
+      broadcastSync({
+        type: 'streaming_error',
+        sessionId: newSession.id,
+        conversationId,
+        error: `Rate limit retry failed: ${err.message}`,
+        recoverable: false,
+        timestamp: Date.now()
+      });
     });
 }
 
@@ -3915,7 +3972,21 @@ function drainMessageQueue(conversationId) {
   activeExecutions.set(conversationId, { pid: null, startTime, sessionId: session.id, lastActivity: startTime });
 
   processMessageWithStreaming(conversationId, next.messageId, session.id, next.content, next.agentId, next.model, next.subAgent)
-    .catch(err => debugLog(`[queue] Error processing queued message: ${err.message}`));
+    .catch(err => {
+      debugLog(`[queue] Error processing queued message: ${err.message}`);
+      // CRITICAL: Clean up state on error so next message can be retried
+      cleanupExecution(conversationId);
+      broadcastSync({
+        type: 'streaming_error',
+        sessionId: session.id,
+        conversationId,
+        error: `Queue processing failed: ${err.message}`,
+        recoverable: true,
+        timestamp: Date.now()
+      });
+      // Try to drain next message in queue
+      setTimeout(() => drainMessageQueue(conversationId), 100);
+    });
 }
 
 
@@ -4026,7 +4097,8 @@ const wsRouter = new WsRouter();
 
 registerConvHandlers(wsRouter, {
   queries, activeExecutions, messageQueues, rateLimitState,
-  broadcastSync, processMessageWithStreaming, activeProcessesByConvId, steeringTimeouts
+  broadcastSync, processMessageWithStreaming, activeProcessesByConvId, steeringTimeouts,
+  cleanupExecution
 });
 
 console.log('[INIT] About to call registerSessionHandlers, discoveredAgents.length:', discoveredAgents.length);
@@ -4540,10 +4612,12 @@ function onServerReady() {
     }, 6000);
   }).catch(err => console.error('[ACP] Startup error:', err.message));
 
-  const toolIds = ['cli-claude', 'cli-opencode', 'cli-gemini', 'cli-kilo', 'cli-codex', 'gm-cc', 'gm-oc', 'gm-gc', 'gm-kilo'];
+  const toolIds = ['cli-claude', 'cli-opencode', 'cli-gemini', 'cli-kilo', 'cli-codex', 'cli-agent-browser', 'gm-cc', 'gm-oc', 'gm-gc', 'gm-kilo'];
   queries.initializeToolInstallations(toolIds.map(id => ({ id })));
   console.log('[TOOLS] Starting background provisioning...');
-  toolManager.autoProvision((evt) => {
+
+  // Create broadcast handler for tool events
+  const toolBroadcaster = (evt) => {
     broadcastSync(evt);
     if (evt.type === 'tool_install_complete' || evt.type === 'tool_update_complete') {
       const d = evt.data || {};
@@ -4558,7 +4632,17 @@ function onServerReady() {
         queries.updateToolStatus(evt.toolId, { status: 'installed', version: d.installedVersion || null, installed_at: Date.now() });
       }
     }
-  }).catch(err => console.error('[TOOLS] Auto-provision error:', err.message));
+  };
+
+  // Initial provisioning (blocks until complete)
+  toolManager.autoProvision(toolBroadcaster)
+    .catch(err => console.error('[TOOLS] Auto-provision error:', err.message))
+    .then(() => {
+      // Start periodic update checker AFTER initial provisioning completes
+      // This runs in background and doesn't block GUI
+      console.log('[TOOLS] Starting periodic update checker...');
+      toolManager.startPeriodicUpdateCheck(toolBroadcaster);
+    });
 
   ensureModelsDownloaded().then(async ok => {
     if (ok) console.log('[MODELS] Speech models ready');

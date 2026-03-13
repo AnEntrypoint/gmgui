@@ -157,6 +157,9 @@ class AgentGUIClient {
       this._recoverMissedChunks();
       this.updateSendButtonState();
       this.enablePromptArea();
+      if (this.state.currentConversation?.id) {
+        this.updateBusyPromptArea(this.state.currentConversation.id);
+      }
       this.emit('ws:connected');
       // Check if server was updated while client was loaded - reload if version changed
       if (window.__SERVER_VERSION) {
@@ -2045,8 +2048,6 @@ class AgentGUIClient {
         </div>
       </div>
     `;
-    // Keep loading spinner visible during hydration
-    this.showLoadingSpinner();
   }
 
   async streamToConversation(conversationId, prompt, agentId, model, subAgent) {
@@ -2084,6 +2085,7 @@ class AgentGUIClient {
 
       if (result.queued) {
         console.log('Message queued, position:', result.queuePosition);
+        this.enableControls();
         return;
       }
 
@@ -2491,22 +2493,20 @@ class AgentGUIClient {
   }
 
   /**
-   * Disable UI controls during streaming
-   * NOTE: Prompt area is IMMUTABLE - always enabled while connected.
-   * Streaming state is rendered via queue/steer buttons, not input disabling.
+   * Disable UI controls during execution - prevents double-sends
    */
   disableControls() {
-    // IMMUTABLE: Prompt state managed only by syncPromptState() based on WebSocket connection
-    // Never disable input during streaming - use queue/steer visibility instead
+    if (this.ui.sendButton) this.ui.sendButton.disabled = true;
   }
 
   /**
-   * Enable UI controls
-   * NOTE: Prompt area is always enabled when connected.
+   * Enable UI controls after execution completes or fails
    */
   enableControls() {
-    // IMMUTABLE: Prompt state managed only by syncPromptState() based on WebSocket connection
-    // Never disable input during streaming - use queue/steer visibility instead
+    if (this.ui.sendButton) {
+      this.ui.sendButton.disabled = !this.wsManager?.isConnected;
+    }
+    this.updateBusyPromptArea(this.state.currentConversation?.id);
   }
 
   /**
@@ -2686,10 +2686,6 @@ class AgentGUIClient {
           this.conversationCache.delete(conversationId);
           this.syncPromptState(conversationId);
           this.restoreScrollPosition(conversationId);
-          // Hydration complete - hide loading spinner
-          this.hideLoadingSpinner();
-          // Prompt state is immutable: computed from shouldResumeStreaming via syncPromptState
-          // Do not call enableControls/disableControls here - prompt state is determined by streaming status
           return;
         }
       }
@@ -2700,9 +2696,8 @@ class AgentGUIClient {
 
       let fullData;
       try {
-        // Load only recent chunks initially (lazy load older ones)
-        // Use chunkLimit of 50 to make page load faster
         fullData = await window.wsClient.rpc('conv.full', { id: conversationId, chunkLimit: 50 });
+        if (convSignal.aborted) return;
       } catch (e) {
         if (e.code === 404) {
           console.warn('Conversation no longer exists:', conversationId);
@@ -2724,6 +2719,7 @@ class AgentGUIClient {
         }
         throw e;
       }
+      if (convSignal.aborted) return;
       const { conversation, isActivelyStreaming, latestSession, chunks: rawChunks, totalChunks, messages: allMessages } = fullData;
 
       window.ConversationState?.selectConversation(conversationId, 'server_load', 1);
@@ -2736,18 +2732,32 @@ class AgentGUIClient {
         ...chunk,
         block: typeof chunk.data === 'string' ? JSON.parse(chunk.data) : chunk.data
       }));
-      const userMessages = (allMessages || []).filter(m => m.role === 'user');
+
+      // Fetch queue to exclude queued messages from being rendered as regular user messages
+      let queuedMessageIds = new Set();
+      try {
+        const { queue } = await window.wsClient.rpc('q.ls', { id: conversationId });
+        if (queue && queue.length > 0) {
+          queuedMessageIds = new Set(queue.map(q => q.messageId));
+        }
+      } catch (e) {
+        console.warn('Failed to fetch queue:', e.message);
+      }
+
+      // Filter out queued messages from user messages - they'll be rendered in queue indicator instead
+      const userMessages = (allMessages || []).filter(m => m.role === 'user' && !queuedMessageIds.has(m.id));
       const hasMoreChunks = totalChunks && chunks.length < totalChunks;
 
       const clientKnowsStreaming = this.state.streamingConversations.has(conversationId);
       const shouldResumeStreaming = latestSession &&
         (latestSession.status === 'active' || latestSession.status === 'pending');
 
-      // IMMUTABLE: Update streaming state and disable prompt atomically
       if (shouldResumeStreaming) {
         this.state.streamingConversations.set(conversationId, true);
+        window.dispatchEvent(new CustomEvent('ws-message', { detail: { type: 'streaming_start', conversationId, sessionId: latestSession?.id } }));
       } else {
         this.state.streamingConversations.delete(conversationId);
+        window.dispatchEvent(new CustomEvent('ws-message', { detail: { type: 'streaming_complete', conversationId } }));
       }
 
       if (this.ui.messageInput) {
@@ -2948,12 +2958,13 @@ class AgentGUIClient {
 
         this.restoreScrollPosition(conversationId);
         this.setupScrollUpDetection(conversationId);
-        // Hydration complete - hide loading spinner
-        this.hideLoadingSpinner();
+
+        // Fetch and display queue items so queued messages show in yellow blocks, not as user messages
+        this.fetchAndRenderQueue(conversationId);
+
       }
     } catch (error) {
       if (error.name === 'AbortError') return;
-      this.hideLoadingSpinner();
       console.error('Failed to load conversation messages:', error);
       // Resume from last successful conversation if available, or fall back to any available conversation
       const fallbackConv = prevConversationId ? prevConversationId : availableFallback?.id;
@@ -3198,7 +3209,7 @@ class AgentGUIClient {
   }
 
   saveAgentAndModelToConversation() {
-    const convId = this.state.currentConversation;
+    const convId = this.state.currentConversation?.id;
     if (!convId || this._agentLocked) return;
     const agentId = this.getEffectiveAgentId();
     const subAgent = this.getEffectiveSubAgent();
@@ -3338,6 +3349,7 @@ let agentGUIClient = null;
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     agentGUIClient = new AgentGUIClient();
+    window.agentGuiClient = agentGUIClient;
     await agentGUIClient.init();
     console.log('AgentGUI ready');
   } catch (error) {
