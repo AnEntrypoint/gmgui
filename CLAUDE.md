@@ -18,6 +18,13 @@ server.js              HTTP server + WebSocket + all API routes (raw http.create
 database.js            SQLite setup (WAL mode), schema, query functions
 lib/claude-runner.js   Agent framework - spawns CLI processes, parses stream-json output
 lib/acp-manager.js     ACP tool lifecycle - auto-starts opencode/kilo HTTP servers, restart on crash
+lib/ws-protocol.js     WebSocket RPC router (WsRouter class)
+lib/ws-optimizer.js    Per-client priority queue for WS event batching
+lib/ws-handlers-conv.js  Conversation/message/queue RPC handlers (~70 methods total)
+lib/ws-handlers-session.js  Session/agent RPC handlers
+lib/ws-handlers-run.js  Thread/run RPC handlers
+lib/ws-handlers-util.js  Utility RPC handlers (speech, auth, git, tools)
+lib/tool-manager.js    Tool detection, installation, version checking
 lib/speech.js          Speech-to-text and text-to-speech via @huggingface/transformers
 bin/gmgui.cjs          CLI entry point (npx agentgui / bun x agentgui)
 static/index.html      Main HTML shell
@@ -33,6 +40,7 @@ static/js/ui-components.js       UI component helpers
 static/js/syntax-highlighter.js  Code syntax highlighting
 static/js/voice.js               Voice input/output
 static/js/features.js            View toggle, drag-drop upload, model progress indicator
+static/js/tools-manager.js       Tool install/update UI
 static/templates/                 31 HTML template fragments for event rendering
 ```
 
@@ -42,6 +50,10 @@ static/templates/                 31 HTML template fragments for event rendering
 - Agent discovery scans PATH for known CLI binaries (claude, opencode, gemini, goose, etc.) at startup.
 - Database lives at `~/.gmgui/data.db`. Tables: conversations, messages, events, sessions, stream chunks.
 - WebSocket endpoint is at `BASE_URL + /sync`. Supports subscribe/unsubscribe by sessionId or conversationId, and ping.
+- All WS RPC uses msgpack binary encoding (lib/codec.js). Wire format: `{ r, m, p }` request, `{ r, d }` reply, `{ type, seq }` broadcast push.
+- `perMessageDeflate` is disabled on the WS server — msgpack binary doesn't compress well and brotli/gzip was blocking the event loop. HTTP-layer gzip handles static assets.
+- Static assets use `Cache-Control: max-age=31536000, immutable` + ETag. Compressed once on first request, served from RAM (`_assetCache` Map keyed by etag).
+- Deployment: runs behind Traefik/Caddy which handles TLS and can support WebTransport/QUIC.
 
 ## Environment Variables
 
@@ -103,60 +115,55 @@ Tool updates are managed through a complete pipeline:
 5. WebSocket broadcasts `tool_update_complete` with version and status data
 6. Frontend updates UI and removes tool from `operationInProgress` set
 
-**Critical Detail:** When updating tools in batch (`/api/tools/update`), the version parameter MUST be included in the database update call (line 1986 in server.js). This ensures database persistence across page reloads.
+**Critical Detail:** When updating tools in batch (`/api/tools/update`), the version parameter MUST be included in the database update call. This ensures database persistence across page reloads.
 
-**Version Detection Sources** (`lib/tool-manager.js` lines 26-87):
+**Version Detection Sources** (`lib/tool-manager.js`):
 - Claude Code: `~/.claude/plugins/{pluginId}/plugin.json`
 - OpenCode: `~/.config/opencode/agents/{pluginId}/plugin.json`
 - Gemini CLI: `~/.gemini/extensions/{pluginId}/plugin.json`
 - Kilo: `~/.config/kilo/agents/{pluginId}/plugin.json`
 
-**Database Schema** (`database.js` lines 168-199):
+**Database Schema** (`database.js`):
 - Table: `tool_installations` (toolId, version, status, installed_at, error_message)
 - Table: `tool_install_history` (action, status, error_message for audit trail)
 
 ## Tool Detection System
 
-The system auto-detects installed AI coding tools via `bun x` package resolution:
-- **OpenCode**: `opencode-ai` package (id: gm-oc)
-- **Gemini CLI**: `@google/gemini-cli` package (id: gm-gc)
-- **Kilo**: `@kilocode/cli` package (id: gm-kilo)
-- **Claude Code**: `@anthropic-ai/claude-code` package (id: gm-cc)
+TOOLS array in `lib/tool-manager.js` — two categories:
+- **`cli`**: `{ id, name, pkg, category: 'cli' }` — detected via `which <bin>` + `<bin> --version`
+- **`plugin`**: `{ id, name, pkg, installPkg, pluginId, category: 'plugin', frameWork }` — detected via plugin.json files
 
-Tool configuration in `lib/tool-manager.js` TOOLS array includes id, name, pkg, and pluginId. Each tool has a different plugin folder name than its npm package name:
-- Claude Code: pkg='@anthropic-ai/claude-code', pluginId='gm' (stored at ~/.claude/plugins/gm/)
-- Gemini CLI: pkg='@google/gemini-cli', pluginId='gm' (stored at ~/.gemini/extensions/gm/)
-- Kilo: pkg='@kilocode/cli', pluginId='@kilocode/cli' (stored at ~/.config/kilo/agents/@kilocode/cli/)
-- OpenCode: pkg='opencode-ai', pluginId='opencode-ai' (stored at ~/.config/opencode/agents/opencode-ai/)
+Current tools:
+- `cli-claude`: bin=`claude`, pkg=`@anthropic-ai/claude-code`
+- `cli-opencode`: bin=`opencode`, pkg=`opencode-ai`
+- `cli-gemini`: bin=`gemini`, pkg=`@google/gemini-cli`
+- `cli-kilo`: bin=`kilo`, pkg=`@kilocode/cli`
+- `cli-codex`: bin=`codex`, pkg=`@openai/codex`
+- `cli-agent-browser`: bin=`agent-browser`, pkg=`agent-browser` — uses `-V` flag (not `--version`) for version detection
+- `gm-cc`, `gm-oc`, `gm-gc`, `gm-kilo`, `gm-codex`: plugin tools
 
-Detection happens by spawning `bun x <package> --version` to check if tools are installed. Version detection uses pluginId to find the correct plugin.json file. Response from `/api/tools` includes: id, name, pkg, installed, status (one of: installed|needs_update|not_installed), isUpToDate, upgradeNeeded, hasUpdate. Frontend displays tools in UI and updates based on installation status.
+**binMap gotcha:** `checkCliInstalled()` and `getCliVersion()` both have a `binMap` object. Any new CLI tool must be added to BOTH. `agent-browser` uses `-V` (not `--version`) — a `versionFlag` override handles this.
+
+**Background provisioning:** `autoProvision()` runs at startup, checks/installs missing tools (~10s). `startPeriodicUpdateCheck()` runs every 6 hours in background to check for updates. Both broadcast tool status via WebSocket so UI stays in sync.
 
 ### Tool Installation and Update UI Flow
 
 When user clicks Install/Update button on a tool:
 
-1. **Frontend** (`static/js/tools-manager.js`):
-   - Immediately updates tool status to 'installing'/'updating' and re-renders UI
-   - Sends POST request to `/api/tools/{id}/install` or `/api/tools/{id}/update`
-   - Adds toolId to `operationInProgress` to prevent duplicate requests
-   - Button becomes disabled showing progress indicator while install runs
-
-2. **Backend** (`server.js` lines 1819-1851):
-   - Receives POST request, updates database status to 'installing'/'updating'
-   - Sends immediate response `{ success: true }`
-   - Asynchronously calls `toolManager.install/update()` in background
-   - Upon completion, broadcasts WebSocket event `tool_install_complete` or `tool_install_failed`
-
-3. **Frontend WebSocket Handler** (`static/js/tools-manager.js` lines 138-151):
-   - Listens for `tool_install_complete` or `tool_install_failed` events
-   - Updates tool status and re-renders final state
-   - Removes toolId from `operationInProgress`, enabling button again
-
-The UI shows progress in three phases: immediate "Installing" status, progress bar animation during install, and final "Installed"/"Failed" status when complete.
+1. **Frontend** (`static/js/tools-manager.js`): Immediately updates status to 'installing'/'updating', sends POST, adds toolId to `operationInProgress` to prevent duplicates
+2. **Backend** (`server.js`): Updates DB status, sends immediate `{ success: true }`, runs install/update async in background, broadcasts `tool_install_complete` or `tool_install_failed` on completion
+3. **Frontend WebSocket Handler**: Listens for completion events, updates UI, removes from `operationInProgress`
 
 ## WebSocket Protocol
 
 Endpoint: `BASE_URL + /sync`
+
+**Wire format (msgpack binary):**
+- Client RPC request: `{ r: requestId, m: method, p: params }`
+- Server RPC reply: `{ r: requestId, d: data }` or `{ r: requestId, e: { c: code, m: message } }`
+- Server push/broadcast: `{ type, seq, ...data }` or array of these when batched
+
+**Legacy control messages** (bypass RPC router, handled in `onLegacy`): `subscribe`, `unsubscribe`, `ping`, `latency_report`, `terminal_*`, `pm2_*`, `set_voice`, `get_subscriptions`
 
 Client sends:
 - `{ type: "subscribe", sessionId }` or `{ type: "subscribe", conversationId }`
@@ -164,20 +171,87 @@ Client sends:
 - `{ type: "ping" }`
 
 Server broadcasts:
-- `streaming_start` - Agent execution started
-- `streaming_progress` - New event/chunk from agent
-- `streaming_complete` - Execution finished
-- `streaming_error` - Execution failed
+- `streaming_start` - Agent execution started (high priority, flushes immediately)
+- `streaming_progress` - New event/chunk from agent (normal priority, batched)
+- `streaming_complete` - Execution finished (high priority)
+- `streaming_error` - Execution failed (high priority)
+- `message_created` - New message (high priority, flushes immediately)
 - `conversation_created`, `conversation_updated`, `conversation_deleted`
+- `all_conversations_deleted` - Must be in BROADCAST_TYPES set
 - `model_download_progress` - Voice model download progress
 - `voice_list` - Available TTS voices
+
+**WSOptimizer** (`lib/ws-optimizer.js`): Per-client priority queue. High-priority events flush immediately; normal/low batch by latency tier (16ms excellent → 200ms bad). Rate limit: 100 msg/sec — overflow is re-queued (not dropped). No `lastKey` deduplication (was removed — caused valid event drops).
+
+## Steering
+
+Steering sends a follow-up prompt to a running agent via stdin JSON-RPC:
+```js
+// conv.steer handler sends to proc.stdin:
+{ jsonrpc: '2.0', id: Date.now(), method: 'session/prompt', params: { sessionId, prompt: [{ type: 'text', text }] } }
+```
+
+**Process lookup:** `entry.proc` (set by `onProcess` callback on `activeExecutions` entry) OR `activeProcessesByConvId.get(id)`. Check both — race condition between `activeExecutions` being set and `onProcess` firing.
+
+**Claude Code stdin:** `supportsStdin: true`, `closeStdin: false` in `lib/claude-runner.js`. Stdin must stay open for steering to work.
+
+**Process lifetime:** After execution ends, process stays alive 30s (steeringTimeout) for follow-up steers. `conv.steer` resets timeout to another 30s on each steer.
+
+## Execution State Management
+
+Three parallel state stores (must stay in sync):
+1. **In-memory maps:** `activeExecutions`, `activeProcessesByConvId`, `messageQueues`, `steeringTimeouts`
+2. **Database:** `conversations.isStreaming`, `sessions.status`
+3. **WebSocket clients:** `streamingConversations` Set on each client
+
+**`cleanupExecution(conversationId)`** — atomic cleanup function in server.js. Always use this, never inline-delete from maps. Clears all maps, kills process, cancels timeout, sets DB isStreaming=0.
+
+**Queue drain:** If `processMessageWithStreaming` throws, catch block calls `cleanupExecution` and retries drain after 100ms. Queue never deadlocks.
+
+## Message Flow
+
+1. User sends → `startExecution()` checks `streamingConversations.has(convId)`
+2. If NOT streaming: show optimistic "User" message in UI
+3. If streaming: skip optimistic (will queue server-side)
+4. Send via RPC `msg.stream` → backend creates message + broadcasts `message_created`
+5. Backend checks `activeExecutions.has(convId)`:
+   - YES: queues, returns `{ queued: true }`, broadcasts `queue_status`
+   - NO: executes, returns `{ session }`
+6. Queue items render as yellow control blocks in `queue-indicator` div
+7. `message_created` only broadcast for non-queued messages (ws-handlers-conv.js)
+8. When queued message executes: becomes regular user message, queue-indicator updates
+
+**Streaming session blocks:** `handleStreamingComplete()` removes `.event-streaming-start` and `.event-streaming-complete` DOM blocks to prevent accumulation in long conversations.
+
+## Conversations Sidebar
+
+`ConversationManager` in `static/js/conversations.js`:
+- Polls `/api/conversations` every 30s
+- On poll: if result is non-empty but smaller than cached list, **merges** (keeps cached items not in poll) rather than replacing — prevents transient server responses from dropping conversations
+- On empty result with existing cache: keeps existing (server error assumption)
+- `render()` uses DOM reconciliation by `data-conv-id` — reuses existing nodes, removes orphans
+- `showEmpty()` and `showLoading()` both clear `listEl.innerHTML` — only called when appropriate
+- `conversation_deleted` WS event handled in `setupWebSocketListener` — `deleteConversation()` filters array
+- `confirmDelete()` calls `deleteConversation()` directly AND server broadcasts `conversation_deleted` — double-call is safe (filter is idempotent)
+
+## Base64 Image Rendering in File Read Events
+
+When an agent reads an image file, the event type may not be `'file_read'`. Three content structures exist:
+
+**Structure A** (nested): `event.content.source.type === 'base64'`, data at `event.content.source.data`
+**Structure B** (flat): `event.content.type === 'base64'`, data at `event.content.data`
+**Structure C** (raw string): `event.content` is a base64 string detected by magic-byte prefix
+
+`renderGeneric` checks for A and B first; if found with `event.path` present, delegates to `renderFileRead`. Without this fallback, non-`file_read` typed image events display as raw text.
+
+MIME type priority: `event.media_type` → magic-byte detection (PNG/JPEG/WebP/GIF) → `application/octet-stream`.
 
 ## Voice Model Download
 
 Speech models (~470MB total) are downloaded automatically on server startup. No credentials required.
 
 ### Download Sources (fallback chain)
-1. **GitHub LFS** (primary): `https://github.com/AnEntrypoint/models` - LFS-tracked ONNX files via `media.githubusercontent.com`, small files via `raw.githubusercontent.com`
+1. **GitHub LFS** (primary): `https://github.com/AnEntrypoint/models`
 2. **HuggingFace** (fallback): `onnx-community/whisper-base` for STT, `AnEntrypoint/sttttsmodels` for TTS
 
 ### Models
@@ -185,204 +259,31 @@ Speech models (~470MB total) are downloaded automatically on server startup. No 
 - **TTS Models** (~190MB): mimi encoder/decoder, flow_lm, text_conditioner, tokenizer
 
 ### UI Behavior
-- Voice tab is hidden until models are ready
-- A circular progress indicator appears in the header during download
-- Once models are downloaded, the Voice tab becomes visible
-- Model status is broadcast via WebSocket `model_download_progress` events
+- Voice tab hidden until models ready; circular progress indicator in header during download
+- Model status broadcast via WebSocket `model_download_progress` events
+- Cache location: `~/.gmgui/models/`
 
-### Cache Location
-Models are stored at `~/.gmgui/models/` (whisper in `onnx-community/whisper-base/`, TTS in `tts/`).
+## Performance Notes
 
-## Tool Update Process Fix
-
-### Issue
-Tool update/install operations would complete successfully but the version display in the UI would not update to reflect the new version.
-
-### Root Cause
-The WebSocket broadcast event for tool update/install completion was missing the `version` field. The server was sending only the `freshStatus` object (which contains `installedVersion`), but not including the extracted `version` field from the tool-manager result.
-
-Frontend expected: `data.data.version`
-Backend was sending: only `data.data.installedVersion`
-
-### Solution
-Updated WebSocket broadcasts in `server.js`:
-- Line 1883: Install endpoint now includes `version` in broadcast data
-- Line 1942: Update endpoint now includes `version` in broadcast data
-- Line 1987: Legacy install endpoint now saves `version` to database
-
-The broadcasts now include both the immediately-detected `version` field and the comprehensive `freshStatus` object, ensuring the frontend has complete information to update the UI correctly.
-
-### Testing
-After update/install completes:
-1. WebSocket event `tool_update_complete` or `tool_install_complete` is broadcast
-2. Frontend receives complete data with `version`, `installedVersion`, `isUpToDate`, etc.
-3. UI version display updates to show new version
-4. Status reverts to "Installed" or "Up-to-date" accordingly
-
-## Base64 Image Rendering in File Read Events
-
-### Problem: Images Displaying as Raw Text
-
-When an agent reads an image file, the streaming event may not have `type='file_read'`. It can arrive with any type (or fall through to the default case in the renderer switch). Without the `renderGeneric` fallback, the image data displays as raw base64 text instead of an `<img>` element.
-
-### Event Structure for Image File Reads
-
-Two nested structures are used by different agent versions. Both must be handled:
-
-**Structure A** (nested under `source`):
-```json
-{
-  "type": "<anything>",
-  "path": "/path/to/image.png",
-  "content": {
-    "source": {
-      "type": "base64",
-      "data": "<base64-string>"
-    },
-    "media_type": "image/png"
-  }
-}
-```
-
-**Structure B** (flat inside `content`):
-```json
-{
-  "type": "<anything>",
-  "path": "/path/to/image.png",
-  "content": {
-    "type": "base64",
-    "data": "<base64-string>"
-  }
-}
-```
-
-**Structure C** (content is raw base64 string, no wrapping object):
-```json
-{
-  "type": "<anything>",
-  "path": "/path/to/image.png",
-  "content": "iVBORw0KGgo..."
-}
-```
-Structure C is detected by `detectBase64Image()` which checks magic-byte prefixes (PNG: `iVBORw0KGgo`, JPEG: `/9j/4AAQ`, WebP: `UklGRi`, GIF: `R0lGODlh`).
-
-### Two Rendering Paths in streaming-renderer.js
-
-**Path 1 – Direct dispatch** (`renderEvent` switch statement):
-- `case 'file_read'` routes directly to `renderFileRead(event)`.
-- Handles all three content structures above.
-
-**Path 2 – Generic fallback** (`renderGeneric`):
-- Called for any event type not matched by the switch (the `default` case).
-- First thing it does: check for `event.content?.source?.type === 'base64'` OR `event.content?.type === 'base64'` AND `event.path` present.
-- If true, delegates to `renderFileRead(event)` so the image renders correctly.
-- Without this fallback, any file-read event that arrives with an unrecognised type displays as raw key-value text.
-
-### MIME Type Resolution in renderFileRead
-
-Priority order inside `renderFileRead`:
-1. `event.media_type` field (explicit)
-2. Detected from magic bytes via `detectBase64Image()` → maps `jpeg` → `image/jpeg`, others → `image/<type>`
-3. Falls back to `application/octet-stream` (shows broken image)
-
-Always include `media_type` on the event when possible. If absent, magic-byte detection covers PNG/JPEG/WebP/GIF automatically.
-
-### Debugging Checklist When Images Show as Text
-
-1. `console.log(event)` the raw event object arriving at the renderer — verify `content` structure.
-2. Check `event.type` — if it is not `'file_read'`, the switch default fires `renderGeneric`.
-3. Confirm `renderGeneric` has the base64 fallback guard at the top (search for `content?.source?.type === 'base64'`).
-4. Confirm `renderFileRead` handles both `content.source.data` and `content.data` paths (both exist in the code).
-5. Verify `event.path` is set — the fallback in `renderGeneric` requires `event.path` to delegate correctly.
-6. If `media_type` is missing and content is not PNG/JPEG/WebP/GIF, add it to the event or extend `detectBase64Image` signatures.
-
-### Why Two Attempts Failed Before the Fix
-
-- Attempt 1: Modified only `renderFileRead` but the event had an unrecognised type so the switch never reached `renderFileRead`.
-- Attempt 2: Added fallback in `renderGeneric` but checked only `event.content?.source?.type === 'base64'` — missed Structure B where data sits directly on `event.content` (no `source` nesting).
-- Fix: `renderGeneric` now checks both structures before falling through to generic key-value rendering.
-
----
-
-## Tool Update Testing & Diagnostics
-
-A comprehensive diagnostic page is available at `http://localhost:3000/gm/tool-update-test.html` (`static/tool-update-test.html`) with 7 interactive test sections:
-
-1. **API Connection Test** - Verifies server HTTP connectivity
-2. **Get Tools Status** - Lists all tools with their current status, versions, and update availability
-3. **WebSocket Connection Test** - Tests real-time event streaming (ping/pong)
-4. **Single Tool Update Test** - Triggers update for a specific tool and monitors completion
-5. **Event Stream Monitoring** - Watches all WebSocket events in real-time
-6. **Database Status** - Checks database accessibility and tool persistence
-7. **System Info** - Displays environment and configuration details
-
-### Batch Update Fix (Critical)
-
-**Issue:** When updating all tools via `/api/tools/update` endpoint, tool versions were not persisted to the database because the `version` parameter was missing from the `updateToolStatus` call.
-
-**Location:** `server.js` line 1986 in the batch update handler (`/api/tools/update`)
-
-**Fix Applied:**
-```javascript
-// BEFORE (missing version):
-queries.updateToolStatus(toolId, { status: 'installed', installed_at: Date.now() });
-
-// AFTER (version preserved):
-const version = result.version || null;
-queries.updateToolStatus(toolId, { status: 'installed', version, installed_at: Date.now() });
-```
-
-**Impact:** Ensures tool versions are correctly saved after batch updates, enabling the UI to display accurate version information and update status across page reloads.
-
-### Testing Tool Updates
-
-**Manual Steps:**
-1. Open `http://localhost:3000/gm/tool-update-test.html`
-2. Click "Get Tools List" and note current versions
-3. Click "Start Update" for a tool (e.g., gm-cc)
-4. Monitor WebSocket events - you should see `tool_update_progress` and `tool_update_complete`
-5. Click "Check Status" to verify version was saved to database
-6. Reload the page - versions should persist
-
-**Expected Outcomes:**
-- Individual tool update: version saved ✓
-- Batch tool update: version saved for all tools ✓
-- Database persists across page reload ✓
-- Frontend shows "Up-to-date" or "Update available" ✓
-- Tool install history records the action ✓
-
----
+- **Static asset serving:** gzip-only (no brotli — too slow for payloads this size). Pre-compressed once on first request, cached in `_assetCache` Map (etag → `{ raw, gz }`). HTML cached as `_htmlCache` after first request, invalidated on hot-reload.
+- **`/api/conversations` N+1 fix:** Uses `getActiveSessionConversationIds()` (single `DISTINCT` query) instead of per-conversation `getSessionsByStatus()` calls.
+- **`conv.chunks` since-filter:** Pushed to DB via `getConversationChunksSince(convId, since)` — no JS array filter on full chunk set.
+- **Client init:** `loadAgents()`, `loadConversations()`, `checkSpeechStatus()` run in parallel via `Promise.all()`.
+- **`perMessageDeflate: false`** on WebSocket server — msgpack binary doesn't compress well, and zlib was blocking the event loop on every streaming_progress send.
 
 ## ACP SDK Integration
 
-### Current Status
-- **@agentclientprotocol/sdk** (`^0.4.1`) has been added to dependencies
-- The SDK is positioned as the main protocol for client-server and server-ACP tools communication
+- **@agentclientprotocol/sdk** (`^0.4.1`) added to dependencies
+- Full integration (replacing custom WS protocol) is optional/incremental — current WS already gives logical multiplexing via concurrent async handlers
 
-### Clear All Conversations Fix
+## Known Gotchas
 
-**Issue:** After clicking "Clear All Conversations", the conversation threads would reappear in the sidebar.
-
-**Root Cause:** The `all_conversations_deleted` broadcast event was being sent by the server (in `lib/ws-handlers-conv.js`), but:
-1. The event type was not in the `BROADCAST_TYPES` set in `server.js`, so it wasn't being broadcast to all clients
-2. The conversation manager (`static/js/conversations.js`) had no handler for this event type
-3. Client cleanup in `handleAllConversationsDeleted` was incomplete
-
-**Solution Applied:**
-1. Added `'all_conversations_deleted'` to `BROADCAST_TYPES` set (server.js:4147)
-2. Added event handler in conversation manager to clear all local state (conversations.js:573-577)
-3. Enhanced client cleanup to clear all caches and state before reloading (client.js:1321-1330)
-
-**Files Modified:**
-- `server.js`: Added `all_conversations_deleted` to BROADCAST_TYPES
-- `static/js/conversations.js`: Added handler for all_conversations_deleted event
-- `static/js/client.js`: Enhanced handleAllConversationsDeleted with complete state cleanup
-
-### Next Steps for Full ACP SDK Integration
-The ACP SDK dependency has been added. Full integration would involve:
-1. Replacing custom WebSocket protocol with ACP SDK's RPC/messaging layer
-2. Updating `lib/acp-manager.js` to use ACP SDK for ACP tool communication
-3. Migrating `lib/ws-protocol.js` handlers to use ACP SDK message types
-4. Updating client-side WebSocket handlers to work with ACP SDK events
-
-This refactoring is optional and can be done incrementally as needed.
+- **`agent-browser --version`** prints help, not version. Use `-V` flag.
+- **`all_conversations_deleted`** must be in `BROADCAST_TYPES` set in server.js or it won't fan-out to all clients.
+- **`streaming_start` and `message_created`** are high-priority in WSOptimizer — they flush immediately, not batched.
+- **Sidebar animation:** `transition: none !important` in index.html CSS — sidebar snaps instantly on toggle by design.
+- **gm plugin requires no `--dangerously-skip-permissions`** flag in claude-runner.js. That flag disables all plugins.
+- **Tool status race on startup:** `autoProvision()` broadcasts `tool_status_update` for already-installed tools so the UI shows correct state before the first manual fetch.
+- **Thinking blocks** are transient (not in DB), rendered only via `handleStreamingProgress()` in client.js. The `renderEvent` switch case for `thinking_block` is disabled to prevent double-render.
+- **Terminal output** is base64-encoded (`encoding: 'base64'` field on message). Client decodes with `decodeURIComponent(escape(atob(data)))` pattern for multibyte safety.
+- **HTML cache** (`_htmlCache`) is only populated when client accepts gzip. In watch mode it's never cached (always fresh).
