@@ -62,13 +62,12 @@ class AgentGUIClient {
     this._isLoadingConversation = false;
     this._modelCache = new Map();
 
-    this._renderedSeqs = new Map();
+    this._renderedSeqs = {}; // plain object: sessionId → Set<number>
     this._inflightRequests = new Map();
     this._previousConvAbort = null;
 
     // Background conversation cache: keeps last 50 conversations' streaming blocks in memory
-    // Blocks are stored as packed msgpackr Uint8Arrays for memory efficiency
-    // Map<conversationId, { packed: Uint8Array[], seqSet: Set<number>, sessionId: string }>
+    // Map<conversationId, { items: {seq,packed}[], seqSet: Set<number>, sessionId: string }>
     this._bgCache = new Map();
     this.BG_CACHE_MAX = 50;
 
@@ -968,7 +967,6 @@ class AgentGUIClient {
     }
 
     // Reset rendered block seq tracker for this session
-    this._renderedSeqs = this._renderedSeqs || {};
     this._renderedSeqs[data.sessionId] = new Set();
 
     // Show queue/steer UI when streaming starts (for busy prompt)
@@ -995,7 +993,6 @@ class AgentGUIClient {
     if (!data.block || !data.sessionId) return;
 
     // Deduplicate by seq number to guarantee exactly-once rendering
-    this._renderedSeqs = this._renderedSeqs || {};
     const seen = this._renderedSeqs[data.sessionId] || (this._renderedSeqs[data.sessionId] = new Set());
     if (data.seq !== undefined) {
       if (seen.has(data.seq)) return;
@@ -1825,7 +1822,6 @@ class AgentGUIClient {
     const blocksEl = streamingEl.querySelector('.streaming-blocks');
     if (!blocksEl) return;
 
-    if (!this._renderedSeqs) this._renderedSeqs = {};
     const seenSeqs = this._renderedSeqs[sessionId] || (this._renderedSeqs[sessionId] = new Set());
     for (const item of entry.items) {
       // Skip blocks already rendered (dedup by seq)
