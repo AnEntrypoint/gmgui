@@ -4023,10 +4023,10 @@ function drainMessageQueue(conversationId) {
 
 const wss = new WebSocketServer({
   server,
-  perMessageDeflate: {
-    zlibDeflateOptions: { level: 6 },
-    threshold: 256
-  }
+  perMessageDeflate: false  // Disabled: msgpack binary doesn't compress well, and
+                             // synchronous zlib on every frame blocks the event loop.
+                             // HTTP-layer gzip already handles static assets; WS
+                             // streaming events are small and latency-sensitive.
 });
 wss.on('error', (err) => {
   console.error('[WSS] WebSocket server error (contained):', err.message);
