@@ -282,7 +282,7 @@ Speech models (~470MB total) are downloaded automatically on server startup. No 
 - **`all_conversations_deleted`** must be in `BROADCAST_TYPES` set in server.js or it won't fan-out to all clients.
 - **`streaming_start` and `message_created`** are high-priority in WSOptimizer — they flush immediately, not batched.
 - **Sidebar animation:** `transition: none !important` in index.html CSS — sidebar snaps instantly on toggle by design.
-- **gm plugin requires no `--dangerously-skip-permissions`** flag in claude-runner.js. That flag disables all plugins.
+- **Claude Code always runs with `--dangerously-skip-permissions`** (plugins disabled by design).
 - **Tool status race on startup:** `autoProvision()` broadcasts `tool_status_update` for already-installed tools so the UI shows correct state before the first manual fetch.
 - **Thinking blocks** are transient (not in DB), rendered only via `handleStreamingProgress()` in client.js. The `renderEvent` switch case for `thinking_block` is disabled to prevent double-render.
 - **Terminal output** is base64-encoded (`encoding: 'base64'` field on message). Client decodes with `decodeURIComponent(escape(atob(data)))` pattern for multibyte safety.
