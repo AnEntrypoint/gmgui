@@ -4102,9 +4102,6 @@ const BROADCAST_TYPES = new Set([
 
 const wsOptimizer = new WSOptimizer();
 
-// Global sequence counter for atomic event ordering across all broadcasts
-let broadcastSeq = 0;
-
 function broadcastSync(event) {
   try {
     // Assign global sequence number to ALL events for ordering guarantee
