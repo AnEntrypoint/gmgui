@@ -185,26 +185,20 @@ Server broadcasts:
 
 ## Steering
 
-Steering sends a follow-up prompt to a running agent via stdin JSON-RPC:
-```js
-// conv.steer handler sends to proc.stdin:
-{ jsonrpc: '2.0', id: Date.now(), method: 'session/prompt', params: { sessionId, prompt: [{ type: 'text', text }] } }
-```
+Steering stops the running agent (SIGKILL) and immediately resumes with the new message:
 
-**Process lookup:** `entry.proc` (set by `onProcess` callback on `activeExecutions` entry) OR `activeProcessesByConvId.get(id)`. Check both — race condition between `activeExecutions` being set and `onProcess` firing.
-
-**Claude Code stdin:** `supportsStdin: true`, `closeStdin: false` in `lib/claude-runner.js`. Stdin must stay open for steering to work.
-
-**Process lifetime:** After execution ends, process stays alive 30s (steeringTimeout) for follow-up steers. `conv.steer` resets timeout to another 30s on each steer.
+1. `conv.steer` RPC (`ws-handlers-conv.js`) — kills active process, marks session interrupted, creates new user message, calls `startExecution()` to resume
+2. Frontend inject button (`#injectBtn`) — when streaming: reads message input, fires `conv.steer`, clears input
+3. `conv.claudeSessionId` on the conversation row ensures the resumed execution picks up `--resume <sessionId>` automatically
 
 ## Execution State Management
 
 Three parallel state stores (must stay in sync):
-1. **In-memory maps:** `activeExecutions`, `activeProcessesByConvId`, `messageQueues`, `steeringTimeouts`
+1. **In-memory maps:** `activeExecutions`, `messageQueues`
 2. **Database:** `conversations.isStreaming`, `sessions.status`
 3. **WebSocket clients:** `streamingConversations` Set on each client
 
-**`cleanupExecution(conversationId)`** — atomic cleanup function in server.js. Always use this, never inline-delete from maps. Clears all maps, kills process, cancels timeout, sets DB isStreaming=0.
+**`cleanupExecution(conversationId)`** — atomic cleanup function in server.js. Always use this, never inline-delete from maps. Clears `activeExecutions`, sets DB isStreaming=0.
 
 **Queue drain:** If `processMessageWithStreaming` throws, catch block calls `cleanupExecution` and retries drain after 100ms. Queue never deadlocks.
 

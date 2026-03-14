@@ -299,8 +299,6 @@ const activeScripts = new Map();
 const messageQueues = new Map();
 const rateLimitState = new Map();
 const activeProcessesByRunId = new Map();
-const activeProcessesByConvId = new Map(); // Store process handles by conversationId for steering
-const steeringTimeouts = new Map(); // Track timeout handles for process cleanup
 const checkpointManager = new CheckpointManager(queries);
 const STUCK_AGENT_THRESHOLD_MS = 1800000;
 const NO_PID_GRACE_PERIOD_MS = 60000;
@@ -315,26 +313,7 @@ const debugLog = (msg) => {
 function cleanupExecution(conversationId, broadcastCompletion = false) {
   debugLog(`[cleanup] Starting cleanup for ${conversationId}`);
 
-  // Clean in-memory maps in atomic block
   activeExecutions.delete(conversationId);
-  const proc = activeProcessesByConvId.get(conversationId);
-  activeProcessesByConvId.delete(conversationId);
-
-  // Cancel steering timeout if present
-  const steeringTimeout = steeringTimeouts.get(conversationId);
-  if (steeringTimeout) {
-    clearTimeout(steeringTimeout);
-    steeringTimeouts.delete(conversationId);
-  }
-
-  // Try to kill process if still alive
-  if (proc) {
-    try {
-      if (proc.kill) proc.kill('SIGTERM');
-    } catch (e) {
-      debugLog(`[cleanup] Error killing process: ${e.message}`);
-    }
-  }
 
   // Clean database state
   queries.setIsStreaming(conversationId, false);
@@ -3724,8 +3703,6 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
         if (entry) entry.pid = pid;
       },
       onProcess: (proc) => {
-        // Store process handle for steering - both maps so steer handler always finds it
-        activeProcessesByConvId.set(conversationId, proc);
         const entry = activeExecutions.get(conversationId);
         if (entry) entry.proc = proc;
       }
@@ -3736,17 +3713,10 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     // Check if rate limit was already handled in stream detection
     if (rateLimitState.get(conversationId)?.isStreamDetected) {
       debugLog(`[rate-limit] Rate limit already handled in stream for conv ${conversationId}, skipping success handler`);
-      activeProcessesByConvId.delete(conversationId);
       return;
     }
 
     activeExecutions.delete(conversationId);
-    // Keep process alive for steering for up to 30 seconds after execution completes
-    const steeringTimeout = setTimeout(() => {
-      activeProcessesByConvId.delete(conversationId);
-      steeringTimeouts.delete(conversationId);
-    }, 30000);
-    steeringTimeouts.set(conversationId, steeringTimeout);
     batcher.drain();
     debugLog(`[stream] Claude returned ${outputs.length} outputs, sessionId=${claudeSessionId}`);
 
@@ -3909,14 +3879,6 @@ async function processMessageWithStreaming(conversationId, messageId, sessionId,
     if (!rateLimitState.has(conversationId)) {
       cleanupExecution(conversationId);
       drainMessageQueue(conversationId);
-    } else {
-      // Rate limit in flight - keep execution entry for now, but clean process handle
-      activeProcessesByConvId.delete(conversationId);
-      const steeringTimeout = steeringTimeouts.get(conversationId);
-      if (steeringTimeout) {
-        clearTimeout(steeringTimeout);
-        steeringTimeouts.delete(conversationId);
-      }
     }
   }
 }
@@ -4138,8 +4100,7 @@ const wsRouter = new WsRouter();
 
 registerConvHandlers(wsRouter, {
   queries, activeExecutions, messageQueues, rateLimitState,
-  broadcastSync, processMessageWithStreaming, activeProcessesByConvId, steeringTimeouts,
-  cleanupExecution
+  broadcastSync, processMessageWithStreaming, cleanupExecution
 });
 
 console.log('[INIT] About to call registerSessionHandlers, discoveredAgents.length:', discoveredAgents.length);
